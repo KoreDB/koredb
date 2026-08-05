@@ -56,6 +56,13 @@ public:
      */
     KUZU_API bool isSuccess() const;
     /**
+     * @return whether the result is partial because the query hit its timeout before finishing.
+     * When true, the tuples in this result are a valid prefix of the full result; the caller may
+     * re-run the query (e.g. with a larger timeout, or paginating with SKIP/LIMIT) to obtain more.
+     * Only ever true when partial-result-on-timeout was enabled for a read-only query.
+     */
+    KUZU_API bool isTruncated() const;
+    /**
      * @return error message of the query execution if the query fails.
      */
     KUZU_API std::string getErrorMessage() const;
@@ -140,6 +147,7 @@ public:
 private:
     void setColumnHeader(std::vector<std::string> columnNames,
         std::vector<common::LogicalType> columnTypes);
+    void setTruncated(bool truncated_) { truncated = truncated_; }
     void initResultTableAndIterator(std::shared_ptr<processor::FactorizedTable> factorizedTable_);
     void validateQuerySucceed() const;
     std::pair<std::unique_ptr<processor::FlatTuple>, std::unique_ptr<processor::FlatTupleIterator>>
@@ -149,6 +157,8 @@ private:
 private:
     // execution status
     bool success = true;
+    // Whether the result is a partial prefix produced before the query hit its timeout.
+    bool truncated = false;
     std::string errMsg;
 
     // header information

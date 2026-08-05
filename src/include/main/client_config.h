@@ -23,6 +23,11 @@ struct ClientConfigDefault {
     static constexpr uint64_t WARNING_LIMIT = 8 * 1024;
     static constexpr bool ENABLE_PLAN_OPTIMIZER = true;
     static constexpr bool ENABLE_INTERNAL_CATALOG = false;
+    // When true (default), a read-only query that hits its timeout stops early and returns the
+    // tuples produced so far, with QueryResult::isTruncated() set to true so the caller knows the
+    // result is partial. When false, such a query is instead aborted with an "Interrupted." error.
+    // Write queries always abort on timeout regardless of this setting.
+    static constexpr bool ENABLE_PARTIAL_RESULT_ON_TIMEOUT = true;
 };
 
 struct ClientConfig {
@@ -57,6 +62,8 @@ struct ClientConfig {
     bool enablePlanOptimizer = ClientConfigDefault::ENABLE_PLAN_OPTIMIZER;
     // If use internal catalog during binding
     bool enableInternalCatalog = ClientConfigDefault::ENABLE_INTERNAL_CATALOG;
+    // If a read-only query that times out should return partial results instead of erroring.
+    bool enablePartialResultOnTimeout = ClientConfigDefault::ENABLE_PARTIAL_RESULT_ON_TIMEOUT;
 };
 
 } // namespace main

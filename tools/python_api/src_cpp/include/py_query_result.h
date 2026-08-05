@@ -44,6 +44,8 @@ public:
 
     bool isSuccess() const;
 
+    bool isTruncated() const;
+
     std::string getErrorMessage() const;
 
     double getExecutionTime();

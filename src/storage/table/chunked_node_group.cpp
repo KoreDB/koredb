@@ -536,14 +536,15 @@ std::unique_ptr<ChunkedNodeGroup> ChunkedNodeGroup::deserialize(MemoryManager& m
 
 void ChunkedNodeGroup::setUnused(const MemoryManager& mm) {
     dataInUse = false;
-    mm.getBufferManager()->getSpillerOrSkip([&](auto& spiller) { spiller.addUnusedChunk(this); });
+    mm.getBufferManager()->getSpillerOrSkip(
+        [&](auto& spiller) { spiller.addUnusedComponent(this); });
 }
 
 void ChunkedNodeGroup::loadFromDisk(const MemoryManager& mm) {
     mm.getBufferManager()->getSpillerOrSkip([&](auto& spiller) {
         std::unique_lock lock{spillToDiskMutex};
         // Prevent buffer manager from being able to spill this chunk to disk
-        spiller.clearUnusedChunk(this);
+        spiller.clearUnusedComponent(this);
         for (auto& chunk : chunks) {
             chunk->loadFromDisk();
         }

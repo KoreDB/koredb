@@ -476,6 +476,23 @@ class QueryResult:
         self.check_for_query_result_close()
         return self._query_result.getNumTuples()
 
+    def is_truncated(self) -> bool:
+        """
+        Check whether this result is partial because the query hit its timeout before finishing.
+
+        When True, the returned rows are a valid prefix of the full result and the query can be
+        re-run (e.g. with a larger timeout, or paginating with SKIP/LIMIT) to obtain more. Only ever
+        True when ``enable_partial_result_on_timeout`` (on by default) was set for a read-only query.
+
+        Returns
+        -------
+        bool
+            True if the result is a partial (truncated) result.
+
+        """
+        self.check_for_query_result_close()
+        return self._query_result.isTruncated()
+
     def rows_as_dict(self, state=True) -> Self:
         """
         Change the format of the results, such that each row is a dict with the

@@ -57,6 +57,12 @@ class EmbeddedShell;
 struct ActiveQuery {
     explicit ActiveQuery();
     std::atomic<bool> interrupted;
+    // Set when the query hit its timeout and partial results should be returned (see
+    // ClientContext::isTimedOut). Distinct from `interrupted`, which aborts the query with an error.
+    std::atomic<bool> timedOut;
+    // Whether the currently executing query is allowed to return partial results on timeout (armed
+    // per query: enabled by config AND the statement being read-only).
+    bool partialResultOnTimeout;
     common::Timer timer;
 
     void reset();
@@ -93,6 +99,12 @@ public:
     // Timer and timeout
     void interrupt() { activeQuery.interrupted = true; }
     bool interrupted() const { return activeQuery.interrupted; }
+    // Marks that the active query hit its timeout and should stop early, returning partial results.
+    void setTimedOut() { activeQuery.timedOut = true; }
+    bool isTimedOut() const { return activeQuery.timedOut; }
+    // Whether the active query may return partial results (rather than error) when it times out.
+    bool isPartialResultOnTimeoutArmed() const { return activeQuery.partialResultOnTimeout; }
+    void armPartialResultOnTimeout(bool armed) { activeQuery.partialResultOnTimeout = armed; }
     bool hasTimeout() const { return clientConfig.timeoutInMS != 0; }
     void setQueryTimeOut(uint64_t timeoutInMS);
     uint64_t getQueryTimeOut() const;

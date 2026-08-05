@@ -121,11 +121,26 @@ TEST_F(ApiTest, Profile) {
 }
 
 TEST_F(ApiTest, TimeOut) {
+    // Disable partial-result-on-timeout (on by default) to exercise the abort-on-timeout path.
+    ASSERT_TRUE(conn->query("CALL enable_partial_result_on_timeout=false;")->isSuccess());
     conn->setQueryTimeOut(1000 /* timeoutInMS */);
     auto result = conn->query(
         "UNWIND RANGE(1,100000) AS x UNWIND RANGE(1, 100000) AS y RETURN COUNT(x + y);");
     ASSERT_FALSE(result->isSuccess());
     ASSERT_EQ(result->getErrorMessage(), "Interrupted.");
+}
+
+TEST_F(ApiTest, TimeOutReturnsPartialResults) {
+    // With enable_partial_result_on_timeout, a read-only query that times out returns the tuples
+    // produced so far (a valid prefix) with isTruncated() set, instead of aborting with an error.
+    ASSERT_TRUE(conn->query("CALL enable_partial_result_on_timeout=true;")->isSuccess());
+    conn->setQueryTimeOut(1 /* timeoutInMS */);
+    // The full result would be 10^10 rows, so the query is guaranteed to hit the timeout first.
+    auto result =
+        conn->query("UNWIND RANGE(1, 100000) AS x UNWIND RANGE(1, 100000) AS y RETURN x, y;");
+    ASSERT_TRUE(result->isSuccess());
+    ASSERT_TRUE(result->isTruncated());
+    ASSERT_LT(result->getNumTuples(), 100000ULL * 100000ULL);
 }
 
 TEST_F(ApiTest, MultipleQueryExplain) {

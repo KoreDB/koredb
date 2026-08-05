@@ -28,6 +28,7 @@ private:
     Napi::Value GetNextQueryResultAsync(const Napi::CallbackInfo& info);
     Napi::Value GetNextQueryResultSync(const Napi::CallbackInfo& info);
     Napi::Value GetNumTuples(const Napi::CallbackInfo& info);
+    Napi::Value IsTruncated(const Napi::CallbackInfo& info);
     Napi::Value GetNextAsync(const Napi::CallbackInfo& info);
     Napi::Value GetNextSync(const Napi::CallbackInfo& info);
     Napi::Value GetColumnDataTypesAsync(const Napi::CallbackInfo& info);

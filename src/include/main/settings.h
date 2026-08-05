@@ -253,5 +253,18 @@ struct EnableInternalCatalogSetting {
     }
 };
 
+struct EnablePartialResultOnTimeoutSetting {
+    static constexpr auto name = "enable_partial_result_on_timeout";
+    static constexpr auto inputType = common::LogicalTypeID::BOOL;
+    static void setContext(ClientContext* context, const common::Value& parameter) {
+        parameter.validateType(inputType);
+        context->getClientConfigUnsafe()->enablePartialResultOnTimeout = parameter.getValue<bool>();
+    }
+    static common::Value getSetting(const ClientContext* context) {
+        return common::Value::createValue(
+            context->getClientConfig()->enablePartialResultOnTimeout);
+    }
+};
+
 } // namespace main
 } // namespace kuzu

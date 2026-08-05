@@ -44,16 +44,16 @@ FileHandle* Spiller::getDataFH() const {
     return nullptr;
 }
 
-void Spiller::addUnusedChunk(ChunkedNodeGroup* nodeGroup) {
-    std::unique_lock lock(partitionerGroupsMtx);
-    fullPartitionerGroups.insert(nodeGroup);
+void Spiller::addUnusedComponent(SpillableComponent* component) {
+    std::unique_lock lock(spillableComponentsMtx);
+    spillableComponents.insert(component);
 }
 
-void Spiller::clearUnusedChunk(ChunkedNodeGroup* nodeGroup) {
-    std::unique_lock lock(partitionerGroupsMtx);
-    auto entry = fullPartitionerGroups.find(nodeGroup);
-    if (entry != fullPartitionerGroups.end()) {
-        fullPartitionerGroups.erase(entry);
+void Spiller::clearUnusedComponent(SpillableComponent* component) {
+    std::unique_lock lock(spillableComponentsMtx);
+    auto entry = spillableComponents.find(component);
+    if (entry != spillableComponents.end()) {
+        spillableComponents.erase(entry);
     }
 }
 
@@ -87,20 +87,20 @@ void Spiller::loadFromDisk(ColumnChunkData& chunk) const {
     }
 }
 
-SpillResult Spiller::claimNextGroup() {
-    ChunkedNodeGroup* groupToFlush = nullptr;
+SpillResult Spiller::claimNextComponent() {
+    SpillableComponent* componentToFlush = nullptr;
     {
-        std::unique_lock lock(partitionerGroupsMtx);
-        if (!fullPartitionerGroups.empty()) {
-            auto groupToFlushEntry = fullPartitionerGroups.begin();
-            groupToFlush = *groupToFlushEntry;
-            fullPartitionerGroups.erase(groupToFlushEntry);
+        std::unique_lock lock(spillableComponentsMtx);
+        if (!spillableComponents.empty()) {
+            auto componentToFlushEntry = spillableComponents.begin();
+            componentToFlush = *componentToFlushEntry;
+            spillableComponents.erase(componentToFlushEntry);
         }
     }
-    if (groupToFlush == nullptr) {
+    if (componentToFlush == nullptr) {
         return SpillResult{};
     }
-    return groupToFlush->spillToDisk();
+    return componentToFlush->spillToDisk();
 }
 
 // NOLINTNEXTLINE(readability-make-member-function-const): Function shouldn't be re-ordered

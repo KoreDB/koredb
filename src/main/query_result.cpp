@@ -36,6 +36,11 @@ bool QueryResult::isSuccess() const {
     return success;
 }
 
+bool QueryResult::isTruncated() const {
+    checkDatabaseClosedOrThrow();
+    return truncated;
+}
+
 std::string QueryResult::getErrorMessage() const {
     checkDatabaseClosedOrThrow();
     return errMsg;

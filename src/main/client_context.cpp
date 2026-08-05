@@ -42,10 +42,12 @@ using namespace kuzu::transaction;
 namespace kuzu {
 namespace main {
 
-ActiveQuery::ActiveQuery() : interrupted{false} {}
+ActiveQuery::ActiveQuery() : interrupted{false}, timedOut{false}, partialResultOnTimeout{false} {}
 
 void ActiveQuery::reset() {
     interrupted = false;
+    timedOut = false;
+    partialResultOnTimeout = false;
     timer = Timer();
 }
 
@@ -563,6 +565,10 @@ std::unique_ptr<QueryResult> ClientContext::executeNoLock(PreparedStatement* pre
     useInternalCatalogEntry_ = cachedStatement->useInternalCatalogEntry;
     this->resetActiveQuery();
     this->startTimer();
+    // A query may return partial results on timeout only if the user enabled it and the statement is
+    // read-only (returning partial results for a write statement would commit a partial mutation).
+    this->armPartialResultOnTimeout(
+        clientConfig.enablePartialResultOnTimeout && preparedStatement->isReadOnly());
     auto executingTimer = TimeMetric(true /* enable */);
     executingTimer.start();
     std::shared_ptr<FactorizedTable> resultFT;
@@ -610,6 +616,11 @@ std::unique_ptr<QueryResult> ClientContext::executeNoLock(PreparedStatement* pre
     queryResult->setColumnHeader(cachedStatement->getColumnNames(),
         cachedStatement->getColumnTypes());
     queryResult->initResultTableAndIterator(std::move(resultFT));
+    // If the query stopped early because it hit its timeout, the result table only holds the tuples
+    // produced so far. Flag it so callers can tell the result is partial and re-issue if needed.
+    if (isTimedOut()) {
+        queryResult->setTruncated(true);
+    }
     return queryResult;
 }
 

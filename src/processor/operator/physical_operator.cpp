@@ -183,8 +183,16 @@ void PhysicalOperator::initLocalState(ResultSet* resultSet_, ExecutionContext* c
 }
 
 bool PhysicalOperator::getNextTuple(ExecutionContext* context) {
-    if (context->clientContext->interrupted()) {
+    auto* clientContext = context->clientContext;
+    if (clientContext->interrupted()) {
         throw InterruptException{};
+    }
+    // If the query hit its timeout and partial results are allowed, stop producing tuples instead of
+    // throwing. The sink then returns the tuples collected so far and the result is flagged as
+    // truncated. Every operator above this one also observes the flag and stops, so the collected
+    // rows are always a valid prefix of the full result.
+    if (clientContext->isTimedOut()) {
+        return false;
     }
 #ifdef __SINGLE_THREADED__
     // In single-threaded mode, the timeout cannot be checked in the main thread
@@ -192,10 +200,12 @@ bool PhysicalOperator::getNextTuple(ExecutionContext* context) {
     // check the timeout in the processor. The timeout handling may still be
     // delayed, but it is better than checking it at the end of each task.
     // This is the best we can do now because SIGALRM is not cross-platform.
-    if (context->clientContext->hasTimeout()) {
-        if (context->clientContext->getTimeoutRemainingInMS() == 0) {
-            throw InterruptException{};
+    if (clientContext->hasTimeout() && clientContext->getTimeoutRemainingInMS() == 0) {
+        if (clientContext->isPartialResultOnTimeoutArmed()) {
+            clientContext->setTimedOut();
+            return false;
         }
+        throw InterruptException{};
     }
 #endif
     metrics->executionTime.start();

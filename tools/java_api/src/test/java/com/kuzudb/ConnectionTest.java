@@ -299,11 +299,32 @@ public class ConnectionTest extends TestBase {
 
     @Test
     void ConnQueryTimeout() {
+        // Disable partial-result-on-timeout (on by default) to exercise the abort-on-timeout path.
+        try (QueryResult r = conn.query("CALL enable_partial_result_on_timeout=false;")) {
+            assertTrue(r.isSuccess());
+        }
         conn.setQueryTimeout(1);
         try (QueryResult result = conn.query("UNWIND RANGE(1,100000) AS x UNWIND RANGE(1, 100000) AS y RETURN COUNT(x + y);")) {
             assertNotNull(result);
             assertFalse(result.isSuccess());
             assertTrue(result.getErrorMessage().equals("Interrupted."));
+        }
+    }
+
+    @Test
+    void ConnQueryTimeoutPartialResults() {
+        // With partial-result-on-timeout enabled, a read-only query that times out returns the
+        // tuples produced so far, flagged via isTruncated(), instead of erroring. Enable it
+        // explicitly (rather than relying on the default) since the shared connection's setting may
+        // have been changed by another test.
+        try (QueryResult r = conn.query("CALL enable_partial_result_on_timeout=true;")) {
+            assertTrue(r.isSuccess());
+        }
+        conn.setQueryTimeout(1);
+        try (QueryResult result = conn.query("UNWIND RANGE(1, 100000) AS x UNWIND RANGE(1, 100000) AS y RETURN x, y;")) {
+            assertNotNull(result);
+            assertTrue(result.isSuccess());
+            assertTrue(result.isTruncated());
         }
     }
 

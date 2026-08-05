@@ -637,6 +637,13 @@ KUZU_C_API void kuzu_query_result_destroy(kuzu_query_result* query_result);
  */
 KUZU_C_API bool kuzu_query_result_is_success(kuzu_query_result* query_result);
 /**
+ * @brief Returns true if the query result is partial because the query hit its timeout before
+ * finishing. The tuples in the result are a valid prefix of the full result. Only ever true when
+ * `enable_partial_result_on_timeout` was set for a read-only query.
+ * @param query_result The query result instance to check.
+ */
+KUZU_C_API bool kuzu_query_result_is_truncated(kuzu_query_result* query_result);
+/**
  * @brief Returns the error message if the query is failed.
  * The caller is responsible for freeing the returned string with `kuzu_destroy_string`.
  * @param query_result The query result instance to check and return error message.

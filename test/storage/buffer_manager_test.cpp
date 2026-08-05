@@ -83,15 +83,15 @@ TEST_F(EmptyBufferManagerTest, TestSpillToDiskMemoryUsage) {
         auto memoryWithChunks = bm->getUsedMemory();
         SpillResult memorySpilled{};
         bm->getSpillerOrSkip([&](auto& spiller) {
-            spiller.addUnusedChunk(&chunkedNodeGroup);
+            spiller.addUnusedComponent(&chunkedNodeGroup);
             // Claim memory from unused chunks
-            memorySpilled = spiller.claimNextGroup();
+            memorySpilled = spiller.claimNextComponent();
         });
         ASSERT_NE(memorySpilled.memoryFreed + memorySpilled.memoryNowEvictable, 0);
         // The chunks should be entirely on disk
         ASSERT_EQ(initialUsedMemory, bm->getUsedMemory() - memorySpilled.memoryFreed);
         chunkedNodeGroup.loadFromDisk(*mm);
-        // The chunks should be back in memory, but Spiller::claimNextGroup does not update
+        // The chunks should be back in memory, but Spiller::claimNextComponent does not update
         // the amount of used memory itself, so we end up with the spilled memory recorded twice
         ASSERT_EQ(memoryWithChunks, bm->getUsedMemory() - memorySpilled.memoryFreed);
     }
@@ -106,9 +106,9 @@ TEST_F(EmptyBufferManagerTest, TestSpillToDiskMemoryUsage) {
         chunkedNodeGroup.setUnused(*mm);
         SpillResult memorySpilled{};
         bm->getSpillerOrSkip([&](auto& spiller) {
-            spiller.addUnusedChunk(&chunkedNodeGroup);
+            spiller.addUnusedComponent(&chunkedNodeGroup);
             // Claim memory from unused chunks
-            memorySpilled = spiller.claimNextGroup();
+            memorySpilled = spiller.claimNextComponent();
         });
         ASSERT_EQ(memorySpilled.memoryFreed, 0);
         ASSERT_EQ(memorySpilled.memoryNowEvictable, TEMP_PAGE_SIZE);

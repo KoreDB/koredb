@@ -6,6 +6,7 @@
 
 #include "common/enums/rel_multiplicity.h"
 #include "storage/buffer_manager/memory_manager.h"
+#include "storage/buffer_manager/spillable.h"
 #include "storage/enums/residency_state.h"
 #include "storage/table/column_chunk.h"
 #include "storage/table/column_chunk_data.h"
@@ -33,7 +34,7 @@ class PageAllocator;
 
 enum class NodeGroupDataFormat : uint8_t { REGULAR = 0, CSR = 1 };
 
-class KUZU_API ChunkedNodeGroup {
+class KUZU_API ChunkedNodeGroup : public SpillableComponent {
 public:
     ChunkedNodeGroup(std::vector<std::unique_ptr<ColumnChunk>> chunks,
         common::row_idx_t startRowIdx, NodeGroupDataFormat format = NodeGroupDataFormat::REGULAR);
@@ -177,7 +178,7 @@ public:
     void loadFromDisk(const MemoryManager& mm);
 
     // returns the amount of space reclaimed in bytes
-    SpillResult spillToDisk();
+    SpillResult spillToDisk() override;
 
     void setUnused(const MemoryManager& mm);
 

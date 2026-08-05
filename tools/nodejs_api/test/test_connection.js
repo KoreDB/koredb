@@ -189,6 +189,8 @@ describe("Timeout", function () {
     try {
       const newConn = new kuzu.Connection(db);
       await newConn.init();
+      // Disable partial-result-on-timeout (on by default) to exercise the abort-on-timeout path.
+      await newConn.query("CALL enable_partial_result_on_timeout=false;");
       newConn.setQueryTimeout(1);
       await newConn.query(
         "UNWIND RANGE(1,100000) AS x UNWIND RANGE(1, 100000) AS y RETURN COUNT(x + y);"
@@ -200,17 +202,31 @@ describe("Timeout", function () {
   });
 
   it("should allow setting a timeout before the connection is initialized", async function () {
-    try {
-      const newConn = new kuzu.Connection(db);
-      newConn.setQueryTimeout(1);
-      await newConn.init();
-      await newConn.query(
-        "UNWIND RANGE(1,100000) AS x UNWIND RANGE(1, 100000) AS y RETURN COUNT(x + y);"
-      );
-      assert.fail("No error thrown when the query times out.");
-    } catch (err) {
-      assert.equal(err.message, "Interrupted.");
-    }
+    const newConn = new kuzu.Connection(db);
+    newConn.setQueryTimeout(1);
+    await newConn.init();
+    // The timeout set before init applies: with partial-result-on-timeout on by default, the query
+    // stops early and returns a truncated result instead of throwing.
+    const result = await newConn.query(
+      "UNWIND RANGE(1,100000) AS x UNWIND RANGE(1, 100000) AS y RETURN x, y;"
+    );
+    assert.isTrue(result.isTruncated());
+    await result.close();
+  });
+
+  it("should return partial results on timeout when enabled", async function () {
+    const newConn = new kuzu.Connection(db);
+    await newConn.init();
+    await newConn.query("CALL enable_partial_result_on_timeout=true;");
+    newConn.setQueryTimeout(1);
+    // The full result would be 10^10 rows, so the query is guaranteed to time out first. Instead of
+    // throwing, it should resolve with a partial result flagged as truncated.
+    const result = await newConn.query(
+      "UNWIND RANGE(1, 100000) AS x UNWIND RANGE(1, 100000) AS y RETURN x, y;"
+    );
+    assert.isTrue(result.isTruncated());
+    assert.isBelow(result.getNumTuples(), 100000 * 100000);
+    await result.close();
   });
 });
 

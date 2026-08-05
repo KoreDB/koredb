@@ -51,6 +51,18 @@ class QueryResult {
   }
 
   /**
+   * Check whether this result is partial because the query hit its timeout before finishing.
+   * When true, the rows in this result are a valid prefix of the full result; you can re-run the
+   * query (e.g. with a larger timeout via `setQueryTimeout`, or paginating with SKIP/LIMIT) to get
+   * more. Only ever true when `enable_partial_result_on_timeout` was set for a read-only query.
+   * @returns {Boolean} true if the result is a partial (truncated) result.
+   */
+  isTruncated() {
+    this._checkClosed();
+    return this._queryResult.isTruncated();
+  }
+
+  /**
    * Get the next row of the query result.
    * @returns {Promise<Object>} a promise that resolves to the next row of the query result. The promise is rejected if there is an error.
    */

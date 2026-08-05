@@ -309,6 +309,15 @@ export class QueryResult {
     getNumTuples(): number;
 
     /**
+     * Check whether this result is partial because the query hit its timeout before finishing.
+     * When true, the returned rows are a valid prefix of the full result and the query can be
+     * re-run to obtain more. Only ever true when `enable_partial_result_on_timeout` was set for a
+     * read-only query.
+     * @returns true if the result is a partial (truncated) result.
+     */
+    isTruncated(): boolean;
+
+    /**
      * Get the next row.
      * @returns Promise that resolves to the next row or null if no more rows
      */

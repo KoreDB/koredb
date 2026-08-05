@@ -142,6 +142,12 @@ TEST_F(CApiConnectionTest, QueryTimeout) {
     kuzu_query_result result;
     kuzu_state state;
     auto connection = getConnection();
+    // Disable partial-result-on-timeout (on by default) to exercise the abort-on-timeout path.
+    kuzu_query_result disableResult;
+    ASSERT_EQ(kuzu_connection_query(connection, "CALL enable_partial_result_on_timeout=false;",
+                  &disableResult),
+        KuzuSuccess);
+    kuzu_query_result_destroy(&disableResult);
     ASSERT_EQ(kuzu_connection_set_query_timeout(connection, 1), KuzuSuccess);
     state = kuzu_connection_query(connection,
         "UNWIND RANGE(1,100000) AS x UNWIND RANGE(1, 100000) AS y RETURN COUNT(x + y);", &result);
@@ -155,6 +161,24 @@ TEST_F(CApiConnectionTest, QueryTimeout) {
     kuzu_connection badConnection;
     ASSERT_EQ(kuzu_connection_init(nullptr, &badConnection), KuzuError);
     ASSERT_EQ(kuzu_connection_set_query_timeout(&badConnection, 1), KuzuError);
+}
+
+TEST_F(CApiConnectionTest, QueryTimeoutPartialResults) {
+    auto connection = getConnection();
+    kuzu_query_result enableResult;
+    ASSERT_EQ(kuzu_connection_query(connection, "CALL enable_partial_result_on_timeout=true;",
+                  &enableResult),
+        KuzuSuccess);
+    kuzu_query_result_destroy(&enableResult);
+    ASSERT_EQ(kuzu_connection_set_query_timeout(connection, 1), KuzuSuccess);
+    kuzu_query_result result;
+    // A partial result is reported as a successful query with is_truncated() == true.
+    auto state = kuzu_connection_query(connection,
+        "UNWIND RANGE(1, 100000) AS x UNWIND RANGE(1, 100000) AS y RETURN x, y;", &result);
+    ASSERT_EQ(state, KuzuSuccess);
+    ASSERT_TRUE(kuzu_query_result_is_success(&result));
+    ASSERT_TRUE(kuzu_query_result_is_truncated(&result));
+    kuzu_query_result_destroy(&result);
 }
 
 #ifndef __SINGLE_THREADED__

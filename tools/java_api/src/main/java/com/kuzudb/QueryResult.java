@@ -57,6 +57,20 @@ public class QueryResult implements AutoCloseable {
     }
 
     /**
+     * Check whether this result is partial because the query hit its timeout before finishing.
+     * When true, the returned rows are a valid prefix of the full result and the query can be
+     * re-run to obtain more. Only ever true when {@code enable_partial_result_on_timeout} (on by
+     * default) was set for a read-only query.
+     *
+     * @return True if the result is a partial (truncated) result.
+     * @throws RuntimeException If the query result has been destroyed.
+     */
+    public boolean isTruncated() {
+        checkNotDestroyed();
+        return Native.kuzuQueryResultIsTruncated(this);
+    }
+
+    /**
      * Get the error message if any.
      *
      * @return Error message of the query execution if the query fails.

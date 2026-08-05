@@ -71,7 +71,13 @@ void TaskScheduler::scheduleTaskAndWaitOrError(const std::shared_ptr<Task>& task
         if (context->clientContext->hasTimeout()) {
             timeout = context->clientContext->getTimeoutRemainingInMS();
             if (timeout == 0) {
-                context->clientContext->interrupt();
+                if (context->clientContext->isPartialResultOnTimeoutArmed()) {
+                    // Stop the query gracefully so it returns the partial results collected so far
+                    // instead of aborting with an error.
+                    context->clientContext->setTimedOut();
+                } else {
+                    context->clientContext->interrupt();
+                }
             } else {
                 timedWait = true;
             }
