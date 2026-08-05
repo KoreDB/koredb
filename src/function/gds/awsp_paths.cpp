@@ -76,7 +76,7 @@ public:
         curPath.push_back(firstParent);
         auto backtracking = false;
         while (!curPath.empty()) {
-            if (context->interrupted()) {
+            if (context->interruptedOrTimedOut()) {
                 throw InterruptException{};
             }
             if (curPath[curPath.size() - 1]->getCost() == 0) { // Find source. Start writing path.

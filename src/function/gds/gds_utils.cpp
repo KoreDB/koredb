@@ -59,7 +59,7 @@ static void runOneIteration(ExecutionContext* context, Graph* graph,
     const std::vector<std::string>& propertiesToScan) {
     for (auto info : graph->getGraphEntry()->nodeInfos) {
         for (const auto& relInfo : graph->getRelInfos(info.entry->getTableID())) {
-            if (context->clientContext->interrupted()) {
+            if (context->clientContext->interruptedOrTimedOut()) {
                 throw InterruptException{};
             }
             switch (extendDirection) {

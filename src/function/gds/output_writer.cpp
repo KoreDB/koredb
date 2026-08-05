@@ -90,7 +90,7 @@ void PathsOutputWriter::dfsFast(ParentList* firstParent, FactorizedTable& fTable
     curPath.push_back(firstParent);
     auto backtracking = false;
     while (!curPath.empty()) {
-        if (context->interrupted()) {
+        if (context->interruptedOrTimedOut()) {
             throw InterruptException{};
         }
         auto top = curPath[curPath.size() - 1];
@@ -128,7 +128,7 @@ void PathsOutputWriter::dfsSlow(ParentList* firstParent, FactorizedTable& fTable
     curPath.push_back(firstParent);
     auto backtracking = false;
     while (!curPath.empty()) {
-        if (context->interrupted()) {
+        if (context->interruptedOrTimedOut()) {
             throw InterruptException{};
         }
         if (getTop(curPath)->getIter() == 1) {

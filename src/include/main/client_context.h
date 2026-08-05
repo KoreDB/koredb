@@ -105,6 +105,10 @@ public:
     // Whether the active query may return partial results (rather than error) when it times out.
     bool isPartialResultOnTimeoutArmed() const { return activeQuery.partialResultOnTimeout; }
     void armPartialResultOnTimeout(bool armed) { activeQuery.partialResultOnTimeout = armed; }
+    // True if the query must stop immediately. Used by tight internal loops (e.g. GDS/recursive
+    // algorithms) that bypass the operator getNextTuple() timeout handling and cannot produce
+    // partial results, so they abort with an error on either a user interrupt or a timeout.
+    bool interruptedOrTimedOut() const { return interrupted() || isTimedOut(); }
     bool hasTimeout() const { return clientConfig.timeoutInMS != 0; }
     void setQueryTimeOut(uint64_t timeoutInMS);
     uint64_t getQueryTimeOut() const;
