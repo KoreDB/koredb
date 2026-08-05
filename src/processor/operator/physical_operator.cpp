@@ -187,11 +187,11 @@ bool PhysicalOperator::getNextTuple(ExecutionContext* context) {
     if (clientContext->interrupted()) {
         throw InterruptException{};
     }
-    // If the query hit its timeout and partial results are allowed, stop producing tuples instead of
-    // throwing. The sink then returns the tuples collected so far and the result is flagged as
-    // truncated. Every operator above this one also observes the flag and stops, so the collected
-    // rows are always a valid prefix of the full result.
-    if (clientContext->isTimedOut()) {
+    // If the query hit a soft limit (timeout or per-query memory limit) and partial results are
+    // allowed, stop producing tuples instead of throwing. The sink then returns the tuples collected
+    // so far and the result is flagged as truncated. Every operator above this one also observes the
+    // condition and stops, so the collected rows are always a valid prefix of the full result.
+    if (clientContext->isTimedOut() || clientContext->exceededMemoryLimit()) {
         return false;
     }
 #ifdef __SINGLE_THREADED__

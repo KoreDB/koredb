@@ -230,6 +230,21 @@ describe("Timeout", function () {
   });
 });
 
+describe("Memory limit", function () {
+  it("should return partial results when the query memory limit is exceeded", async function () {
+    const newConn = new kuzu.Connection(db);
+    await newConn.init();
+    await newConn.query("CALL query_memory_limit=33554432;"); // 32 MiB
+    // The full result would materialize ~160 MB, well over the 32 MiB limit, so the query stops
+    // early and returns a partial (truncated) result instead of failing with an out-of-memory error.
+    const result = await newConn.query("UNWIND RANGE(1, 20000000) AS x RETURN x;");
+    assert.isTrue(result.isTruncated());
+    assert.isBelow(result.getNumTuples(), 20000000);
+    await result.close();
+    await newConn.close();
+  });
+});
+
 describe("Close", function () {
   it("should close the connection", async function () {
     const newConn = new kuzu.Connection(db);

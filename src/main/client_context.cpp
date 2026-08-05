@@ -42,13 +42,29 @@ using namespace kuzu::transaction;
 namespace kuzu {
 namespace main {
 
-ActiveQuery::ActiveQuery() : interrupted{false}, timedOut{false}, partialResultOnTimeout{false} {}
+ActiveQuery::ActiveQuery()
+    : interrupted{false}, timedOut{false}, partialResultOnTimeout{false}, memoryExceeded{false},
+      effectiveMemoryLimit{0} {}
 
 void ActiveQuery::reset() {
     interrupted = false;
     timedOut = false;
     partialResultOnTimeout = false;
+    memoryExceeded = false;
+    effectiveMemoryLimit = 0;
     timer = Timer();
+}
+
+bool ClientContext::exceededMemoryLimit() {
+    if (activeQuery.memoryExceeded) {
+        return true;
+    }
+    const auto limit = activeQuery.effectiveMemoryLimit;
+    if (limit != 0 && getMemoryManager()->getBufferManager()->getUsedMemory() > limit) {
+        activeQuery.memoryExceeded = true;
+        return true;
+    }
+    return false;
 }
 
 ClientContext::ClientContext(Database* database)
@@ -565,10 +581,11 @@ std::unique_ptr<QueryResult> ClientContext::executeNoLock(PreparedStatement* pre
     useInternalCatalogEntry_ = cachedStatement->useInternalCatalogEntry;
     this->resetActiveQuery();
     this->startTimer();
-    // A query may return partial results on timeout only if the user enabled it and the statement is
+    // A query may return partial results on a soft limit (timeout / memory) only if the statement is
     // read-only (returning partial results for a write statement would commit a partial mutation).
     this->armPartialResultOnTimeout(
         clientConfig.enablePartialResultOnTimeout && preparedStatement->isReadOnly());
+    this->armMemoryLimit(preparedStatement->isReadOnly() ? clientConfig.queryMemoryLimit : 0);
     auto executingTimer = TimeMetric(true /* enable */);
     executingTimer.start();
     std::shared_ptr<FactorizedTable> resultFT;
@@ -616,9 +633,10 @@ std::unique_ptr<QueryResult> ClientContext::executeNoLock(PreparedStatement* pre
     queryResult->setColumnHeader(cachedStatement->getColumnNames(),
         cachedStatement->getColumnTypes());
     queryResult->initResultTableAndIterator(std::move(resultFT));
-    // If the query stopped early because it hit its timeout, the result table only holds the tuples
-    // produced so far. Flag it so callers can tell the result is partial and re-issue if needed.
-    if (isTimedOut()) {
+    // If the query stopped early because it hit a soft limit (timeout or per-query memory limit),
+    // the result table only holds the tuples produced so far. Flag it so callers can tell the result
+    // is partial and re-issue if needed.
+    if (isTimedOut() || isMemoryExceeded()) {
         queryResult->setTruncated(true);
     }
     return queryResult;

@@ -28,6 +28,8 @@ struct ClientConfigDefault {
     // result is partial. When false, such a query is instead aborted with an "Interrupted." error.
     // Write queries always abort on timeout regardless of this setting.
     static constexpr bool ENABLE_PARTIAL_RESULT_ON_TIMEOUT = true;
+    // 0 means no per-query memory limit (only the database-wide buffer pool size applies).
+    static constexpr uint64_t QUERY_MEMORY_LIMIT = 0;
 };
 
 struct ClientConfig {
@@ -64,6 +66,11 @@ struct ClientConfig {
     bool enableInternalCatalog = ClientConfigDefault::ENABLE_INTERNAL_CATALOG;
     // If a read-only query that times out should return partial results instead of erroring.
     bool enablePartialResultOnTimeout = ClientConfigDefault::ENABLE_PARTIAL_RESULT_ON_TIMEOUT;
+    // Per-query soft memory limit in bytes, checked against the buffer manager's total used memory
+    // while the query runs. 0 disables it. When a read-only query exceeds it, the query stops early
+    // and returns partial results (QueryResult::isTruncated() == true) instead of failing with an
+    // out-of-memory error.
+    uint64_t queryMemoryLimit = ClientConfigDefault::QUERY_MEMORY_LIMIT;
 };
 
 } // namespace main

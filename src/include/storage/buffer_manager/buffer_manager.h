@@ -212,6 +212,9 @@ public:
 
     uint64_t getMemoryLimit() const { return bufferPoolSize; }
     uint64_t getUsedMemory() const { return usedMemory; }
+    // Memory that cannot be evicted (query intermediates: factorized tables, hash tables, etc.).
+    // Used as an approximation of a query's working-set size for the per-query memory limit.
+    uint64_t getNonEvictableMemory() const { return nonEvictableMemory; }
 
     void getSpillerOrSkip(std::function<void(Spiller&)> func) {
         if (spiller) {

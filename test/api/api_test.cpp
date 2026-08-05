@@ -143,6 +143,17 @@ TEST_F(ApiTest, TimeOutReturnsPartialResults) {
     ASSERT_LT(result->getNumTuples(), 100000ULL * 100000ULL);
 }
 
+TEST_F(ApiTest, QueryMemoryLimitReturnsPartialResults) {
+    // A read-only query whose intermediate memory exceeds its per-query memory limit stops early and
+    // returns partial results (isTruncated) instead of failing with an out-of-memory error.
+    ASSERT_TRUE(conn->query("CALL query_memory_limit=33554432;")->isSuccess()); // 32 MiB
+    // The full result would materialize ~160 MB, well over the 32 MiB limit.
+    auto result = conn->query("UNWIND RANGE(1, 20000000) AS x RETURN x;");
+    ASSERT_TRUE(result->isSuccess());
+    ASSERT_TRUE(result->isTruncated());
+    ASSERT_LT(result->getNumTuples(), 20000000ULL);
+}
+
 TEST_F(ApiTest, MultipleQueryExplain) {
     auto result = conn->query("EXPLAIN MATCH (a:person)-[:knows]->(b:person), "
                               "(b)-[:knows]->(a) RETURN a.fName, b.fName ORDER BY a.ID; MATCH "

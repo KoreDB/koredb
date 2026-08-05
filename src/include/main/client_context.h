@@ -63,6 +63,11 @@ struct ActiveQuery {
     // Whether the currently executing query is allowed to return partial results on timeout (armed
     // per query: enabled by config AND the statement being read-only).
     bool partialResultOnTimeout;
+    // Set when the query exceeded its per-query memory limit and should return partial results.
+    std::atomic<bool> memoryExceeded;
+    // The effective per-query memory limit in bytes for the currently executing query (0 = none).
+    // Armed per query: the configured limit if the statement is read-only, else 0.
+    uint64_t effectiveMemoryLimit;
     common::Timer timer;
 
     void reset();
@@ -102,6 +107,13 @@ public:
     // Marks that the active query hit its timeout and should stop early, returning partial results.
     void setTimedOut() { activeQuery.timedOut = true; }
     bool isTimedOut() const { return activeQuery.timedOut; }
+    // Returns true if the active query has exceeded its per-query memory limit. On the first call
+    // that detects the limit is exceeded it also records the fact (so the result is flagged as
+    // truncated). Cheap when no limit is armed (a single comparison against 0).
+    bool exceededMemoryLimit();
+    bool isMemoryExceeded() const { return activeQuery.memoryExceeded; }
+    // Arms the per-query memory limit for the currently executing query (0 = no limit).
+    void armMemoryLimit(uint64_t limit) { activeQuery.effectiveMemoryLimit = limit; }
     // Whether the active query may return partial results (rather than error) when it times out.
     bool isPartialResultOnTimeoutArmed() const { return activeQuery.partialResultOnTimeout; }
     void armPartialResultOnTimeout(bool armed) { activeQuery.partialResultOnTimeout = armed; }
