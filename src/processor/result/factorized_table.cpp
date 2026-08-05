@@ -3,9 +3,13 @@
 #include <cstdint>
 
 #include "common/assert.h"
+#include "common/data_chunk/data_chunk_state.h"
 #include "common/exception/runtime.h"
 #include "common/null_buffer.h"
+#include "common/serializer/deserializer.h"
+#include "common/serializer/serializer.h"
 #include "common/vector/value_vector.h"
+#include "processor/result/factorized_table_util.h"
 #include "storage/buffer_manager/memory_manager.h"
 
 using namespace kuzu::common;
@@ -642,6 +646,60 @@ void FactorizedTable::readFlatColToUnflatVector(uint8_t** tuplesToRead, ft_col_i
             }
         }
     }
+}
+
+void FactorizedTable::serialize(Serializer& serializer,
+    const std::vector<LogicalType>& columnTypes) const {
+    KU_ASSERT(columnTypes.size() == tableSchema.getNumColumns());
+    const auto numFlatTuples = getTotalNumFlatTuples();
+    serializer.serializeValue<uint64_t>(numFlatTuples);
+    if (numFlatTuples == 0) {
+        return;
+    }
+    // Read rows back through the same flat-tuple iterator the query result uses. This flattens any
+    // factorized columns and yields fully-materialized Values, which serialize position-independently
+    // (strings/lists are written by value, not by pointer).
+    std::vector<std::unique_ptr<Value>> valueHolders;
+    std::vector<Value*> values;
+    for (auto& type : columnTypes) {
+        valueHolders.push_back(std::make_unique<Value>(Value::createDefaultValue(type.copy())));
+        values.push_back(valueHolders.back().get());
+    }
+    FlatTupleIterator iterator(const_cast<FactorizedTable&>(*this), values);
+    while (iterator.hasNextFlatTuple()) {
+        iterator.getNextFlatTuple();
+        for (auto* value : values) {
+            value->serialize(serializer);
+        }
+    }
+}
+
+std::unique_ptr<FactorizedTable> FactorizedTable::deserialize(Deserializer& deserializer,
+    storage::MemoryManager* memoryManager, const std::vector<LogicalType>& columnTypes) {
+    uint64_t numFlatTuples = 0;
+    deserializer.deserializeValue<uint64_t>(numFlatTuples);
+    auto table = std::make_unique<FactorizedTable>(memoryManager,
+        FactorizedTableUtils::createFlatTableSchema(LogicalType::copy(columnTypes)));
+    if (numFlatTuples == 0) {
+        return table;
+    }
+    auto state = DataChunkState::getSingleValueDataChunkState();
+    std::vector<std::unique_ptr<ValueVector>> vectorHolders;
+    std::vector<ValueVector*> vectors;
+    for (auto& type : columnTypes) {
+        auto vector = std::make_unique<ValueVector>(type.copy(), memoryManager);
+        vector->state = state;
+        vectors.push_back(vector.get());
+        vectorHolders.push_back(std::move(vector));
+    }
+    for (auto i = 0u; i < numFlatTuples; i++) {
+        for (auto c = 0u; c < columnTypes.size(); c++) {
+            auto value = Value::deserialize(deserializer);
+            vectors[c]->copyFromValue(0, *value);
+        }
+        table->append(vectors);
+    }
+    return table;
 }
 
 FlatTupleIterator::FlatTupleIterator(FactorizedTable& factorizedTable, std::vector<Value*> values)

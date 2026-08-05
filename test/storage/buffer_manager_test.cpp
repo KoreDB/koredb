@@ -1,10 +1,19 @@
 #include <cstdint>
 
 #include "common/constants.h"
+#include "common/data_chunk/data_chunk_state.h"
+#include "common/serializer/buffer_reader.h"
+#include "common/serializer/buffer_writer.h"
+#include "common/serializer/deserializer.h"
+#include "common/serializer/serializer.h"
 #include "common/system_config.h"
 #include "common/types/types.h"
+#include "common/types/value/value.h"
+#include "common/vector/value_vector.h"
 #include "graph_test/private_graph_test.h"
 #include "gtest/gtest.h"
+#include "processor/result/factorized_table.h"
+#include "processor/result/factorized_table_util.h"
 #include "spdlog/spdlog.h"
 #include "storage/buffer_manager/buffer_manager.h"
 #include "storage/buffer_manager/memory_manager.h"
@@ -50,6 +59,58 @@ TEST_F(BufferManagerTest, TestBMUsageForIdenticalQueries) {
         << "Memory usage after two identical queries should be identical";
     spdlog::info("Memory used initially: {}", initialMemoryUsage);
     spdlog::info("Memory used after transactions: {}", memoryUsed);
+}
+
+// Verifies that a factorized table's rows survive a position-independent serialize/deserialize
+// round-trip (including variable-length string data), which is the basis for spilling to disk.
+TEST_F(BufferManagerTest, FactorizedTableSerializeRoundTrip) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    std::vector<LogicalType> columnTypes;
+    columnTypes.push_back(LogicalType::INT64());
+    columnTypes.push_back(LogicalType::STRING());
+
+    FactorizedTable table(mm,
+        FactorizedTableUtils::createFlatTableSchema(LogicalType::copy(columnTypes)));
+    auto state = DataChunkState::getSingleValueDataChunkState();
+    ValueVector intVector(LogicalType::INT64(), mm);
+    ValueVector strVector(LogicalType::STRING(), mm);
+    intVector.state = state;
+    strVector.state = state;
+    const uint64_t numRows = 5;
+    for (auto i = 0u; i < numRows; i++) {
+        intVector.setNull(0, false);
+        intVector.setValue<int64_t>(0, static_cast<int64_t>(i) * 100);
+        strVector.setNull(0, false);
+        StringVector::addString(&strVector, 0, "row-" + std::to_string(i));
+        std::vector<ValueVector*> vectors{&intVector, &strVector};
+        table.append(vectors);
+    }
+    ASSERT_EQ(table.getNumTuples(), numRows);
+
+    auto writer = std::make_shared<BufferWriter>();
+    Serializer serializer(writer);
+    table.serialize(serializer, columnTypes);
+    auto blob = writer->getData();
+    Deserializer deserializer(std::make_unique<BufferReader>(blob.data.get(), blob.size));
+    auto restored = FactorizedTable::deserialize(deserializer, mm, columnTypes);
+    ASSERT_EQ(restored->getNumTuples(), numRows);
+
+    std::vector<std::unique_ptr<Value>> valueHolders;
+    std::vector<Value*> values;
+    for (auto& type : columnTypes) {
+        valueHolders.push_back(std::make_unique<Value>(Value::createDefaultValue(type.copy())));
+        values.push_back(valueHolders.back().get());
+    }
+    FlatTupleIterator iterator(*restored, values);
+    uint64_t row = 0;
+    while (iterator.hasNextFlatTuple()) {
+        iterator.getNextFlatTuple();
+        ASSERT_EQ(values[0]->getValue<int64_t>(), static_cast<int64_t>(row) * 100);
+        ASSERT_EQ(values[1]->getValue<std::string>(), "row-" + std::to_string(row));
+        row++;
+    }
+    ASSERT_EQ(row, numRows);
 }
 
 class EmptyBufferManagerTest : public DBTest {

@@ -8,6 +8,10 @@
 #include "common/vector/value_vector.h"
 #include "factorized_table_schema.h"
 namespace kuzu {
+namespace common {
+class Serializer;
+class Deserializer;
+} // namespace common
 namespace storage {
 class MemoryManager;
 }
@@ -174,6 +178,18 @@ public:
     void clear();
 
     storage::MemoryManager* getMemoryManager() { return memoryManager; }
+
+    // Serializes the table's rows to a position-independent (pointer-free) byte stream, so it can be
+    // written to disk and read back at a different address (the basis for spilling to disk). Each
+    // row is flattened and each value is written self-describingly via Value::serialize. columnTypes
+    // gives the logical type of each column (the factorized table itself does not store types).
+    // Note: this flattens any factorized columns, so it is intended for flat result tables.
+    void serialize(common::Serializer& serializer,
+        const std::vector<common::LogicalType>& columnTypes) const;
+    // Rebuilds a (flat) factorized table from bytes produced by serialize().
+    static std::unique_ptr<FactorizedTable> deserialize(common::Deserializer& deserializer,
+        storage::MemoryManager* memoryManager,
+        const std::vector<common::LogicalType>& columnTypes);
 
     void resize(uint64_t numTuples);
 
