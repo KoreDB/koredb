@@ -9,6 +9,26 @@ else()
   set(NPX_CMD npx)
 endif()
 
+# cmake-js prints diagnostic "info ..." lines to stdout before the actual value
+# it is asked to print, and on Windows those lines (and the value itself) contain
+# backslash paths that break CMake string parsing (e.g. "Invalid character escape
+# '\P'"). Keep only the last non-empty line of the captured output and normalize
+# path separators. On platforms where cmake-js emits a single clean line this is
+# a no-op.
+macro(clean_cmakejs_var _var)
+  string(REPLACE "\r\n" "\n" _ccv_tmp "${${_var}}")
+  string(STRIP "${_ccv_tmp}" _ccv_tmp)
+  string(REPLACE "\n" ";" _ccv_lines "${_ccv_tmp}")
+  list(LENGTH _ccv_lines _ccv_len)
+  if(_ccv_len GREATER 0)
+    math(EXPR _ccv_last "${_ccv_len} - 1")
+    list(GET _ccv_lines ${_ccv_last} _ccv_tmp)
+  endif()
+  string(STRIP "${_ccv_tmp}" _ccv_tmp)
+  string(REPLACE "\\" "/" _ccv_tmp "${_ccv_tmp}")
+  set(${_var} "${_ccv_tmp}")
+endmacro()
+
 execute_process(
   COMMAND ${NPX_CMD} cmake-js print-cmakejs-include
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -25,9 +45,9 @@ execute_process(
   OUTPUT_VARIABLE CMAKE_JS_SRC
 )
 
-string(STRIP ${CMAKE_JS_INC} CMAKE_JS_INC)
-string(STRIP ${CMAKE_JS_LIB} CMAKE_JS_LIB)
-string(STRIP ${CMAKE_JS_SRC} CMAKE_JS_SRC)
+clean_cmakejs_var(CMAKE_JS_INC)
+clean_cmakejs_var(CMAKE_JS_LIB)
+clean_cmakejs_var(CMAKE_JS_SRC)
 
 # Print CMAKE_JS variables
 message(STATUS "CMake.js configurations: LIB=${CMAKE_JS_LIB}, INC=${CMAKE_JS_INC}, SRC=${CMAKE_JS_SRC}")
