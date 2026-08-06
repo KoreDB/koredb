@@ -1755,6 +1755,18 @@ static std::vector<std::string> collectSortedRows(main::Connection* conn,
     return rows;
 }
 
+// Run a query and return its rows in result order (order-preserving; for ORDER BY comparisons).
+static std::vector<std::string> collectOrderedRows(main::Connection* conn,
+    const std::string& query) {
+    auto result = conn->query(query);
+    EXPECT_TRUE(result->isSuccess()) << result->getErrorMessage();
+    std::vector<std::string> rows;
+    while (result->hasNext()) {
+        rows.push_back(result->getNext()->toString());
+    }
+    return rows;
+}
+
 // Differential correctness of the live out-of-core (Grace) HASH_JOIN operator: the same query must
 // produce the same rows with `spill_hash_join` off (in-memory) and on (partitioned). Uses
 // many-to-many self-joins so the probe side is flattened and the join is Grace-eligible, and asserts
@@ -2181,6 +2193,41 @@ TEST_F(BufferManagerTest, ExternalMergeSortDifferential) {
         ASSERT_LE(cmpKey(output[i - 1], output[i]), 0)
             << "output not sorted at position " << i;
     }
+}
+
+// Differential correctness of the live out-of-core ORDER BY operator: the same query must produce the
+// same ordered rows with spill_order_by off (in-memory) and on (external merge sort). Every query
+// uses a total order (a unique n.id tiebreaker) so tied rows cannot legitimately differ between the
+// two paths, and a tiny budget forces the external path to spill many runs. Asserts the external path
+// actually activated so the comparison is not vacuous.
+TEST_F(BufferManagerTest, SpillOrderByDifferential) {
+    using kuzu::processor::getExternalMergeSortActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    ASSERT_TRUE(conn->query("CREATE NODE TABLE ob(id INT64, a INT64, b DOUBLE, s STRING, "
+                            "PRIMARY KEY(id));")
+                    ->isSuccess());
+    ASSERT_TRUE(conn->query("UNWIND range(0, 4999) AS i CREATE (:ob {id: i, a: (i * 7) % 50, "
+                            "b: (i % 13) * 1.5, s: 'row' + cast(i % 20 AS STRING)});")
+                    ->isSuccess());
+    const std::vector<std::string> queries = {
+        // Fixed-width keys, INT64 + STRING payload (scalar string payload round-trip).
+        "MATCH (n:ob) RETURN n.a, n.id, n.s ORDER BY n.a ASC, n.id DESC",
+        // DOUBLE key (descending) with a unique tiebreaker.
+        "MATCH (n:ob) RETURN n.id, n.b ORDER BY n.b DESC, n.id ASC",
+        // Single unique key.
+        "MATCH (n:ob) RETURN n.id, n.a ORDER BY n.id DESC",
+    };
+    const auto before = getExternalMergeSortActivationCount();
+    for (const auto& q : queries) {
+        ASSERT_TRUE(conn->query("CALL spill_order_by=false;")->isSuccess());
+        const auto inMemory = collectOrderedRows(conn.get(), q);
+        ASSERT_TRUE(conn->query("CALL spill_order_by=true;")->isSuccess());
+        ASSERT_TRUE(conn->query("CALL spill_order_by_budget=4096;")->isSuccess());
+        const auto external = collectOrderedRows(conn.get(), q);
+        ASSERT_EQ(inMemory, external) << "external merge sort vs in-memory mismatch for: " << q;
+    }
+    ASSERT_GT(getExternalMergeSortActivationCount(), before)
+        << "external merge sort path did not activate";
 }
 
 } // namespace testing

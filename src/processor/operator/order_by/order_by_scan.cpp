@@ -1,6 +1,7 @@
 #include "processor/operator/order_by/order_by_scan.h"
 
 #include "common/metric.h"
+#include "processor/operator/order_by/external_merge_sort.h"
 
 using namespace kuzu::common;
 
@@ -12,13 +13,26 @@ void OrderByScanLocalState::init(std::vector<DataPos>& outVectorPos, SortSharedS
     for (auto& dataPos : outVectorPos) {
         vectorsToRead.push_back(resultSet.getValueVector(dataPos).get());
     }
-    payloadScanner = std::make_unique<PayloadScanner>(sharedState.getMergedKeyBlock(),
-        sharedState.getPayloadTables());
-    numTuples = 0;
-    for (auto& table : sharedState.getPayloadTables()) {
-        numTuples += table->getNumTuples();
+    if (sharedState.isExternalActive()) {
+        // Out-of-core path: stream the sorted output from the external merge sort executor.
+        externalSorter = sharedState.getExternalSorter();
+        numTuples = externalSorter->getNumTuples();
+    } else {
+        payloadScanner = std::make_unique<PayloadScanner>(sharedState.getMergedKeyBlock(),
+            sharedState.getPayloadTables());
+        numTuples = 0;
+        for (auto& table : sharedState.getPayloadTables()) {
+            numTuples += table->getNumTuples();
+        }
     }
     numTuplesRead = 0;
+}
+
+uint64_t OrderByScanLocalState::scan() {
+    uint64_t tuplesRead = externalSorter != nullptr ? externalSorter->scanNext(vectorsToRead) :
+                                                      payloadScanner->scan(vectorsToRead);
+    numTuplesRead += tuplesRead;
+    return tuplesRead;
 }
 
 void OrderByScan::initLocalStateInternal(ResultSet* resultSet, ExecutionContext* /*context*/) {

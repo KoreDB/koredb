@@ -9,18 +9,17 @@ namespace processor {
 struct OrderByScanLocalState {
     std::vector<common::ValueVector*> vectorsToRead;
     std::unique_ptr<PayloadScanner> payloadScanner;
+    // Set (and payloadScanner left null) when the shared state ran the out-of-core sort.
+    ExternalMergeSort* externalSorter = nullptr;
     uint64_t numTuples = 0;
     uint64_t numTuplesRead = 0;
 
     void init(std::vector<DataPos>& outVectorPos, SortSharedState& sharedState,
         ResultSet& resultSet);
 
-    // NOLINTNEXTLINE(readability-make-member-function-const): Updates vectorsToRead.
-    uint64_t scan() {
-        uint64_t tuplesRead = payloadScanner->scan(vectorsToRead);
-        numTuplesRead += tuplesRead;
-        return tuplesRead;
-    }
+    // Scans the next batch of sorted tuples; out-of-line because it may touch the incomplete
+    // ExternalMergeSort type.
+    uint64_t scan();
 };
 
 // To preserve the ordering of tuples, the orderByScan operator will only

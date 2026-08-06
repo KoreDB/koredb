@@ -1,12 +1,78 @@
 #include "processor/operator/order_by/order_by.h"
 
+#include <atomic>
+#include <filesystem>
+#include <optional>
+
 #include "binder/expression/expression_util.h"
+#include "common/types/types.h"
+#include "main/client_context.h"
 #include "processor/execution_context.h"
+#include "processor/operator/order_by/external_merge_sort.h"
+#include "storage/buffer_manager/buffer_manager.h"
+#include "storage/buffer_manager/memory_manager.h"
 
 using namespace kuzu::common;
 
 namespace kuzu {
 namespace processor {
+
+// Unique suffix for the per-operator spill files, so concurrent queries never collide.
+static std::atomic<uint64_t> externalSortSpillFileCounter{0};
+// Test-only activation counter (see getExternalMergeSortActivationCount).
+static std::atomic<uint64_t> externalSortActivationCount{0};
+
+uint64_t getExternalMergeSortActivationCount() {
+    return externalSortActivationCount.load();
+}
+
+// v1 external merge sort supports only fixed-width keys (memcmp of the encoded key is then a total
+// order) and flat payloads read one value per tuple via getAsValue, all in a single input data chunk
+// (so key and payload positions line up). STRING/nested keys, nested payloads, and multi-chunk
+// (factorized) inputs fall back to the in-memory sort.
+static bool isExternalSortEligible(const OrderByDataInfo& info) {
+    for (auto& keyType : info.keyTypes) {
+        if (LogicalTypeUtils::isNested(keyType) ||
+            keyType.getPhysicalType() == PhysicalTypeID::STRING) {
+            return false;
+        }
+    }
+    for (auto& payloadType : info.payloadTypes) {
+        if (LogicalTypeUtils::isNested(payloadType)) {
+            return false;
+        }
+    }
+    std::optional<data_chunk_pos_t> chunk;
+    auto sameChunk = [&chunk](const std::vector<DataPos>& positions) {
+        for (auto& p : positions) {
+            if (!chunk.has_value()) {
+                chunk = p.dataChunkPos;
+            } else if (*chunk != p.dataChunkPos) {
+                return false;
+            }
+        }
+        return true;
+    };
+    return sameChunk(info.keysPos) && sameChunk(info.payloadsPos);
+}
+
+static std::unique_ptr<ExternalMergeSort> makeExternalSorter(ExecutionContext* context,
+    const OrderByDataInfo& info, uint32_t opId) {
+    auto* cc = context->clientContext;
+    auto* mm = cc->getMemoryManager();
+    auto* vfs = cc->getVFSUnsafe();
+    // Budget: the explicit spill_order_by_budget if set, else the per-query memory limit if set, else
+    // the whole buffer pool (spill only near the hard ceiling).
+    const auto* config = cc->getClientConfig();
+    const auto budget = config->spillOrderByBudget > 0 ? config->spillOrderByBudget :
+                        config->queryMemoryLimit > 0   ? config->queryMemoryLimit :
+                                                         mm->getBufferManager()->getMemoryLimit();
+    const auto token = externalSortSpillFileCounter.fetch_add(1);
+    const auto tempDir = std::filesystem::temp_directory_path();
+    const auto stem = "kuzu_ems_" + std::to_string(opId) + "_" + std::to_string(token) + ".spill";
+    auto spillPath = (tempDir / stem).string();
+    return std::make_unique<ExternalMergeSort>(info, mm, vfs, std::move(spillPath), budget);
+}
 
 std::string OrderByPrintInfo::toString() const {
     std::string result = "Order By: ";
@@ -17,13 +83,26 @@ std::string OrderByPrintInfo::toString() const {
 }
 
 void OrderBy::initLocalStateInternal(ResultSet* resultSet, ExecutionContext* context) {
-    localState = SortLocalState();
-    localState.init(info, *sharedState, context->clientContext->getMemoryManager());
     for (auto& dataPos : info.payloadsPos) {
         payloadVectors.push_back(resultSet->getValueVector(dataPos).get());
     }
     for (auto& dataPos : info.keysPos) {
         orderByVectors.push_back(resultSet->getValueVector(dataPos).get());
+    }
+    // Decide the out-of-core (external merge sort) path. Single-threaded only (the scan must read the
+    // sorted output in order and there is no cross-thread run merge yet), gated by `spill_order_by`,
+    // and only for eligible key/payload shapes. Otherwise fall back to the in-memory sort.
+    auto* cc = context->clientContext;
+    if (cc->getClientConfig()->spillOrderBy && cc->getClientConfig()->numThreads == 1 &&
+        isExternalSortEligible(info)) {
+        if (sharedState->getExternalSorter() == nullptr) {
+            sharedState->setExternalSorter(makeExternalSorter(context, info, id));
+        }
+        sharedState->setExternalActive();
+        externalSortActivationCount.fetch_add(1);
+    } else {
+        localState = SortLocalState();
+        localState.init(info, *sharedState, cc->getMemoryManager());
     }
 }
 
@@ -32,6 +111,16 @@ void OrderBy::initGlobalStateInternal(ExecutionContext* /*context*/) {
 }
 
 void OrderBy::executeInternal(ExecutionContext* context) {
+    if (sharedState->isExternalActive()) {
+        auto* sorter = sharedState->getExternalSorter();
+        while (children[0]->getNextTuple(context)) {
+            for (auto i = 0u; i < resultSet->multiplicity; i++) {
+                sorter->append(orderByVectors, payloadVectors);
+            }
+        }
+        sorter->finalize();
+        return;
+    }
     // Append thread-local tuples.
     while (children[0]->getNextTuple(context)) {
         for (auto i = 0u; i < resultSet->multiplicity; i++) {

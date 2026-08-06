@@ -49,6 +49,15 @@ struct ClientConfigDefault {
     // Per-operator memory budget (bytes) for the spilling aggregation path. 0 = derive (as for the
     // hash-join budget). A small value forces spilling.
     static constexpr uint64_t SPILL_AGGREGATE_BUDGET = 0;
+    // When true, an eligible plain ORDER BY (no LIMIT) runs the out-of-core external merge sort:
+    // it spills sorted runs to disk under a memory budget and k-way merges them, so an ORDER BY whose
+    // result does not fit in memory can still complete. OFF by default (opt-in): v1 only supports
+    // fixed-width (non-STRING, non-nested) keys and single-threaded execution; everything else falls
+    // back to the in-memory sort.
+    static constexpr bool SPILL_ORDER_BY = false;
+    // Per-operator memory budget (bytes) for the external merge sort. 0 = derive (as for the hash-join
+    // budget). A small value forces spilling.
+    static constexpr uint64_t SPILL_ORDER_BY_BUDGET = 0;
 };
 
 struct ClientConfig {
@@ -102,6 +111,12 @@ struct ClientConfig {
     // Per-operator memory budget (bytes) for the spilling aggregation path; 0 = derive. See
     // ClientConfigDefault::SPILL_AGGREGATE_BUDGET.
     uint64_t spillAggregateBudget = ClientConfigDefault::SPILL_AGGREGATE_BUDGET;
+    // If an eligible plain ORDER BY should use the out-of-core external merge sort. See
+    // ClientConfigDefault::SPILL_ORDER_BY.
+    bool spillOrderBy = ClientConfigDefault::SPILL_ORDER_BY;
+    // Per-operator memory budget (bytes) for the external merge sort; 0 = derive. See
+    // ClientConfigDefault::SPILL_ORDER_BY_BUDGET.
+    uint64_t spillOrderByBudget = ClientConfigDefault::SPILL_ORDER_BY_BUDGET;
 };
 
 } // namespace main

@@ -1,0 +1,35 @@
+-DATASET CSV empty
+
+--
+
+-CASE SpillOrderByBasic
+# Exercises the out-of-core ORDER BY path (spill_order_by). v1 is eligible for fixed-width keys and
+# flat payloads; the ordered output must match the in-memory sort. Budget 0 derives the whole buffer
+# pool so this small input stays in one run, verifying the append -> finalize -> merge -> scan wiring
+# end to end. Larger, actually-spilling cases are covered by buffer_manager_test SpillOrderByDifferential.
+-STATEMENT CALL threads=1;
+---- ok
+-STATEMENT CALL spill_order_by=true;
+---- ok
+-STATEMENT CREATE NODE TABLE t(id INT64, a INT64, PRIMARY KEY(id));
+---- ok
+-STATEMENT UNWIND range(0, 5) AS i CREATE (:t {id: i, a: (i * 3) % 5});
+---- ok
+-STATEMENT MATCH (n:t) RETURN n.id, n.a ORDER BY n.a ASC, n.id ASC;
+-CHECK_ORDER
+---- 6
+0|0
+5|0
+2|1
+4|2
+1|3
+3|4
+-STATEMENT MATCH (n:t) RETURN n.id, n.a ORDER BY n.a DESC, n.id DESC;
+-CHECK_ORDER
+---- 6
+3|4
+1|3
+4|2
+2|1
+5|0
+0|0

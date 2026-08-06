@@ -4,11 +4,22 @@
 
 #include "common/constants.h"
 #include "common/system_config.h"
+#include "processor/operator/order_by/external_merge_sort.h"
 
 using namespace kuzu::common;
 
 namespace kuzu {
 namespace processor {
+
+SortSharedState::SortSharedState() : nextTableIdx{0}, numBytesPerTuple{0} {
+    sortedKeyBlocks = std::make_unique<std::queue<std::shared_ptr<MergedKeyBlocks>>>();
+}
+
+SortSharedState::~SortSharedState() = default;
+
+void SortSharedState::setExternalSorter(std::unique_ptr<ExternalMergeSort> sorter) {
+    externalSorter = std::move(sorter);
+}
 
 void SortSharedState::init(const OrderByDataInfo& orderByDataInfo) {
     auto encodedKeyBlockColOffset = 0ul;

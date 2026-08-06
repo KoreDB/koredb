@@ -8,13 +8,24 @@
 namespace kuzu {
 namespace processor {
 
+class ExternalMergeSort;
+
 class SortSharedState {
 public:
-    SortSharedState() : nextTableIdx{0}, numBytesPerTuple{0} {
-        sortedKeyBlocks = std::make_unique<std::queue<std::shared_ptr<MergedKeyBlocks>>>();
-    }
+    // Constructor and destructor are out-of-line because externalSorter is a unique_ptr to a type
+    // that is incomplete in this header (defining them inline would force every user of this class to
+    // see the complete ExternalMergeSort for member cleanup).
+    SortSharedState();
+    ~SortSharedState();
 
     inline uint64_t getNumBytesPerTuple() const { return numBytesPerTuple; }
+
+    // Out-of-core (external merge) sort path, chosen at runtime when spill_order_by is on and the
+    // sort is eligible; when inactive the in-memory payloadTables/sortedKeyBlocks path runs.
+    void setExternalSorter(std::unique_ptr<ExternalMergeSort> sorter);
+    ExternalMergeSort* getExternalSorter() const { return externalSorter.get(); }
+    void setExternalActive() { externalActive = true; }
+    bool isExternalActive() const { return externalActive; }
 
     inline std::vector<StrKeyColInfo>& getStrKeyColInfo() { return strKeyColsInfo; }
 
@@ -44,6 +55,8 @@ private:
     std::unique_ptr<std::queue<std::shared_ptr<MergedKeyBlocks>>> sortedKeyBlocks;
     uint32_t numBytesPerTuple;
     std::vector<StrKeyColInfo> strKeyColsInfo;
+    std::unique_ptr<ExternalMergeSort> externalSorter;
+    bool externalActive = false;
 };
 
 class SortLocalState {

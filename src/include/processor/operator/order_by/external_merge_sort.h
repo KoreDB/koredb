@@ -111,5 +111,8 @@ private:
     std::vector<uint32_t> heap; // min-heap of cursor indices, ordered by head key
 };
 
+// Test-only: number of times an ORDER BY has activated the external merge sort path this process.
+uint64_t getExternalMergeSortActivationCount();
+
 } // namespace processor
 } // namespace kuzu
