@@ -265,6 +265,120 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableBudgetSpill) {
     ASSERT_EQ(reloadedTotal, numRows);
 }
 
+// Stresses the spill file I/O at scale: partitions whose serialized form spans many pages, appended
+// across many batches, exercise BufferedFileWriter multi-page flush, large-blob reload, and
+// multi-block FactorizedTable deserialize. Also covers the single-partition (logNumPartitions = 0)
+// edge case where every row routes to partition 0.
+TEST_F(BufferManagerTest, PartitionedFactorizedTableLargeMultiPageSpill) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    std::vector<LogicalType> columnTypes;
+    columnTypes.push_back(LogicalType::INT64());
+    columnTypes.push_back(LogicalType::STRING());
+
+    const common::idx_t logNumPartitions = 2; // 4 partitions
+    const uint64_t numPartitions = 4;
+    const auto spillPath =
+        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_large.spill").string();
+    PartitionedFactorizedTable partitioned(mm, LogicalType::copy(columnTypes), logNumPartitions, fs,
+        spillPath);
+
+    // ~40k rows with sizeable strings -> each of the 4 partitions serializes to well over one 256KB
+    // page, so spill/reload crosses many pages.
+    const uint64_t numRows = 40000;
+    const uint64_t batchSize = DEFAULT_VECTOR_CAPACITY;
+    auto makeString = [](uint64_t i) {
+        return "value-" + std::to_string(i) + "-0123456789abcdefghij";
+    };
+    auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+    ValueVector intVector(LogicalType::INT64(), mm);
+    ValueVector strVector(LogicalType::STRING(), mm);
+    ValueVector hashVector(LogicalType::INT64(), mm);
+    intVector.state = state;
+    strVector.state = state;
+    hashVector.state = state;
+    std::vector<ValueVector*> vectors{&intVector, &strVector};
+    for (uint64_t base = 0; base < numRows; base += batchSize) {
+        const auto rowsInBatch = std::min(batchSize, numRows - base);
+        state->initOriginalAndSelectedSize(rowsInBatch);
+        for (auto j = 0u; j < rowsInBatch; j++) {
+            const auto i = base + j;
+            intVector.setNull(j, false);
+            intVector.setValue<int64_t>(j, static_cast<int64_t>(i));
+            strVector.setNull(j, false);
+            StringVector::addString(&strVector, j, makeString(i));
+            hashVector.setNull(j, false);
+            // Route by i % 4 using the top 2 hash bits.
+            hashVector.setValue<uint64_t>(j, static_cast<uint64_t>(i % numPartitions) << 62);
+        }
+        partitioned.appendVectors(vectors, hashVector);
+    }
+    ASSERT_EQ(partitioned.getNumTuples(), numRows);
+    ASSERT_EQ(partitioned.spillAllPartitions(), numPartitions);
+    ASSERT_EQ(partitioned.getNumTuples(), numRows);
+
+    // Reload each partition and verify every row (partition p holds i where i % 4 == p, in order).
+    uint64_t verified = 0;
+    for (common::idx_t p = 0; p < numPartitions; p++) {
+        auto& table = partitioned.getResidentPartition(p);
+        std::vector<std::unique_ptr<Value>> valueHolders;
+        std::vector<Value*> values;
+        for (auto& type : columnTypes) {
+            valueHolders.push_back(std::make_unique<Value>(Value::createDefaultValue(type.copy())));
+            values.push_back(valueHolders.back().get());
+        }
+        FlatTupleIterator it(table, values);
+        uint64_t expected = p;
+        while (it.hasNextFlatTuple()) {
+            it.getNextFlatTuple();
+            ASSERT_EQ(values[0]->getValue<int64_t>(), static_cast<int64_t>(expected));
+            ASSERT_EQ(values[1]->getValue<std::string>(), makeString(expected));
+            expected += numPartitions;
+            verified++;
+        }
+    }
+    ASSERT_EQ(verified, numRows);
+}
+
+// Single-partition edge case: logNumPartitions = 0 -> everything routes to partition 0.
+TEST_F(BufferManagerTest, PartitionedFactorizedTableSinglePartition) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    std::vector<LogicalType> columnTypes;
+    columnTypes.push_back(LogicalType::INT64());
+    const auto spillPath =
+        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_single.spill").string();
+    PartitionedFactorizedTable partitioned(mm, LogicalType::copy(columnTypes), 0, fs, spillPath);
+    ASSERT_EQ(partitioned.getNumPartitions(), 1u);
+    // Any hash maps to partition 0.
+    ASSERT_EQ(partitioned.getPartitionIdxForHash(0), 0u);
+    ASSERT_EQ(partitioned.getPartitionIdxForHash(~0ULL), 0u);
+
+    const uint64_t numRows = 100;
+    auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+    state->initOriginalAndSelectedSize(numRows);
+    ValueVector intVector(LogicalType::INT64(), mm);
+    ValueVector hashVector(LogicalType::INT64(), mm);
+    intVector.state = state;
+    hashVector.state = state;
+    for (auto i = 0u; i < numRows; i++) {
+        intVector.setNull(i, false);
+        intVector.setValue<int64_t>(i, static_cast<int64_t>(i));
+        hashVector.setNull(i, false);
+        hashVector.setValue<uint64_t>(i, static_cast<uint64_t>(i)); // arbitrary hashes
+    }
+    std::vector<ValueVector*> vectors{&intVector};
+    partitioned.appendVectors(vectors, hashVector);
+    ASSERT_EQ(partitioned.getPartitionNumTuples(0), numRows);
+    ASSERT_EQ(partitioned.spillAllPartitions(), 1u);
+    auto& table = partitioned.getResidentPartition(0);
+    ASSERT_EQ(table.getNumTuples(), numRows);
+}
+
 class EmptyBufferManagerTest : public DBTest {
 public:
     std::string getInputDir() override {
