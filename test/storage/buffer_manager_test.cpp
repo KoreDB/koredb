@@ -379,6 +379,80 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableSinglePartition) {
     ASSERT_EQ(table.getNumTuples(), numRows);
 }
 
+// Verifies partition-wise merge of two per-thread partitioned tables (the parallel-build combine
+// step), including reload of a spilled source partition before merging.
+TEST_F(BufferManagerTest, PartitionedFactorizedTableMerge) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    std::vector<LogicalType> columnTypes;
+    columnTypes.push_back(LogicalType::INT64());
+    columnTypes.push_back(LogicalType::STRING());
+
+    const auto pathA =
+        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_mergeA.spill").string();
+    const auto pathB =
+        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_mergeB.spill").string();
+    PartitionedFactorizedTable tableA(mm, LogicalType::copy(columnTypes), 1, fs, pathA);
+    PartitionedFactorizedTable tableB(mm, LogicalType::copy(columnTypes), 1, fs, pathB);
+
+    auto fill = [&](PartitionedFactorizedTable& t, uint64_t begin, uint64_t end) {
+        const auto n = end - begin;
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        state->initOriginalAndSelectedSize(n);
+        ValueVector intVector(LogicalType::INT64(), mm);
+        ValueVector strVector(LogicalType::STRING(), mm);
+        ValueVector hashVector(LogicalType::INT64(), mm);
+        intVector.state = state;
+        strVector.state = state;
+        hashVector.state = state;
+        for (auto j = 0u; j < n; j++) {
+            const auto i = begin + j;
+            intVector.setNull(j, false);
+            intVector.setValue<int64_t>(j, static_cast<int64_t>(i));
+            strVector.setNull(j, false);
+            StringVector::addString(&strVector, j, "row-" + std::to_string(i));
+            hashVector.setNull(j, false);
+            hashVector.setValue<uint64_t>(j, (i % 2 == 0) ? 0ULL : (1ULL << 63));
+        }
+        std::vector<ValueVector*> vectors{&intVector, &strVector};
+        t.appendVectors(vectors, hashVector);
+    };
+    fill(tableA, 0, 100);   // even -> p0, odd -> p1
+    fill(tableB, 100, 200); // even -> p0, odd -> p1
+
+    // Spill B to exercise reload-on-merge of the source.
+    ASSERT_EQ(tableB.spillAllPartitions(), 2u);
+
+    tableA.merge(tableB);
+    ASSERT_EQ(tableA.getNumTuples(), 200u);
+    ASSERT_EQ(tableA.getPartitionNumTuples(0), 100u);
+    ASSERT_EQ(tableA.getPartitionNumTuples(1), 100u);
+    ASSERT_EQ(tableB.getNumTuples(), 0u); // source emptied
+
+    // Partition 0 holds all even values 0..198 (A's first, then B's), in order.
+    auto& p0 = tableA.getResidentPartition(0);
+    std::vector<std::unique_ptr<Value>> valueHolders;
+    std::vector<Value*> values;
+    for (auto& type : columnTypes) {
+        valueHolders.push_back(std::make_unique<Value>(Value::createDefaultValue(type.copy())));
+        values.push_back(valueHolders.back().get());
+    }
+    FlatTupleIterator it(p0, values);
+    std::vector<int64_t> got;
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        got.push_back(values[0]->getValue<int64_t>());
+    }
+    ASSERT_EQ(got.size(), 100u);
+    // Multiset of even values in [0, 200).
+    std::sort(got.begin(), got.end());
+    for (auto k = 0u; k < got.size(); k++) {
+        ASSERT_EQ(got[k], static_cast<int64_t>(k * 2));
+    }
+}
+
 class EmptyBufferManagerTest : public DBTest {
 public:
     std::string getInputDir() override {

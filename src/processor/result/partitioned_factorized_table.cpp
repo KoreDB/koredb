@@ -137,6 +137,22 @@ FactorizedTable& PartitionedFactorizedTable::getResidentPartition(idx_t partitio
     return *partitions[partitionIdx];
 }
 
+void PartitionedFactorizedTable::merge(PartitionedFactorizedTable& other) {
+    KU_ASSERT(other.getNumPartitions() == getNumPartitions());
+    for (auto p = 0u; p < partitions.size(); p++) {
+        if (other.getPartitionNumTuples(p) == 0) {
+            continue;
+        }
+        reloadPartition(p);
+        other.reloadPartition(p);
+        partitions[p]->merge(*other.partitions[p]);
+        // FactorizedTable::merge moves other's blocks but leaves its numTuples and (moved-from)
+        // block collections in an inconsistent state (it is designed for a local table discarded
+        // immediately after). Replace it with a fresh empty table so `other` stays usable.
+        other.partitions[p] = std::make_unique<FactorizedTable>(other.mm, other.createSchema());
+    }
+}
+
 void PartitionedFactorizedTable::spillPartition(idx_t partitionIdx) {
     auto& spillState = spillStates[partitionIdx];
     if (spillState.spilled) {

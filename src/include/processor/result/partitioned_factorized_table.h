@@ -73,6 +73,12 @@ public:
     // Returns the partition, reloading it from disk first if it was spilled.
     FactorizedTable& getResidentPartition(common::idx_t partitionIdx);
 
+    // Merge another partitioned table into this one, partition by partition. Both must have the
+    // same schema and number of partitions (they radix-partition identically). Used to combine
+    // per-thread build tables into a global one. Spilled partitions on either side are reloaded
+    // first, and `other`'s partitions are emptied.
+    void merge(PartitionedFactorizedTable& other);
+
     // Serialize the partition to the temp file and free its in-memory blocks. No-op if already
     // spilled or empty.
     void spillPartition(common::idx_t partitionIdx);
