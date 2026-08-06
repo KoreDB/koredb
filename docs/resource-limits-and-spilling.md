@@ -181,9 +181,9 @@ variable-length strings, but not factorized/unflat payloads). See remaining work
 
 ### 5. Live `HASH_JOIN` operator integration (out-of-core, gated)
 
-`spill_hash_join` (BOOL, **default `false`** — opt-in; see "NULL-key divergence" below) turns an
-eligible `HASH_JOIN` into the out-of-core path; when off, the in-memory path is byte-for-byte
-unchanged. `spill_hash_join_budget` (UINT64 bytes, `0` = derive from `query_memory_limit` else the
+`spill_hash_join` (BOOL, **default `true`**) turns an eligible `HASH_JOIN` into the out-of-core path;
+when off, the in-memory path is byte-for-byte unchanged. Only conservatively-eligible joins take the
+Grace path and everything else falls back to the in-memory join (see "Eligibility" below). `spill_hash_join_budget` (UINT64 bytes, `0` = derive from `query_memory_limit` else the
 buffer-pool size) sets the per-operator spill budget. With the derived budget the operator partitions
 in memory and only spills to disk near the buffer-pool ceiling. The wiring (`map_hash_join.cpp`,
 `hash_join_build.cpp`, `hash_join_probe.cpp`):
@@ -334,15 +334,17 @@ process-wide counter) so the check is never vacuous.
 
 ### Defaults
 
-`spill_aggregate` **defaults to `true`**; `spill_hash_join` **defaults to `false`** (opt-in).
-`SpillDefaults` asserts an eligible `GROUP BY` activates grace with no `CALL` setting while an eligible
-join does not. Aggregation is on because its audits (nested keys/inputs/results, NULL group keys, the
-scalar differentials, multi-threaded) all pass and it reuses the in-memory scan path, so it never
-diverges from the reference. The join is held opt-in by the NULL-key divergence documented in section 5.
-With the derived budget (whole buffer pool) an on operator partitions in memory and only spills to disk
-near the ceiling, trading a partition/materialize overhead for not-OOMing. With aggregation on by
-default the whole suite exercises the grace aggregation path with no regression (`buffer_manager_test`,
-`api_test` 97/97, e2e `agg`/`match`/`subquery`/`projection`/`filter`/`order_by`/`optional_match`);
+`spill_aggregate` and `spill_hash_join` **both default to `true`**. `SpillDefaults` asserts an eligible
+`GROUP BY` and an eligible INNER equi-join each activate grace with no `CALL` setting. Both are on
+because their audits pass and both silently fall back to the proven in-memory path for any shape they
+do not conservatively support: aggregation excludes nested group/dependent keys (section 5) and reuses
+the in-memory scan; the join takes the Grace path only for INNER, single-chunk, scalar/string,
+no-nested/NODE/REL shapes. The earlier NULL-keyed self-join divergence was a bug in the *in-memory*
+join (`discardNull`, now fixed at the root — section 5), not in Grace. With the derived budget (whole
+buffer pool) an on operator partitions in memory and only spills to disk near the ceiling, trading a
+partition/materialize overhead for not-OOMing. With both defaults on the whole suite exercises the
+grace paths with no regression (`buffer_manager_test`, `api_test` 97/97, e2e
+`agg`/`match`/`generic_hash_join`/`subquery`/`projection`/`filter`/`order_by`/`optional_match`);
 because the e2e runner sorts non-`CHECK_ORDER` results, grace's partition-order output does not perturb
 those comparisons.
 

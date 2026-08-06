@@ -1889,9 +1889,9 @@ TEST_F(BufferManagerTest, SpillAggregateMultiThreadDifferential) {
         << "multi-threaded spilling vs single-threaded in-memory aggregation mismatch";
 }
 
-// Verifies the spill defaults: spill_aggregate is ON by default (an eligible GROUP BY activates the
-// out-of-core path with no CALL setting) while spill_hash_join is OFF by default (an eligible join
-// does not activate) -- the join path is opt-in pending the NULL-key parity work.
+// Verifies the spill defaults: both spill_aggregate and spill_hash_join are ON by default, so an
+// eligible GROUP BY and an eligible INNER equi-join each activate the out-of-core path with no CALL
+// setting.
 TEST_F(BufferManagerTest, SpillDefaults) {
     using kuzu::processor::getGraceHashJoinActivationCount;
     using kuzu::processor::getSpillAggregateActivationCount;
@@ -1906,8 +1906,8 @@ TEST_F(BufferManagerTest, SpillDefaults) {
     ASSERT_TRUE(conn->query("MATCH (a:person), (b:person) WHERE a.gender = b.gender "
                             "RETURN a.fName, b.fName")
                     ->isSuccess());
-    ASSERT_EQ(getGraceHashJoinActivationCount(), joinBefore)
-        << "spill_hash_join should be OFF by default";
+    ASSERT_GT(getGraceHashJoinActivationCount(), joinBefore)
+        << "spill_hash_join should be ON by default";
 }
 
 // Differential correctness of the Grace join for RETURN-node / multi-column shapes (which activate
