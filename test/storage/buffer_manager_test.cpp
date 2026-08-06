@@ -841,6 +841,121 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorLeftJoin) {
         true /*isLeftJoin*/);
 }
 
+// Composite (2-column) join key + a variable-length (STRING) build payload, under forced spilling.
+// Validates multi-key co-partitioning (the routing hash matches JoinHashTable's internal multi-key
+// hash) and that string payloads survive spill/reload/lookup/append.
+TEST_F(BufferManagerTest, GraceHashJoinExecutorCompositeKeyStringPayload) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> buildPayloadTypes;
+    buildPayloadTypes.push_back(LogicalType::STRING());
+    std::vector<LogicalType> probePayloadTypes;
+    probePayloadTypes.push_back(LogicalType::INT64());
+
+    GraceHashJoinExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_ghje_ck_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "kuzu_ghje_ck_probe.spill").string(),
+        LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
+        LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, 8192 /*memoryBudgetBytes*/);
+
+    const uint64_t numBuild = 1400, numProbe = 900;
+    auto bK1 = [](uint64_t i) { return static_cast<int64_t>(i % 7); };
+    auto bK2 = [](uint64_t i) { return static_cast<int64_t>(i % 3); };
+    auto pK1 = [](uint64_t j) { return static_cast<int64_t>(j % 7); };
+    auto pK2 = [](uint64_t j) { return static_cast<int64_t>(j % 4); }; // k2==3 never matches build
+    auto buildStr = [](uint64_t i) { return "b" + std::to_string(i); };
+
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector k1(LogicalType::INT64(), mm), k2(LogicalType::INT64(), mm),
+            pay(LogicalType::STRING(), mm);
+        k1.state = state;
+        k2.state = state;
+        pay.state = state;
+        for (uint64_t b = 0; b < numBuild; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numBuild - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                k1.setNull(r, false);
+                k1.setValue<int64_t>(r, bK1(b + r));
+                k2.setNull(r, false);
+                k2.setValue<int64_t>(r, bK2(b + r));
+                pay.setNull(r, false);
+                StringVector::addString(&pay, r, buildStr(b + r));
+            }
+            exec.appendBuild({&k1, &k2}, {&pay});
+        }
+    }
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector k1(LogicalType::INT64(), mm), k2(LogicalType::INT64(), mm),
+            pay(LogicalType::INT64(), mm);
+        k1.state = state;
+        k2.state = state;
+        pay.state = state;
+        for (uint64_t b = 0; b < numProbe; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numProbe - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                k1.setNull(r, false);
+                k1.setValue<int64_t>(r, pK1(b + r));
+                k2.setNull(r, false);
+                k2.setValue<int64_t>(r, pK2(b + r));
+                pay.setNull(r, false);
+                pay.setValue<int64_t>(r, static_cast<int64_t>(b + r));
+            }
+            exec.appendProbe({&k1, &k2}, {&pay});
+        }
+    }
+
+    auto output = exec.computeInnerJoin();
+
+    // Brute-force reference: multiset of (probeK1, probeK2, buildStr).
+    std::map<std::tuple<int64_t, int64_t, std::string>, int64_t> expected;
+    std::map<std::pair<int64_t, int64_t>, std::vector<std::string>> buildByKey;
+    for (uint64_t i = 0; i < numBuild; i++) {
+        buildByKey[{bK1(i), bK2(i)}].push_back(buildStr(i));
+    }
+    for (uint64_t j = 0; j < numProbe; j++) {
+        auto it = buildByKey.find({pK1(j), pK2(j)});
+        if (it == buildByKey.end()) {
+            continue;
+        }
+        for (auto& s : it->second) {
+            expected[{pK1(j), pK2(j), s}]++;
+        }
+    }
+
+    // Output columns: [k1, k2, probePayload(INT64), buildStr(STRING)]; compare (k1, k2, buildStr).
+    std::vector<LogicalType> outTypes;
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::STRING());
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (auto& t : outTypes) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(t.copy())));
+        values.push_back(holders.back().get());
+    }
+    std::map<std::tuple<int64_t, int64_t, std::string>, int64_t> got;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        got[{values[0]->getValue<int64_t>(), values[1]->getValue<int64_t>(),
+            values[3]->getValue<std::string>()}]++;
+    }
+
+    ASSERT_EQ(got.size(), expected.size());
+    ASSERT_TRUE(got == expected)
+        << "Composite-key/string-payload Grace join differs from brute-force reference";
+}
+
 class EmptyBufferManagerTest : public DBTest {
 public:
     std::string getInputDir() override {
