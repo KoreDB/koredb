@@ -36,32 +36,44 @@ static std::vector<LogicalType> copyTypes(const std::vector<LogicalType>& types)
     return result;
 }
 
-// Data columns spilled per partition: [keys..., <one column per aggregate function that has an
-// input>]. Functions with no input (COUNT(*), whose type is ANY()) contribute no column.
+// Data columns spilled per partition: [keys..., dependentKeys..., <one column per aggregate function
+// that has an input>, multiplicity(INT64)]. Functions with no input (COUNT(*), whose type is ANY())
+// contribute no column. The trailing INT64 stores the per-row multiplicity.
 static std::vector<LogicalType> makePartitionColumnTypes(const std::vector<LogicalType>& keyTypes,
+    const std::vector<LogicalType>& dependentKeyTypes,
     const std::vector<LogicalType>& aggInputTypes) {
     auto result = copyTypes(keyTypes);
+    for (auto& t : dependentKeyTypes) {
+        result.push_back(t.copy());
+    }
     for (auto& t : aggInputTypes) {
         if (t.getLogicalTypeID() != LogicalTypeID::ANY) {
             result.push_back(t.copy());
         }
     }
+    result.push_back(LogicalType::INT64()); // multiplicity
     return result;
 }
 
 PartitionedAggregateExecutor::PartitionedAggregateExecutor(MemoryManager* mm, VirtualFileSystem* vfs,
     std::string spillPath, std::vector<LogicalType> keyTypes,
-    std::vector<AggregateFunction> aggregateFunctions, std::vector<LogicalType> aggInputTypes,
-    std::vector<LogicalType> aggResultTypes, idx_t logNumPartitions, uint64_t memoryBudgetBytes)
-    : mm{mm}, keyTypes{std::move(keyTypes)}, aggregateFunctions{std::move(aggregateFunctions)},
-      aggInputTypes{std::move(aggInputTypes)}, aggResultTypes{std::move(aggResultTypes)},
-      numKeys{static_cast<idx_t>(this->keyTypes.size())}, memoryBudgetBytes{memoryBudgetBytes},
-      parts{mm, makePartitionColumnTypes(this->keyTypes, this->aggInputTypes), logNumPartitions, vfs,
-          std::move(spillPath)},
+    std::vector<LogicalType> dependentKeyTypes, std::vector<AggregateFunction> aggregateFunctions,
+    std::vector<LogicalType> aggInputTypes, std::vector<LogicalType> aggResultTypes,
+    idx_t logNumPartitions, uint64_t memoryBudgetBytes)
+    : mm{mm}, keyTypes{std::move(keyTypes)}, dependentKeyTypes{std::move(dependentKeyTypes)},
+      aggregateFunctions{std::move(aggregateFunctions)}, aggInputTypes{std::move(aggInputTypes)},
+      aggResultTypes{std::move(aggResultTypes)},
+      numKeys{static_cast<idx_t>(this->keyTypes.size())},
+      numDependentKeys{static_cast<idx_t>(this->dependentKeyTypes.size())},
+      memoryBudgetBytes{memoryBudgetBytes},
+      parts{mm,
+          makePartitionColumnTypes(this->keyTypes, this->dependentKeyTypes, this->aggInputTypes),
+          logNumPartitions, vfs, std::move(spillPath)},
+      multiplicityVector{std::make_unique<ValueVector>(LogicalType::INT64(), mm)},
       hashVector{std::make_unique<ValueVector>(LogicalType::HASH(), mm)},
       tmpHashVector{std::make_unique<ValueVector>(LogicalType::HASH(), mm)} {
-    // Map each aggregate function to its input column index within the partition (after the keys),
-    // or -1 for a function with no input.
+    // Map each aggregate function to its input column index within the partition's input-column
+    // region (0-based among inputs), or -1 for a function with no input.
     numInputCols = 0;
     funcInputCol.reserve(this->aggInputTypes.size());
     for (auto& t : this->aggInputTypes) {
@@ -74,11 +86,15 @@ PartitionedAggregateExecutor::PartitionedAggregateExecutor(MemoryManager* mm, Vi
 }
 
 FactorizedTableSchema PartitionedAggregateExecutor::makeAggHashTableSchema() const {
-    // Mirrors map_aggregate's getFactorizedTableSchema: [keys (flat), aggStates..., hash].
+    // Mirrors map_aggregate's getFactorizedTableSchema: [keys (flat), dependentKeys (flat),
+    // aggStates..., hash].
     FactorizedTableSchema schema;
     for (auto& t : keyTypes) {
         schema.appendColumn(
             ColumnSchema(false /*isUnFlat*/, 0 /*groupID*/, LogicalTypeUtils::getRowLayoutSize(t)));
+    }
+    for (auto& t : dependentKeyTypes) {
+        schema.appendColumn(ColumnSchema(false, 0, LogicalTypeUtils::getRowLayoutSize(t)));
     }
     for (auto& func : aggregateFunctions) {
         schema.appendColumn(ColumnSchema(false, 0, func.getAggregateStateSize()));
@@ -89,6 +105,9 @@ FactorizedTableSchema PartitionedAggregateExecutor::makeAggHashTableSchema() con
 
 FactorizedTableSchema PartitionedAggregateExecutor::makeOutputSchema() const {
     auto types = copyTypes(keyTypes);
+    for (auto& t : dependentKeyTypes) {
+        types.push_back(t.copy());
+    }
     for (auto& t : aggResultTypes) {
         types.push_back(t.copy());
     }
@@ -96,27 +115,36 @@ FactorizedTableSchema PartitionedAggregateExecutor::makeOutputSchema() const {
 }
 
 void PartitionedAggregateExecutor::append(const std::vector<ValueVector*>& keyVectors,
-    const std::vector<ValueVector*>& aggInputVectors) {
+    const std::vector<ValueVector*>& dependentKeyVectors,
+    const std::vector<ValueVector*>& aggInputVectors, uint64_t multiplicity) {
     KU_ASSERT(keyVectors.size() == numKeys);
+    KU_ASSERT(dependentKeyVectors.size() == numDependentKeys);
     KU_ASSERT(aggInputVectors.size() == aggregateFunctions.size());
-    // Routing hash over the group keys only, so rows of the same group co-locate in one partition.
-    // This is the same hash the in-partition AggregateHashTable computes over the keys.
     auto* state = keyVectors[0]->state.get();
     auto& sel = state->getSelVector();
+    // Routing hash over the group keys only, so rows of the same group co-locate in one partition.
+    // This is the same hash the in-partition AggregateHashTable computes over the keys.
     VectorHashFunction::computeHash(*keyVectors[0], sel, *hashVector, sel);
     for (auto i = 1u; i < keyVectors.size(); i++) {
         VectorHashFunction::computeHash(*keyVectors[i], sel, *tmpHashVector, sel);
         VectorHashFunction::combineHash(*hashVector, sel, *tmpHashVector, sel, *hashVector, sel);
     }
+    // Per-row multiplicity column (constant across this batch), sharing the input state.
+    multiplicityVector->state = keyVectors[0]->state;
+    for (auto i = 0u; i < sel.getSelSize(); i++) {
+        multiplicityVector->setValue<int64_t>(sel[i], static_cast<int64_t>(multiplicity));
+    }
     std::vector<ValueVector*> allVectors;
-    allVectors.reserve(numKeys + numInputCols);
+    allVectors.reserve(numKeys + numDependentKeys + numInputCols + 1);
     allVectors.insert(allVectors.end(), keyVectors.begin(), keyVectors.end());
+    allVectors.insert(allVectors.end(), dependentKeyVectors.begin(), dependentKeyVectors.end());
     for (auto f = 0u; f < aggInputVectors.size(); f++) {
         if (funcInputCol[f] >= 0) {
             KU_ASSERT(aggInputVectors[f] != nullptr);
             allVectors.push_back(aggInputVectors[f]);
         }
     }
+    allVectors.push_back(multiplicityVector.get());
     parts.appendVectors(allVectors, *hashVector);
     parts.spillToReduceResidentBytesTo(memoryBudgetBytes);
 }
@@ -132,34 +160,42 @@ std::unique_ptr<ReaggregatingHashTable> PartitionedAggregateExecutor::aggregateP
         distinctAggKeyTypes.push_back(LogicalType::ANY()); // v1: no distinct aggregates
     }
     auto aggHT = std::make_unique<ReaggregatingHashTable>(*mm, copyTypes(keyTypes),
-        std::vector<LogicalType>{} /*dependentKeyTypes*/, aggregateFunctions, distinctAggKeyTypes,
+        copyTypes(dependentKeyTypes), aggregateFunctions, distinctAggKeyTypes,
         0 /*numEntriesToAllocate*/, makeAggHashTableSchema());
 
     // Scan the partition a vector at a time and re-aggregate. The scan vectors are [keys...,
-    // aggInputCols...], the same column order stored in the partition.
+    // dependentKeys..., aggInputCols..., multiplicity], the same column order stored in the
+    // partition.
     auto scanState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
     std::vector<std::unique_ptr<ValueVector>> holders;
-    std::vector<ValueVector*> keyScanVecs, inputScanVecs, allScanVecs;
-    for (auto& t : keyTypes) {
+    std::vector<ValueVector*> keyScanVecs, depScanVecs, inputScanVecs, allScanVecs;
+    auto makeScanVec = [&](const LogicalType& t) {
         auto v = std::make_unique<ValueVector>(t.copy(), mm);
         v->state = scanState;
-        keyScanVecs.push_back(v.get());
-        allScanVecs.push_back(v.get());
+        auto* raw = v.get();
+        allScanVecs.push_back(raw);
         holders.push_back(std::move(v));
+        return raw;
+    };
+    for (auto& t : keyTypes) {
+        keyScanVecs.push_back(makeScanVec(t));
+    }
+    for (auto& t : dependentKeyTypes) {
+        depScanVecs.push_back(makeScanVec(t));
     }
     for (auto& t : aggInputTypes) {
-        if (t.getLogicalTypeID() == LogicalTypeID::ANY) {
-            continue;
+        if (t.getLogicalTypeID() != LogicalTypeID::ANY) {
+            inputScanVecs.push_back(makeScanVec(t));
         }
-        auto v = std::make_unique<ValueVector>(t.copy(), mm);
-        v->state = scanState;
-        inputScanVecs.push_back(v.get());
-        allScanVecs.push_back(v.get());
-        holders.push_back(std::move(v));
     }
+    auto* mScanVec = makeScanVec(LogicalType::INT64());
+
     for (uint64_t t = 0; t < part.getNumTuples(); t += DEFAULT_VECTOR_CAPACITY) {
         const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, part.getNumTuples() - t);
         scanState->initOriginalAndSelectedSize(m);
+        // Reset to unfiltered before scanning: run-splitting below leaves the selection filtered, and
+        // initOriginalAndSelectedSize only updates the size, not the filtered/unfiltered mode.
+        scanState->getSelVectorUnsafe().setToUnfiltered(static_cast<sel_t>(m));
         part.scan(std::span<ValueVector*>(allScanVecs), t, m);
         std::vector<AggregateInput> aggInputs(aggregateFunctions.size());
         for (auto f = 0u; f < aggregateFunctions.size(); f++) {
@@ -167,8 +203,30 @@ std::unique_ptr<ReaggregatingHashTable> PartitionedAggregateExecutor::aggregateP
                 aggInputs[f].aggregateVector = inputScanVecs[funcInputCol[f]];
             }
         }
-        aggHT->append(keyScanVecs, std::vector<ValueVector*>{} /*dependentKeyVectors*/,
-            scanState.get(), aggInputs, 1 /*resultSetMultiplicity*/);
+        // Rows are stored in append order, and each original append batch carried a single
+        // multiplicity, so equal-multiplicity rows form contiguous runs. Aggregate each run with its
+        // multiplicity (the common all-ones case is a single run over the whole block).
+        uint64_t runStart = 0;
+        while (runStart < m) {
+            const auto runM = mScanVec->getValue<int64_t>(runStart);
+            uint64_t runEnd = runStart + 1;
+            while (runEnd < m && mScanVec->getValue<int64_t>(runEnd) == runM) {
+                runEnd++;
+            }
+            auto& runSel = scanState->getSelVectorUnsafe();
+            if (runStart == 0 && runEnd == m) {
+                runSel.setToUnfiltered(static_cast<sel_t>(m));
+            } else {
+                auto buf = runSel.getMutableBuffer();
+                for (uint64_t k = 0; k < runEnd - runStart; k++) {
+                    buf[k] = static_cast<sel_t>(runStart + k);
+                }
+                runSel.setToFiltered(static_cast<sel_t>(runEnd - runStart));
+            }
+            aggHT->append(keyScanVecs, depScanVecs, scanState.get(), aggInputs,
+                static_cast<uint64_t>(runM));
+            runStart = runEnd;
+        }
     }
     aggHT->finalizeAggregateStates();
     return aggHT;
@@ -177,27 +235,31 @@ std::unique_ptr<ReaggregatingHashTable> PartitionedAggregateExecutor::aggregateP
 std::unique_ptr<FactorizedTable> PartitionedAggregateExecutor::computeAggregates() {
     auto output = std::make_unique<FactorizedTable>(mm, makeOutputSchema());
 
-    // Output vectors: [keys..., aggResults...], all unflat and sharing one state so a whole scanned
-    // block of finalized groups is appended at once.
+    // Output vectors: [keys..., dependentKeys..., aggResults...], all unflat and sharing one state so
+    // a whole scanned block of finalized groups is appended at once.
+    const auto numGroupCols = numKeys + numDependentKeys;
     auto outState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
     std::vector<std::unique_ptr<ValueVector>> outHolders;
-    std::vector<ValueVector*> outKeyVecs, outAggVecs, outputVecs;
-    for (auto& t : keyTypes) {
+    std::vector<ValueVector*> outGroupVecs, outAggVecs, outputVecs;
+    auto makeOutVec = [&](const LogicalType& t, bool isAgg) {
         auto v = std::make_unique<ValueVector>(t.copy(), mm);
         v->state = outState;
-        outKeyVecs.push_back(v.get());
-        outputVecs.push_back(v.get());
+        auto* raw = v.get();
+        (isAgg ? outAggVecs : outGroupVecs).push_back(raw);
+        outputVecs.push_back(raw);
         outHolders.push_back(std::move(v));
+    };
+    for (auto& t : keyTypes) {
+        makeOutVec(t, false);
+    }
+    for (auto& t : dependentKeyTypes) {
+        makeOutVec(t, false);
     }
     for (auto& t : aggResultTypes) {
-        auto v = std::make_unique<ValueVector>(t.copy(), mm);
-        v->state = outState;
-        outAggVecs.push_back(v.get());
-        outputVecs.push_back(v.get());
-        outHolders.push_back(std::move(v));
+        makeOutVec(t, true);
     }
-    std::vector<uint32_t> keyColIdxs(numKeys);
-    std::iota(keyColIdxs.begin(), keyColIdxs.end(), 0u);
+    std::vector<uint32_t> groupColIdxs(numGroupCols);
+    std::iota(groupColIdxs.begin(), groupColIdxs.end(), 0u);
     auto entries = std::make_unique<uint8_t*[]>(DEFAULT_VECTOR_CAPACITY);
 
     for (idx_t p = 0; p < parts.getNumPartitions(); p++) {
@@ -208,14 +270,15 @@ std::unique_ptr<FactorizedTable> PartitionedAggregateExecutor::computeAggregates
         }
         const auto* ft = aggHT->getFactorizedTable();
         const auto numGroups = aggHT->getNumEntries();
-        const auto aggStateColOffset = ft->getTableSchema()->getColOffset(numKeys);
+        const auto aggStateColOffset = ft->getTableSchema()->getColOffset(numGroupCols);
         for (uint64_t g = 0; g < numGroups; g += DEFAULT_VECTOR_CAPACITY) {
             const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numGroups - g);
             for (uint64_t j = 0; j < m; j++) {
                 entries[j] = ft->getTuple(g + j);
             }
-            // Group keys: written into the (unflat) key output vectors; this sets outState's size.
-            ft->lookup(outKeyVecs, keyColIdxs, entries.get(), 0, m);
+            // Group + dependent keys: written into the (unflat) output vectors; this sets outState's
+            // size.
+            ft->lookup(outGroupVecs, groupColIdxs, entries.get(), 0, m);
             // Aggregate results: read each finalized state and write its value.
             for (uint64_t j = 0; j < m; j++) {
                 auto* entry = entries[j];

@@ -238,17 +238,21 @@ in-memory pass. So this works for *every* aggregate function, including stateful
 state serialization or pointer swizzling. This is the key difference from the existing in-memory
 `HashAggregate`, whose per-partition queues hold partially-aggregated **states**.
 
-**Scope (v1):** non-distinct aggregates; group keys stored flat and sharing one input state with the
-aggregate-input columns; `ResultSet` multiplicity of 1; no dependent (payload) keys. Not thread-safe
-(single-thread, mirroring the join executor). These match the conservative first cut; broadening is
-the operator-wiring increment (below).
+**Scope:** non-distinct aggregates; group keys stored flat and sharing one input state with the
+dependent-key and aggregate-input columns. **Dependent (payload) keys** and **per-row multiplicity**
+(stored as a hidden column and re-applied over contiguous equal-multiplicity runs) are supported. Not
+thread-safe (single-thread, mirroring the join executor). Remaining executor gaps: distinct
+aggregates and multi-state inputs — broadened alongside the operator wiring (below).
 
-**Verification = differential.** `buffer_manager_test`'s `PartitionedAggregateExecutorSpillIntKey`
-(4 KiB budget, forced spill/reload during append) and `PartitionedAggregateExecutorNoSpillIntKey`
-(fully in memory) both aggregate 5000 rows into 20 groups with `COUNT(*)` + `SUM` and must match the
-same brute-force reference, proving spilling is transparent; `PartitionedAggregateExecutorSpillStringKey`
-adds a STRING group key so the forced-spill path also exercises overflow serialization of the raw
-rows. No regression: `buffer_manager_test` 23/23.
+**Verification = differential.** `buffer_manager_test` (all vs a brute-force reference, 5000–6000
+rows, 4 KiB budget forcing spill/reload during append unless noted):
+`PartitionedAggregateExecutorSpillIntKey` + `…NoSpillIntKey` (fully in memory) prove spilling is
+transparent for `COUNT(*)` + `SUM`; `…SpillStringKey` adds a STRING group key so the forced-spill path
+exercises overflow serialization of the raw rows; `…MinStringSpill` proves a **stateful** overflow
+aggregate (`MIN(STRING)`) is correct under spilling (states never leave memory); `…DependentKeySpill`
+carries a STRING payload column through; `…MultiplicitySpill` feeds batches of mixed multiplicity so
+partitions see contiguous runs the executor must re-weight. No regression: `buffer_manager_test`
+26/26.
 
 ## Remaining work (the large, careful pieces)
 
@@ -282,10 +286,11 @@ exist and are proven correct under spilling. What remains to broaden coverage an
    join work; reuses the `FactorizedTable` serialization primitive).
 
 6. **Partitioned aggregation — live operator wiring.** The library executor exists and is verified
-   (section 6). What remains is the gated operator integration, analogous to the join's section 5: a
-   `spill_aggregate` setting, and routing `HashAggregate`'s build → finalize → scan pipeline through
-   the executor when eligible + single-threaded. Broadening the executor itself (distinct aggregates,
-   dependent/payload keys, `ResultSet` multiplicity > 1, multi-state inputs) is the follow-on.
+   (section 6), including dependent (payload) keys and per-row multiplicity. What remains is the gated
+   operator integration, analogous to the join's section 5: a `spill_aggregate` setting, and routing
+   `HashAggregate`'s build → finalize → scan pipeline through the executor when eligible (non-distinct,
+   single-state key/input, single data chunk) + single-threaded. Broadening the executor itself
+   (distinct aggregates, multi-state inputs) is the follow-on.
 
 All reuse the `SpillableComponent` registry (for the raw-buffer, buffer-manager-triggered path) or
 `PartitionedFactorizedTable` / the `FactorizedTable` serialization primitive (for the operator-

@@ -39,30 +39,41 @@ namespace processor {
 // This wraps PartitionedFactorizedTable + the engine's AggregateHashTable; it is the reusable core a
 // spilling HashAggregate operator can delegate to.
 //
+// Dependent (payload) keys are columns functionally dependent on the group keys (e.g. `n.name` when
+// grouping by `n.id`): stored and emitted but not hashed/compared, exactly as the in-memory
+// HashAggregate treats them.
+//
 // Scope (v1): non-distinct aggregates; group keys stored flat and sharing one input state with the
-// aggregate-input columns; ResultSet multiplicity of 1 (assert); no dependent (payload) keys. Not
-// thread-safe; intended to be driven by a single thread.
+// dependent-key and aggregate-input columns. Not thread-safe; intended to be driven by a single
+// thread. Per-row input multiplicity is supported (stored and re-applied).
 class KUZU_API PartitionedAggregateExecutor {
 public:
     // aggInputTypes[i] is the input column type of aggregate function i, or ANY() when the function
     // takes no input (e.g. COUNT(*)). aggResultTypes[i] is function i's finalized result type. Both
-    // must be the same length as aggregateFunctions.
+    // must be the same length as aggregateFunctions. dependentKeyTypes are functionally-dependent
+    // payload columns (may be empty).
     PartitionedAggregateExecutor(storage::MemoryManager* mm, common::VirtualFileSystem* vfs,
         std::string spillPath, std::vector<common::LogicalType> keyTypes,
+        std::vector<common::LogicalType> dependentKeyTypes,
         std::vector<function::AggregateFunction> aggregateFunctions,
         std::vector<common::LogicalType> aggInputTypes,
         std::vector<common::LogicalType> aggResultTypes, common::idx_t logNumPartitions,
         uint64_t memoryBudgetBytes);
 
-    // Accumulate input. keyVectors and the non-null entries of aggInputVectors must share one input
-    // DataChunkState. aggInputVectors has one entry per aggregate function (nullptr for a function
-    // that takes no input); its non-null vectors line up with the ANY() slots in aggInputTypes.
-    // Rows are scattered by hash(keys) into partitions and spilled under the budget.
+    // Accumulate input. keyVectors, dependentKeyVectors, and the non-null entries of aggInputVectors
+    // must share one input DataChunkState. aggInputVectors has one entry per aggregate function
+    // (nullptr for a function that takes no input); its non-null vectors line up with the ANY() slots
+    // in aggInputTypes. `multiplicity` is the ResultSet multiplicity of this batch (times any
+    // factorized sibling-chunk expansion) -- each row counts that many times; it is stored per row
+    // and re-applied during aggregation. Rows are scattered by hash(keys) into partitions and spilled
+    // under the budget.
     void append(const std::vector<common::ValueVector*>& keyVectors,
-        const std::vector<common::ValueVector*>& aggInputVectors);
+        const std::vector<common::ValueVector*>& dependentKeyVectors,
+        const std::vector<common::ValueVector*>& aggInputVectors, uint64_t multiplicity = 1);
 
-    // Aggregate every partition and materialize the whole result. Columns: [keys..., aggResults...].
-    // Consumes the input (partitions are freed as they are processed).
+    // Aggregate every partition and materialize the whole result. Columns:
+    // [keys..., dependentKeys..., aggResults...]. Consumes the input (partitions are freed as they are
+    // processed).
     std::unique_ptr<FactorizedTable> computeAggregates();
 
     common::idx_t getNumPartitions() const { return parts.getNumPartitions(); }
@@ -77,15 +88,19 @@ private:
 private:
     storage::MemoryManager* mm;
     std::vector<common::LogicalType> keyTypes;
+    std::vector<common::LogicalType> dependentKeyTypes;
     std::vector<function::AggregateFunction> aggregateFunctions;
     std::vector<common::LogicalType> aggInputTypes;  // per function; ANY() == no input
     std::vector<common::LogicalType> aggResultTypes; // per function
     common::idx_t numKeys;
+    common::idx_t numDependentKeys;
     uint64_t memoryBudgetBytes;
-    // Partition-input column index for each aggregate function (after the key columns), or -1 for a
-    // function with no input. Non-input functions store no column.
+    // Partition-input column index for each aggregate function (after the key + dependent-key
+    // columns), or -1 for a function with no input. Non-input functions store no column.
     std::vector<int32_t> funcInputCol;
     common::idx_t numInputCols;
+    // Scratch INT64 vector holding the per-row multiplicity for the current append batch.
+    std::unique_ptr<common::ValueVector> multiplicityVector;
 
     PartitionedFactorizedTable parts; // schema [keys..., aggInputCols...]
 

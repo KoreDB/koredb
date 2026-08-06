@@ -1192,8 +1192,9 @@ static void runPartitionedAggTest(storage::MemoryManager* mm, common::VirtualFil
 
     PartitionedAggregateExecutor exec(mm, fs,
         (std::filesystem::temp_directory_path() / "kuzu_pae.spill").string(),
-        LogicalType::copy(keyTypes), makeCountSumAggFuncs(), LogicalType::copy(aggInputTypes),
-        LogicalType::copy(aggResultTypes), 2 /*logNumPartitions*/, budget);
+        LogicalType::copy(keyTypes), std::vector<LogicalType>{} /*dependentKeyTypes*/,
+        makeCountSumAggFuncs(), LogicalType::copy(aggInputTypes), LogicalType::copy(aggResultTypes),
+        2 /*logNumPartitions*/, budget);
 
     {
         auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
@@ -1216,7 +1217,7 @@ static void runPartitionedAggTest(storage::MemoryManager* mm, common::VirtualFil
                 valVec.setValue<int64_t>(r, valOf(b + r));
             }
             // aggInputVectors: [nullptr for COUNT(*), &valVec for SUM].
-            exec.append({&keyVec}, {nullptr, &valVec});
+            exec.append({&keyVec}, {} /*dependentKeyVectors*/, {nullptr, &valVec});
         }
     }
 
@@ -1315,8 +1316,9 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorMinStringSpill) {
 
     PartitionedAggregateExecutor exec(mm, fs,
         (std::filesystem::temp_directory_path() / "kuzu_pae_minstr.spill").string(),
-        LogicalType::copy(keyTypes), std::move(aggFuncs), LogicalType::copy(aggInputTypes),
-        LogicalType::copy(aggResultTypes), 2 /*logNumPartitions*/, 4096 /*budget forces spill*/);
+        LogicalType::copy(keyTypes), std::vector<LogicalType>{} /*dependentKeyTypes*/,
+        std::move(aggFuncs), LogicalType::copy(aggInputTypes), LogicalType::copy(aggResultTypes),
+        2 /*logNumPartitions*/, 4096 /*budget forces spill*/);
 
     {
         auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
@@ -1333,7 +1335,7 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorMinStringSpill) {
                 sVec.setNull(r, false);
                 StringVector::addString(&sVec, r, strOf(b + r));
             }
-            exec.append({&keyVec}, {&sVec});
+            exec.append({&keyVec}, {} /*dependentKeyVectors*/, {&sVec});
         }
     }
 
@@ -1370,6 +1372,176 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorMinStringSpill) {
     ASSERT_EQ(got.size(), static_cast<size_t>(numGroups));
     ASSERT_TRUE(got == expected)
         << "MIN(STRING) under spilling differs from brute-force reference";
+}
+
+// Exercises dependent (payload) keys: GROUP BY an INT64 key while carrying a STRING column that is
+// functionally dependent on the key (same value per group). The dependent key must be stored, spilled
+// with the raw rows, and re-emitted unchanged alongside COUNT(*)/SUM.
+TEST_F(BufferManagerTest, PartitionedAggregateExecutorDependentKeySpill) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    const uint64_t numRows = 5000;
+    const int64_t numGroups = 12;
+    auto groupOf = [&](uint64_t i) { return static_cast<int64_t>(i % numGroups); };
+    auto depOf = [&](int64_t g) { return "grp" + std::to_string(g); };
+    auto valOf = [&](uint64_t i) { return static_cast<int64_t>((i * 3) % 100); };
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> dependentKeyTypes;
+    dependentKeyTypes.push_back(LogicalType::STRING());
+    std::vector<LogicalType> aggInputTypes;
+    aggInputTypes.push_back(LogicalType::ANY()); // COUNT(*)
+    aggInputTypes.push_back(LogicalType::INT64()); // SUM
+    std::vector<LogicalType> aggResultTypes;
+    aggResultTypes.push_back(LogicalType::INT64());
+    aggResultTypes.push_back(LogicalType::INT64());
+
+    PartitionedAggregateExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_pae_dep.spill").string(),
+        LogicalType::copy(keyTypes), LogicalType::copy(dependentKeyTypes), makeCountSumAggFuncs(),
+        LogicalType::copy(aggInputTypes), LogicalType::copy(aggResultTypes), 2 /*logNumPartitions*/,
+        4096 /*budget forces spill*/);
+
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm), depVec(LogicalType::STRING(), mm),
+            valVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        depVec.state = state;
+        valVec.state = state;
+        for (uint64_t b = 0; b < numRows; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numRows - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                const auto g = groupOf(b + r);
+                keyVec.setNull(r, false);
+                keyVec.setValue<int64_t>(r, g);
+                depVec.setNull(r, false);
+                StringVector::addString(&depVec, r, depOf(g));
+                valVec.setNull(r, false);
+                valVec.setValue<int64_t>(r, valOf(b + r));
+            }
+            exec.append({&keyVec}, {&depVec}, {nullptr, &valVec});
+        }
+    }
+
+    auto output = exec.computeAggregates();
+
+    std::map<int64_t, std::tuple<std::string, int64_t, int64_t>> expected;
+    for (uint64_t i = 0; i < numRows; i++) {
+        const auto g = groupOf(i);
+        auto& e = expected[g];
+        std::get<0>(e) = depOf(g);
+        std::get<1>(e) += 1;
+        std::get<2>(e) += valOf(i);
+    }
+
+    // Output columns: [key(INT64), dep(STRING), count(INT64), sum(INT64)].
+    std::vector<LogicalType> outTypes;
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::STRING());
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (auto& t : outTypes) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(t.copy())));
+        values.push_back(holders.back().get());
+    }
+    std::map<int64_t, std::tuple<std::string, int64_t, int64_t>> got;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        got[values[0]->getValue<int64_t>()] = {values[1]->getValue<std::string>(),
+            values[2]->getValue<int64_t>(), values[3]->getValue<int64_t>()};
+    }
+
+    ASSERT_EQ(got.size(), static_cast<size_t>(numGroups));
+    ASSERT_TRUE(got == expected)
+        << "Dependent-key aggregation under spilling differs from brute-force reference";
+}
+
+// Exercises per-row multiplicity: different append batches carry different multiplicities, so within
+// a partition (which preserves append order) rows form contiguous runs of mixed multiplicity that the
+// executor must re-apply. COUNT(*) must sum the multiplicities and SUM must scale by them.
+TEST_F(BufferManagerTest, PartitionedAggregateExecutorMultiplicitySpill) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    const uint64_t numRows = 6000;
+    const int64_t numGroups = 10;
+    auto groupOf = [&](uint64_t i) { return static_cast<int64_t>(i % numGroups); };
+    auto valOf = [&](uint64_t i) { return static_cast<int64_t>((i * 9) % 50); };
+    // Multiplicity alternates per batch so partitions see runs of mixed multiplicity.
+    auto multOf = [&](uint64_t batchIdx) { return static_cast<uint64_t>(batchIdx % 2 == 0 ? 1 : 3); };
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> aggInputTypes;
+    aggInputTypes.push_back(LogicalType::ANY()); // COUNT(*)
+    aggInputTypes.push_back(LogicalType::INT64()); // SUM
+    std::vector<LogicalType> aggResultTypes;
+    aggResultTypes.push_back(LogicalType::INT64());
+    aggResultTypes.push_back(LogicalType::INT64());
+
+    PartitionedAggregateExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_pae_mult.spill").string(),
+        LogicalType::copy(keyTypes), std::vector<LogicalType>{} /*dependentKeyTypes*/,
+        makeCountSumAggFuncs(), LogicalType::copy(aggInputTypes), LogicalType::copy(aggResultTypes),
+        2 /*logNumPartitions*/, 4096 /*budget forces spill*/);
+
+    std::map<int64_t, std::pair<int64_t, int64_t>> expected; // group -> (count, sum)
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm), valVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        valVec.state = state;
+        uint64_t batchIdx = 0;
+        for (uint64_t b = 0; b < numRows; b += DEFAULT_VECTOR_CAPACITY, batchIdx++) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numRows - b);
+            const auto mult = multOf(batchIdx);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                const auto g = groupOf(b + r);
+                keyVec.setNull(r, false);
+                keyVec.setValue<int64_t>(r, g);
+                valVec.setNull(r, false);
+                valVec.setValue<int64_t>(r, valOf(b + r));
+                auto& e = expected[g];
+                e.first += static_cast<int64_t>(mult);
+                e.second += valOf(b + r) * static_cast<int64_t>(mult);
+            }
+            exec.append({&keyVec}, {} /*dependentKeyVectors*/, {nullptr, &valVec}, mult);
+        }
+    }
+
+    auto output = exec.computeAggregates();
+
+    std::vector<LogicalType> outTypes;
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (auto& t : outTypes) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(t.copy())));
+        values.push_back(holders.back().get());
+    }
+    std::map<int64_t, std::pair<int64_t, int64_t>> got;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        got[values[0]->getValue<int64_t>()] = {values[1]->getValue<int64_t>(),
+            values[2]->getValue<int64_t>()};
+    }
+
+    ASSERT_EQ(got.size(), static_cast<size_t>(numGroups));
+    ASSERT_TRUE(got == expected)
+        << "Multiplicity-weighted aggregation under spilling differs from brute-force reference";
 }
 
 class EmptyBufferManagerTest : public DBTest {
