@@ -1545,6 +1545,89 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorMultiplicitySpill) {
         << "Multiplicity-weighted aggregation under spilling differs from brute-force reference";
 }
 
+// Exercises merging two per-thread executors: feed overlapping groups to two independently-spilling
+// executors, merge one into the other, and check the combined aggregation. This is the primitive a
+// multi-threaded spilling HashAggregate uses to combine per-thread partitions before finalization.
+TEST_F(BufferManagerTest, PartitionedAggregateExecutorMergeSpill) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    const int64_t numGroups = 15;
+    auto groupOf = [&](uint64_t i) { return static_cast<int64_t>(i % numGroups); };
+    auto valOf = [&](uint64_t i) { return static_cast<int64_t>((i * 5) % 80); };
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> aggInputTypes;
+    aggInputTypes.push_back(LogicalType::ANY()); // COUNT(*)
+    aggInputTypes.push_back(LogicalType::INT64()); // SUM
+    std::vector<LogicalType> aggResultTypes;
+    aggResultTypes.push_back(LogicalType::INT64());
+    aggResultTypes.push_back(LogicalType::INT64());
+
+    auto makeExec = [&](const std::string& stem) {
+        return std::make_unique<PartitionedAggregateExecutor>(mm, fs,
+            (std::filesystem::temp_directory_path() / stem).string(), LogicalType::copy(keyTypes),
+            std::vector<LogicalType>{}, makeCountSumAggFuncs(), LogicalType::copy(aggInputTypes),
+            LogicalType::copy(aggResultTypes), 2 /*logNumPartitions*/, 4096 /*budget forces spill*/);
+    };
+    auto exec1 = makeExec("kuzu_pae_merge1.spill");
+    auto exec2 = makeExec("kuzu_pae_merge2.spill");
+
+    std::map<int64_t, std::pair<int64_t, int64_t>> expected; // group -> (count, sum)
+    auto feed = [&](PartitionedAggregateExecutor& exec, uint64_t base, uint64_t n) {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm), valVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        valVec.state = state;
+        for (uint64_t b = 0; b < n; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, n - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                const auto idx = base + b + r;
+                const auto g = groupOf(idx);
+                keyVec.setNull(r, false);
+                keyVec.setValue<int64_t>(r, g);
+                valVec.setNull(r, false);
+                valVec.setValue<int64_t>(r, valOf(idx));
+                auto& e = expected[g];
+                e.first += 1;
+                e.second += valOf(idx);
+            }
+            exec.append({&keyVec}, {}, {nullptr, &valVec});
+        }
+    };
+    // Overlapping group spaces (both use i % numGroups), distinct value indices.
+    feed(*exec1, 0, 3000);
+    feed(*exec2, 100000, 2500);
+
+    exec1->merge(*exec2);
+    auto output = exec1->computeAggregates();
+
+    std::vector<LogicalType> outTypes;
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (auto& t : outTypes) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(t.copy())));
+        values.push_back(holders.back().get());
+    }
+    std::map<int64_t, std::pair<int64_t, int64_t>> got;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        got[values[0]->getValue<int64_t>()] = {values[1]->getValue<int64_t>(),
+            values[2]->getValue<int64_t>()};
+    }
+
+    ASSERT_EQ(got.size(), static_cast<size_t>(numGroups));
+    ASSERT_TRUE(got == expected)
+        << "Merged (two-executor) aggregation under spilling differs from brute-force reference";
+}
+
 class EmptyBufferManagerTest : public DBTest {
 public:
     std::string getInputDir() override {

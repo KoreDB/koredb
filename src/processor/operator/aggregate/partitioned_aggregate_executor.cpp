@@ -304,6 +304,10 @@ std::unique_ptr<FactorizedTable> PartitionedAggregateExecutor::computeAggregates
     return output;
 }
 
+void PartitionedAggregateExecutor::merge(PartitionedAggregateExecutor& other) {
+    parts.merge(other.parts);
+}
+
 std::vector<std::unique_ptr<AggregateHashTable>>
 PartitionedAggregateExecutor::finalizeToTables() {
     std::vector<std::unique_ptr<AggregateHashTable>> tables;

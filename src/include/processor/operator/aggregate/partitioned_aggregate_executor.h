@@ -85,6 +85,13 @@ public:
     // in-memory path); the *input* side was bounded by spilling during append.
     std::vector<std::unique_ptr<AggregateHashTable>> finalizeToTables();
 
+    // Merge another executor's accumulated input partitions into this one, partition by partition
+    // (both must have the same schema and partition count). `other` is left empty. This is how a set
+    // of per-thread executors is combined into one before finalizeToTables, mirroring how per-thread
+    // JoinHashTables merge into a global one. Same-hash rows co-locate, so a group still lands in a
+    // single merged partition. Not called concurrently with append on either side.
+    void merge(PartitionedAggregateExecutor& other);
+
     common::idx_t getNumPartitions() const { return parts.getNumPartitions(); }
 
 private:
