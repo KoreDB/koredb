@@ -376,8 +376,43 @@ broaden coverage and reach the hard `RETURN *` case:
 3. **Remaining join types & keys** — mark / count joins and multi-column / unflat probe keys in the
    executor (inner + left + single/composite flat key are done).
 
-5. **`ORDER BY` external merge sort** — spill sorted runs, k-way merge from disk (independent of the
-   join work; reuses the `FactorizedTable` serialization primitive).
+5. **`ORDER BY` external merge sort** — spill sorted runs, merge from disk (independent of the join
+   work; reuses the `FactorizedTable` serialization primitive). Design, grounded in the existing sort
+   subsystem (`src/processor/operator/order_by/`):
+
+   *Where it OOMs.* Plain `ORDER BY` (no `LIMIT`) holds the whole result twice with no bound:
+   `SortSharedState::payloadTables` (a `FactorizedTable` per thread with every row) and the
+   `sortedKeyBlocks` queue of encoded key tuples (`sort_state.h`). `ORDER BY … LIMIT` is already bounded
+   (`TopKBuffer::reduce` keeps only `skip+limit`), so only the plain path needs this.
+
+   *Reuse-maximizing plan (pairwise external merge).* Gate behind a new `spill_order_by` client-config
+   flag (+`spill_order_by_budget`), plumbed exactly like `spill_aggregate` (section 7); v1 gates on
+   `numThreads == 1` and the plain (non-TopK) path, everything else falling back to the in-memory sort —
+   mirroring how the Grace join started narrow.
+   - **Run generation** (in `SortLocalState::append`/`finalize`): accumulate into the existing
+     `OrderByKeyEncoder` + payload `FactorizedTable` as today; when `payload bytes + key bytes` exceed
+     the per-op budget, radix-sort the current key block (existing `RadixSort::sortSingleKeyBlock`) and
+     **spill the run**: `FactorizedTable::serialize` the payload plus the sorted key-block bytes to a
+     spill file, then reset the encoder/table for the next run. `finalize` closes the last run (kept in
+     memory if it is the only one and fits).
+   - **Merge** (replaces the in-memory pairwise loop when runs were spilled): repeatedly take two runs,
+     `deserialize` both payload tables + reload their key blocks, run the **existing `KeyBlockMerger`**
+     (which already resolves inline-prefix string ties by dereferencing the payload `FactorizedTable`,
+     now both reloaded into memory), then spill the merged run back out. Memory is bounded by ~2 runs
+     per step; the disk reads are sequential per run. Repeat until one run remains.
+   - **Scan** (`OrderByScan`/`PayloadScanner`): stream the final run from disk in sorted order. The back-
+     pointer scheme (`[FT block idx, FT block offset, FT idx]`) is re-based per merged run when its
+     payload table is rebuilt in sorted order.
+   - **String tie-breaking** is preserved for free: since a merge step reloads both runs' payload tables
+     into memory, `KeyBlockMerger::compareTuplePtrWithStringCol` dereferences full strings exactly as in
+     the in-memory path — no random disk reads.
+
+   *Testing.* Library-first: a differential unit test over random int/string/multi-column keys with
+   ASC/DESC/NULLs and a tiny `spill_order_by_budget` that forces many runs, asserting the spilled output
+   equals the in-memory (`std::sort`) reference; then an e2e `order_by` differential (`spill_order_by`
+   off vs on). A test-only activation counter (as `getSpillAggregateActivationCount`) confirms the path
+   engaged. Largest subtleties: per-run back-pointer re-basing on merge, and the run file format
+   (payload `serialize` stream + sorted key-block bytes + tuple count).
 
 6. **Partitioned aggregation — broadening.** The library executor and the gated live operator now
    exist (sections 6–7). What remains: distinct aggregates, multi-state / multi-chunk inputs,
