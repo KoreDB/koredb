@@ -216,14 +216,24 @@ The nested-type exclusion closes a real bug: a NODE/REL/LIST value occupies a si
 flat emission cannot reproduce — `MATCH (a),(b) WHERE a.ID=b.ID RETURN a, b` returned 1 row of 8 before
 the fix. `GraceHashJoinReturnNodeDifferential` locks this down.
 
-**NULL-key divergence (why the default is off).** A Grace INNER equi-join correctly skips NULL keys
-(a NULL never matches). A differential audit (`GraceHashJoinNullKeyCorrectness`) found that on a
-NULL-keyed self-join the **in-memory** hash join *undercounts* — it returns 10 of the 20 matching rows
-per key, while Grace returns all 20 (verified against a join-free count of the key's rows). Grace looks
-correct and in-memory looks buggy, but rather than default-flip a path that diverges from the
-historical reference on unproven ground, `spill_hash_join` stays **opt-in** until the in-memory
-behaviour is confirmed/fixed. Aggregation spilling has no such divergence (its NULL and nested audits
-pass) and is on by default.
+**NULL keys (and a pre-existing in-memory bug this surfaced).** A Grace INNER equi-join correctly
+skips NULL keys (a NULL never matches). Auditing this against a NULL-keyed self-join exposed a
+**pre-existing bug in the in-memory hash join**: on `MATCH (a),(b) WHERE a.k=b.k` with interspersed
+NULLs on the build side it *undercounted*, returning 10 of the 20 matching rows per key while Grace
+returned all 20. Root cause: `ValueVector::discardNull` compacted the selection vector correctly only
+when it was unfiltered; on an already-filtered selection it wrote each surviving position back to its
+original index and merely shrank the size, leaving the (possibly NULL-containing) prefix selected and
+silently dropping the tail non-null build rows. The two branches are now unified so compaction happens
+identically in both cases. Regression: `generic_hash_join/null_build_key.test` (spill-agnostic, checks
+the in-memory counts against a join-free ground truth) and `GraceHashJoinNullKeyCorrectness`.
+
+**Nested group keys in the spilling aggregation.** The out-of-core aggregation serializes group and
+dependent (payload) keys into its spill partitions and hashes/compares them on re-scan. A nested/
+NODE/REL key is not reliably round-tripped there — a `STRUCT`-with-`LIST` group key (e.g. the tinysnb
+`RETURN o.state, count(*)`) crashed on re-scan — so `computeSpillAggregateInfo` now marks any nested
+group/dependent key ineligible and falls back to the in-memory aggregation (nested aggregate *inputs*
+are unaffected: they are re-fed through the aggregate function, not treated as keys). Covered by
+`SpillAggregateNestedDifferential` (LIST + STRUCT keys) and the `agg/hash` `StructHashTest` e2e.
 
 **Verification = differential.** `buffer_manager_test`'s `GraceHashJoinDifferential` runs several
 many-to-many self-joins with `spill_hash_join` off vs on and asserts identical result multisets;

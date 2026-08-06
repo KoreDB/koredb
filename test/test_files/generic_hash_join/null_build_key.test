@@ -1,0 +1,21 @@
+-DATASET CSV empty
+
+--
+
+-CASE HashJoinNullBuildKeyCorrectness
+-STATEMENT CREATE NODE TABLE nk(id INT64, k INT64, PRIMARY KEY(id));
+---- ok
+-STATEMENT UNWIND range(0, 199) AS i CREATE (:nk {id: i, k: CASE WHEN i % 2 = 0 THEN NULL ELSE i % 10 END});
+---- ok
+-STATEMENT MATCH (a:nk) WHERE a.k = 1 RETURN count(*);
+---- 1
+20
+-STATEMENT MATCH (a:nk), (b:nk) WHERE a.k = b.k AND a.id = 101 RETURN count(*);
+---- 1
+20
+-STATEMENT MATCH (a:nk), (b:nk) WHERE a.k = b.k RETURN count(*);
+---- 1
+2000
+-STATEMENT MATCH (a:nk), (b:nk) WHERE a.k = b.k AND b.id = 51 RETURN count(*);
+---- 1
+20

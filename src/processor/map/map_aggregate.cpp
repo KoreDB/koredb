@@ -167,15 +167,23 @@ static FactorizedTableSchema getFactorizedTableSchema(const expression_vector& f
 
 // Conservative eligibility for the out-of-core (spilling) aggregation path (see SpillAggregateInfo).
 // Requires: at least one aggregate; all non-distinct; no per-aggregate factorized multiplicity (the
-// executor applies only the scalar ResultSet multiplicity, not `multiplicityChunks`); and all group
-// keys, dependent keys, and aggregate inputs in a single data chunk (the executor appends them
-// through one shared state). When eligible, records the per-aggregate input and result types.
+// executor applies only the scalar ResultSet multiplicity, not `multiplicityChunks`); no nested/
+// NODE/REL group or dependent key (see hasNestedKey below); and all group keys, dependent keys, and
+// aggregate inputs in a single data chunk (the executor appends them through one shared state). When
+// eligible, records the per-aggregate input and result types.
 static SpillAggregateInfo computeSpillAggregateInfo(const expression_vector& aggregates,
     const std::vector<AggregateFunction>& aggFunctions, const std::vector<AggregateInfo>& aggInfos,
     const std::vector<DataPos>& flatKeysPos, const std::vector<DataPos>& unFlatKeysPos,
-    const std::vector<DataPos>& payloadsPos) {
+    const std::vector<DataPos>& payloadsPos, bool hasNestedKey) {
     SpillAggregateInfo info;
     bool eligible = !aggregates.empty();
+    // A nested/NODE/REL group or dependent key is not reliably round-tripped by the partition
+    // serialize/scan the spilling path relies on (a STRUCT-with-LIST group key crashes on re-scan),
+    // so such aggregations fall back to the proven in-memory path. Nested aggregate *inputs* are
+    // fine -- they are re-fed through the aggregate function, not hashed/compared as keys.
+    if (hasNestedKey) {
+        eligible = false;
+    }
     for (auto& f : aggFunctions) {
         if (f.isFunctionDistinct()) {
             eligible = false;
@@ -256,8 +264,19 @@ std::unique_ptr<PhysicalOperator> PlanMapper::createHashAggregate(const expressi
     auto flatKeysPos = getDataPos(flatKeys, *inSchema);
     auto unFlatKeysPos = getDataPos(unFlatKeys, *inSchema);
     auto payloadsPos = getDataPos(payloads, *inSchema);
+    // Group and dependent (payload) keys are serialized into the spill partitions and hashed/compared
+    // on re-scan; a nested/NODE/REL one is not reliably round-tripped there, so exclude it.
+    auto anyNested = [](const expression_vector& exprs) {
+        for (auto& e : exprs) {
+            if (LogicalTypeUtils::isNested(e->getDataType())) {
+                return true;
+            }
+        }
+        return false;
+    };
+    bool hasNestedKey = anyNested(flatKeys) || anyNested(unFlatKeys) || anyNested(payloads);
     auto spillInfo = computeSpillAggregateInfo(aggregates, aggFunctions, aggregateInputInfos,
-        flatKeysPos, unFlatKeysPos, payloadsPos);
+        flatKeysPos, unFlatKeysPos, payloadsPos, hasNestedKey);
     auto tableSchema = getFactorizedTableSchema(flatKeys, unFlatKeys, payloads, aggFunctions);
     HashAggregateInfo aggregateInfo{std::move(flatKeysPos), std::move(unFlatKeysPos),
         std::move(payloadsPos), std::move(tableSchema)};

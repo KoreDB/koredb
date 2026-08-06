@@ -58,25 +58,28 @@ uint32_t ValueVector::countNonNull() const {
 bool ValueVector::discardNull(ValueVector& vector) {
     if (vector.hasNoNullsGuarantee()) {
         return true;
-    } else {
-        auto selectedPos = 0u;
-        if (vector.state->getSelVector().isUnfiltered()) {
-            auto buffer = vector.state->getSelVectorUnsafe().getMutableBuffer();
-            for (auto i = 0u; i < vector.state->getSelVector().getSelSize(); i++) {
-                buffer[selectedPos] = i;
-                selectedPos += !vector.isNull(i);
-            }
-            vector.state->getSelVectorUnsafe().setToFiltered();
-        } else {
-            for (auto i = 0u; i < vector.state->getSelVector().getSelSize(); i++) {
-                auto pos = vector.state->getSelVector()[i];
-                vector.state->getSelVectorUnsafe()[i] = pos;
-                selectedPos += !vector.isNull(pos);
-            }
-        }
-        vector.state->getSelVectorUnsafe().setSelSize(selectedPos);
-        return selectedPos > 0;
     }
+    // Compact the selection vector down to only its non-null positions. This is written to work for
+    // both an unfiltered selection (getSelVector()[i] == i) and an already-filtered one (an explicit
+    // list of positions): read the i-th selected position, then keep it iff the value there is
+    // non-null. Because selectedPos <= i for every i, writing buffer[selectedPos] never clobbers a
+    // position that has not been read yet, so the in-place compaction is safe in both modes.
+    //
+    // The previous implementation only compacted correctly in the unfiltered branch; the filtered
+    // branch wrote each position back to its original index and merely shrank the size, leaving the
+    // (possibly null-containing) prefix selected instead of the non-null positions. That silently
+    // dropped the tail non-null rows -- e.g. a hash-join build side whose key column arrived as a
+    // filtered selection with interspersed NULLs kept only the first half of its rows.
+    auto selectedPos = 0u;
+    auto buffer = vector.state->getSelVectorUnsafe().getMutableBuffer();
+    for (auto i = 0u; i < vector.state->getSelVector().getSelSize(); i++) {
+        auto pos = vector.state->getSelVector()[i];
+        buffer[selectedPos] = pos;
+        selectedPos += !vector.isNull(pos);
+    }
+    vector.state->getSelVectorUnsafe().setToFiltered();
+    vector.state->getSelVectorUnsafe().setSelSize(selectedPos);
+    return selectedPos > 0;
 }
 
 bool ValueVector::setNullFromBits(const uint64_t* srcNullEntries, uint64_t srcOffset,

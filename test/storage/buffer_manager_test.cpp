@@ -1945,6 +1945,7 @@ TEST_F(BufferManagerTest, SpillAggregateNestedDifferential) {
         "MATCH (p:person) RETURN p.gender, collect(p.usedNames)", // nested (LIST) aggregate input
         "MATCH (p:person) RETURN p.workedHours, count(*)",        // nested (LIST) group key
         "MATCH (p:person) RETURN p.gender, count(p.workedHours)", // count over a LIST column
+        "MATCH (o:organisation) RETURN o.state, count(*)", // nested (STRUCT-with-LIST) group key
     };
     for (const auto& q : queries) {
         ASSERT_TRUE(conn->query("CALL spill_aggregate=false;")->isSuccess());
@@ -1956,11 +1957,11 @@ TEST_F(BufferManagerTest, SpillAggregateNestedDifferential) {
 }
 
 // Audits the Grace join with NULL join keys: an equi-join must never match NULL = NULL. We verify
-// the Grace result against the *true* answer (computed without a join), NOT against the in-memory
-// hash join: the in-memory path was found to UNDERCOUNT this NULL-keyed self-join (it returns 10 of
-// the 20 matching rows per key; Grace returns all 20 -- see docs/resource-limits-and-spilling.md).
-// So this locks in that Grace's NULL handling (skip probing NULL keys, never match NULL=NULL) is
-// correct, independent of the reference.
+// the Grace result against the *true* answer (computed without a join), which is the strongest check.
+// This NULL-keyed self-join is also what surfaced a pre-existing in-memory hash-join bug: the build
+// side undercounted (returning 10 of the 20 matching rows per key) because ValueVector::discardNull
+// mishandled an already-filtered selection; that is now fixed at the root (see the null_build_key
+// e2e test and docs/resource-limits-and-spilling.md), so in-memory and Grace now both return 20.
 TEST_F(BufferManagerTest, GraceHashJoinNullKeyCorrectness) {
     using kuzu::processor::getGraceHashJoinActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
