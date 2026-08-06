@@ -1274,6 +1274,104 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorSpillStringKey) {
         false /*intKey*/);
 }
 
+// Picks the non-distinct MIN(STRING) aggregate function out of its function set. The min/max function
+// set entries are fully concrete (the comparison op is baked in via template), so no bind step is
+// needed.
+static function::AggregateFunction makeMinStringAggFunc() {
+    using namespace kuzu::function;
+    auto set = AggregateMinFunction::getFunctionSet();
+    for (auto& f : set) {
+        auto* af = common::ku_dynamic_cast<AggregateFunction*>(f.get());
+        if (!af->isFunctionDistinct() && af->parameterTypeIDs.size() == 1 &&
+            af->parameterTypeIDs[0] == common::LogicalTypeID::STRING) {
+            return af->copy();
+        }
+    }
+    throw std::runtime_error("MIN(STRING) not found in function set");
+}
+
+// Proves the headline correctness claim: a *stateful* aggregate whose state carries an overflow
+// pointer (MIN(STRING)) is computed correctly under forced spilling, because aggregate states never
+// leave memory -- only the raw STRING input column spills (and round-trips via serialization), while
+// each partition is aggregated by a fresh in-memory table.
+TEST_F(BufferManagerTest, PartitionedAggregateExecutorMinStringSpill) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    const uint64_t numRows = 5000;
+    const int64_t numGroups = 15;
+    auto groupOf = [&](uint64_t i) { return static_cast<int64_t>(i % numGroups); };
+    auto strOf = [&](uint64_t i) { return "s" + std::to_string((i * 13) % 40); };
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<function::AggregateFunction> aggFuncs;
+    aggFuncs.push_back(makeMinStringAggFunc());
+    std::vector<LogicalType> aggInputTypes;
+    aggInputTypes.push_back(LogicalType::STRING());
+    std::vector<LogicalType> aggResultTypes;
+    aggResultTypes.push_back(LogicalType::STRING());
+
+    PartitionedAggregateExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_pae_minstr.spill").string(),
+        LogicalType::copy(keyTypes), std::move(aggFuncs), LogicalType::copy(aggInputTypes),
+        LogicalType::copy(aggResultTypes), 2 /*logNumPartitions*/, 4096 /*budget forces spill*/);
+
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm);
+        ValueVector sVec(LogicalType::STRING(), mm);
+        keyVec.state = state;
+        sVec.state = state;
+        for (uint64_t b = 0; b < numRows; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numRows - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                keyVec.setNull(r, false);
+                keyVec.setValue<int64_t>(r, groupOf(b + r));
+                sVec.setNull(r, false);
+                StringVector::addString(&sVec, r, strOf(b + r));
+            }
+            exec.append({&keyVec}, {&sVec});
+        }
+    }
+
+    auto output = exec.computeAggregates();
+
+    // Brute-force reference: per group, lexicographic min string (ASCII, so std::string < matches
+    // Kuzu's byte-wise comparison).
+    std::map<int64_t, std::string> expected;
+    for (uint64_t i = 0; i < numRows; i++) {
+        auto g = groupOf(i);
+        auto s = strOf(i);
+        auto it = expected.find(g);
+        if (it == expected.end() || s < it->second) {
+            expected[g] = s;
+        }
+    }
+
+    std::vector<LogicalType> outTypes;
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::STRING());
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (auto& t : outTypes) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(t.copy())));
+        values.push_back(holders.back().get());
+    }
+    std::map<int64_t, std::string> got;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        got[values[0]->getValue<int64_t>()] = values[1]->getValue<std::string>();
+    }
+
+    ASSERT_EQ(got.size(), static_cast<size_t>(numGroups));
+    ASSERT_TRUE(got == expected)
+        << "MIN(STRING) under spilling differs from brute-force reference";
+}
+
 class EmptyBufferManagerTest : public DBTest {
 public:
     std::string getInputDir() override {
