@@ -214,6 +214,15 @@ std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJ
                 pScanState->initOriginalAndSelectedSize(m);
                 probePart.scan(std::span<ValueVector*>(pAllVecs), t, m);
                 for (uint64_t r = 0; r < m; r++) {
+                    // A NULL join key never matches in an equi-join; the in-memory path discards such
+                    // rows before probing, so skip probing here too (a LEFT join still null-pads).
+                    bool keyIsNull = false;
+                    for (auto i = 0u; i < numKeys; i++) {
+                        if (pKeyVecs[i]->isNull(r)) {
+                            keyIsNull = true;
+                            break;
+                        }
+                    }
                     for (auto i = 0u; i < numKeys; i++) {
                         probeKeyVecs[i]->copyFromVectorData(0, pKeyVecs[i], r);
                     }
@@ -223,7 +232,7 @@ std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJ
                     flatState->getSelVectorUnsafe().setToUnfiltered(1);
                     probedTuples[0] = nullptr;
                     uint64_t rowMatches = 0;
-                    if (jht->getNumEntries() > 0) {
+                    if (!keyIsNull && jht->getNumEntries() > 0) {
                         jht->probe(probeKeyVecs, probeHashVec, hashSelVec,
                             numKeys > 1 ? &probeTmpHashVec : nullptr, probedTuples.get());
                     }
@@ -406,10 +415,18 @@ bool GraceHashJoinExecutor::getNextChunk() {
                 return false;
             }
         }
-        // (3) Load the next probe row and probe the current partition's hash table.
+        // (3) Load the next probe row and probe the current partition's hash table. A NULL join key
+        // never matches, so skip probing it (a LEFT join still null-pads via streamRowMatchCount == 0).
         streamLoadProbeRow();
         streamProbedTuples[0] = nullptr;
-        if (streamJHT->getNumEntries() > 0) {
+        bool keyIsNull = false;
+        for (auto i = 0u; i < numKeys; i++) {
+            if (streamProbeKeyVecs[i]->isNull(0)) {
+                keyIsNull = true;
+                break;
+            }
+        }
+        if (!keyIsNull && streamJHT->getNumEntries() > 0) {
             streamJHT->probe(streamProbeKeyVecs, *streamHashVec, *streamHashSelVec,
                 numKeys > 1 ? streamTmpHashVec.get() : nullptr, streamProbedTuples.get());
         }

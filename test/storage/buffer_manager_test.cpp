@@ -1889,13 +1889,12 @@ TEST_F(BufferManagerTest, SpillAggregateMultiThreadDifferential) {
         << "multi-threaded spilling vs single-threaded in-memory aggregation mismatch";
 }
 
-// Verifies spill_hash_join and spill_aggregate are ON by default: an eligible GROUP BY and an
-// eligible join activate the out-of-core paths without any CALL spill_* setting.
-TEST_F(BufferManagerTest, SpillDefaultsOn) {
+// Verifies the spill defaults: spill_aggregate is ON by default (an eligible GROUP BY activates the
+// out-of-core path with no CALL setting) while spill_hash_join is OFF by default (an eligible join
+// does not activate) -- the join path is opt-in pending the NULL-key parity work.
+TEST_F(BufferManagerTest, SpillDefaults) {
     using kuzu::processor::getGraceHashJoinActivationCount;
     using kuzu::processor::getSpillAggregateActivationCount;
-    // The join path is single-threaded only; pin threads=1 so it is eligible. This does not touch the
-    // spill_* settings, which is what we are checking default the way.
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
 
     const auto aggBefore = getSpillAggregateActivationCount();
@@ -1907,8 +1906,8 @@ TEST_F(BufferManagerTest, SpillDefaultsOn) {
     ASSERT_TRUE(conn->query("MATCH (a:person), (b:person) WHERE a.gender = b.gender "
                             "RETURN a.fName, b.fName")
                     ->isSuccess());
-    ASSERT_GT(getGraceHashJoinActivationCount(), joinBefore)
-        << "spill_hash_join should be ON by default";
+    ASSERT_EQ(getGraceHashJoinActivationCount(), joinBefore)
+        << "spill_hash_join should be OFF by default";
 }
 
 // Differential correctness of the Grace join for RETURN-node / multi-column shapes (which activate
@@ -1954,6 +1953,60 @@ TEST_F(BufferManagerTest, SpillAggregateNestedDifferential) {
         const auto grace = collectSortedRows(conn.get(), q);
         ASSERT_EQ(inMemory, grace) << "spill_aggregate on vs off mismatch for: " << q;
     }
+}
+
+// Audits the Grace join with NULL join keys: an equi-join must never match NULL = NULL. We verify
+// the Grace result against the *true* answer (computed without a join), NOT against the in-memory
+// hash join: the in-memory path was found to UNDERCOUNT this NULL-keyed self-join (it returns 10 of
+// the 20 matching rows per key; Grace returns all 20 -- see docs/resource-limits-and-spilling.md).
+// So this locks in that Grace's NULL handling (skip probing NULL keys, never match NULL=NULL) is
+// correct, independent of the reference.
+TEST_F(BufferManagerTest, GraceHashJoinNullKeyCorrectness) {
+    using kuzu::processor::getGraceHashJoinActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE nk(id INT64, k INT64, PRIMARY KEY(id));")->isSuccess());
+    // Half the rows (even id) have a NULL key; odd id have k = id % 10 in {1,3,5,7,9}.
+    ASSERT_TRUE(conn->query("UNWIND range(0, 199) AS i CREATE (:nk {id: i, k: CASE WHEN i % 2 = 0 "
+                            "THEN NULL ELSE i % 10 END});")
+                    ->isSuccess());
+    auto count1 = [&](const std::string& cq) {
+        return std::stoll(conn->query(cq)->getNext()->toString());
+    };
+    // True per-key row count via a scan (no join): 20 rows have k = 1.
+    const auto k1rows = count1("MATCH (a:nk) WHERE a.k = 1 RETURN count(*)");
+    ASSERT_EQ(k1rows, 20);
+    // a with id 101 has k = 1, so it must join exactly the k1rows rows with k = 1 -- no NULL matches.
+    const auto before = getGraceHashJoinActivationCount();
+    const auto a101matches =
+        count1("MATCH (a:nk), (b:nk) WHERE a.k = b.k AND a.id = 101 RETURN count(*)");
+    ASSERT_GT(getGraceHashJoinActivationCount(), before) << "Grace path did not activate";
+    ASSERT_EQ(a101matches, k1rows) << "Grace join with NULL keys does not match the true answer";
+    // Full self-join = sum over the 5 non-null keys of 20*20 = 2000; no NULL=NULL matches.
+    const auto full = count1("MATCH (a:nk), (b:nk) WHERE a.k = b.k RETURN count(*)");
+    ASSERT_EQ(full, 5 * 20 * 20);
+}
+
+// Audits the spilling aggregation with NULL group keys: all NULL-keyed rows must fold into a single
+// NULL group. spill_aggregate off vs on must agree.
+TEST_F(BufferManagerTest, SpillAggregateNullKeyDifferential) {
+    using kuzu::processor::getSpillAggregateActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE nkg(id INT64, k INT64, PRIMARY KEY(id));")->isSuccess());
+    ASSERT_TRUE(conn->query("UNWIND range(0, 499) AS i CREATE (:nkg {id: i, k: CASE WHEN i % 3 = 0 "
+                            "THEN NULL ELSE i % 8 END});")
+                    ->isSuccess());
+    const std::string q = "MATCH (n:nkg) RETURN n.k, count(*), sum(n.id)";
+
+    const auto before = getSpillAggregateActivationCount();
+    ASSERT_TRUE(conn->query("CALL spill_aggregate=false;")->isSuccess());
+    const auto inMemory = collectSortedRows(conn.get(), q);
+    ASSERT_TRUE(conn->query("CALL spill_aggregate=true;")->isSuccess());
+    const auto grace = collectSortedRows(conn.get(), q);
+    ASSERT_GT(getSpillAggregateActivationCount(), before) << "spilling aggregation did not activate";
+    ASSERT_EQ(inMemory, grace) << "spill_aggregate on vs off mismatch with NULL group keys";
 }
 
 } // namespace testing

@@ -32,9 +32,10 @@ struct ClientConfigDefault {
     static constexpr uint64_t QUERY_MEMORY_LIMIT = 0;
     // When true, an eligible HASH_JOIN runs the out-of-core (Grace) path that radix-partitions both
     // sides and spills to disk under a memory budget, so a join whose build side does not fit in
-    // memory can still complete. On by default; with the derived budget (whole buffer pool) it only
-    // spills to disk near the memory ceiling, otherwise processing in-memory partition-by-partition.
-    static constexpr bool SPILL_HASH_JOIN = true;
+    // memory can still complete. OFF by default (opt-in): the Grace path diverges from the in-memory
+    // reference for NULL-keyed self-joins (see docs/resource-limits-and-spilling.md), so it is not yet
+    // safe to default on. Aggregation spilling (spill_aggregate) has no such divergence and is on.
+    static constexpr bool SPILL_HASH_JOIN = false;
     // Per-operator memory budget (bytes) for the Grace hash-join path. 0 means "derive it": the
     // per-query memory limit if set, otherwise the whole buffer pool. A small value forces spilling.
     static constexpr uint64_t SPILL_HASH_JOIN_BUDGET = 0;

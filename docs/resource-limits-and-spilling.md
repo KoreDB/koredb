@@ -181,12 +181,12 @@ variable-length strings, but not factorized/unflat payloads). See remaining work
 
 ### 5. Live `HASH_JOIN` operator integration (out-of-core, gated)
 
-`spill_hash_join` (BOOL, **default `true`**) turns an eligible `HASH_JOIN` into the out-of-core
-path; when off, the in-memory path is byte-for-byte unchanged. `spill_hash_join_budget` (UINT64
-bytes, `0` = derive from `query_memory_limit` else the buffer-pool size) sets the per-operator spill
-budget. With the derived budget the operator partitions in memory and only spills to disk near the
-buffer-pool ceiling, so on-by-default trades a partition/materialize overhead for not-OOMing. The
-wiring (`map_hash_join.cpp`, `hash_join_build.cpp`, `hash_join_probe.cpp`):
+`spill_hash_join` (BOOL, **default `false`** — opt-in; see "NULL-key divergence" below) turns an
+eligible `HASH_JOIN` into the out-of-core path; when off, the in-memory path is byte-for-byte
+unchanged. `spill_hash_join_budget` (UINT64 bytes, `0` = derive from `query_memory_limit` else the
+buffer-pool size) sets the per-operator spill budget. With the derived budget the operator partitions
+in memory and only spills to disk near the buffer-pool ceiling. The wiring (`map_hash_join.cpp`,
+`hash_join_build.cpp`, `hash_join_probe.cpp`):
 
 - `PlanMapper::mapHashJoin` computes plan-time `GraceHashJoinInfo` (join key/payload types and the
   probe-side non-key output columns to capture) and marks the join *eligible* only for a conservative
@@ -206,17 +206,31 @@ chunk. The factorized streaming primitive assumes probe-flat / build-unflat live
 — true for other plans but not this one — so it is kept as a library primitive (above) for later.
 
 **Eligibility (conservative; anything else silently uses the in-memory path):** INNER only, no mark,
-non-empty build payloads, `numThreads == 1`, the build side is a single data chunk, and **all** output
-columns live in a single data chunk. Multi-chunk (factorized) outputs, `RETURN *`-style unflat build
-payloads, LEFT/MARK/COUNT joins, and parallel execution all fall back. Silent fallback is safe because
-the fallback is the proven in-memory join.
+non-empty build payloads, `numThreads == 1`, the build side is a single data chunk, **all** output
+columns live in a single data chunk, and **no nested/NODE/REL payload or output column**. Multi-chunk
+(factorized) outputs, `RETURN *`-style unflat build payloads, LEFT/MARK/COUNT joins, and parallel
+execution all fall back. Silent fallback is safe because the fallback is the proven in-memory join.
+
+The nested-type exclusion closes a real bug: a NODE/REL/LIST value occupies a single schema position
+(so the single-chunk check passes) but expands to multiple runtime vectors, which the single-chunk
+flat emission cannot reproduce — `MATCH (a),(b) WHERE a.ID=b.ID RETURN a, b` returned 1 row of 8 before
+the fix. `GraceHashJoinReturnNodeDifferential` locks this down.
+
+**NULL-key divergence (why the default is off).** A Grace INNER equi-join correctly skips NULL keys
+(a NULL never matches). A differential audit (`GraceHashJoinNullKeyCorrectness`) found that on a
+NULL-keyed self-join the **in-memory** hash join *undercounts* — it returns 10 of the 20 matching rows
+per key, while Grace returns all 20 (verified against a join-free count of the key's rows). Grace looks
+correct and in-memory looks buggy, but rather than default-flip a path that diverges from the
+historical reference on unproven ground, `spill_hash_join` stays **opt-in** until the in-memory
+behaviour is confirmed/fixed. Aggregation spilling has no such divergence (its NULL and nested audits
+pass) and is on by default.
 
 **Verification = differential.** `buffer_manager_test`'s `GraceHashJoinDifferential` runs several
 many-to-many self-joins with `spill_hash_join` off vs on and asserts identical result multisets;
 `GraceHashJoinSpillDifferential` does the same over 2000 generated rows with a 4 KiB budget that forces
-partitions to spill and reload. Both assert the Grace path actually activated (a process-wide
-activation counter) so the check is never vacuous. No regression: `api_test` 97/97, `buffer_manager_test`
-20/20, e2e `match` and `generic_hash_join` green.
+partitions to spill and reload; `GraceHashJoinReturnNodeDifferential` covers scalar-vs-nested `RETURN`
+shapes; `GraceHashJoinNullKeyCorrectness` checks NULL-key results against the true (join-free) answer.
+No regression: `api_test` 97/97, e2e `match` and `generic_hash_join` green.
 
 ### 6. Out-of-core aggregation executor — `PartitionedAggregateExecutor`
 
@@ -308,15 +322,19 @@ the same over 5000 generated rows with a 4 KiB budget that forces raw rows to sp
 reference (exercising per-thread executors + merge). All assert the spilling path actually activated (a
 process-wide counter) so the check is never vacuous.
 
-### Defaults: spilling is on by default
+### Defaults
 
-`spill_hash_join` and `spill_aggregate` both **default to `true`** (`SpillDefaultsOn` asserts an
-eligible join and `GROUP BY` activate grace with no `CALL` setting). With the derived budget (whole
-buffer pool) eligible operators partition in memory and only spill to disk near the ceiling, trading a
-partition/materialize overhead for not-OOMing. This also means the whole test suite exercises the grace
-paths: no regression with defaults on across `buffer_manager_test` 32/32, `api_test` 97/97, and e2e
-`agg`/`match`/`subquery`/`projection`/`filter`/`order_by`/`optional_match`. Because the e2e runner
-sorts non-`CHECK_ORDER` results, grace's partition-order output does not perturb those comparisons.
+`spill_aggregate` **defaults to `true`**; `spill_hash_join` **defaults to `false`** (opt-in).
+`SpillDefaults` asserts an eligible `GROUP BY` activates grace with no `CALL` setting while an eligible
+join does not. Aggregation is on because its audits (nested keys/inputs/results, NULL group keys, the
+scalar differentials, multi-threaded) all pass and it reuses the in-memory scan path, so it never
+diverges from the reference. The join is held opt-in by the NULL-key divergence documented in section 5.
+With the derived budget (whole buffer pool) an on operator partitions in memory and only spills to disk
+near the ceiling, trading a partition/materialize overhead for not-OOMing. With aggregation on by
+default the whole suite exercises the grace aggregation path with no regression (`buffer_manager_test`,
+`api_test` 97/97, e2e `agg`/`match`/`subquery`/`projection`/`filter`/`order_by`/`optional_match`);
+because the e2e runner sorts non-`CHECK_ORDER` results, grace's partition-order output does not perturb
+those comparisons.
 
 ## Remaining work (the large, careful pieces)
 
