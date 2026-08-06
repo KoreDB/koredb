@@ -103,7 +103,7 @@ void GraceHashJoinExecutor::appendProbe(const std::vector<ValueVector*>& keyVect
     appendToPartitions(probeParts, keyVectors, payloadVectors);
 }
 
-std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeInnerJoin() {
+std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJoin) {
     auto output = std::make_unique<FactorizedTable>(mm, makeOutputSchema());
     const auto numBuildPayloads = buildPayloadTypes.size();
 
@@ -185,7 +185,9 @@ std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeInnerJoin() {
         }
 
         auto& probePart = probeParts.getResidentPartition(p);
-        if (probePart.getNumTuples() > 0 && jht->getNumEntries() > 0) {
+        // For an inner join an empty build partition yields no matches; for a left join its probe
+        // rows still emit null-padded output, so we always process the probe partition.
+        if (probePart.getNumTuples() > 0) {
             auto pScanState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
             std::vector<std::unique_ptr<ValueVector>> holders;
             std::vector<ValueVector*> pKeyVecs, pPayVecs, pAllVecs;
@@ -217,8 +219,11 @@ std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeInnerJoin() {
                     }
                     flatState->getSelVectorUnsafe().setToUnfiltered(1);
                     probedTuples[0] = nullptr;
-                    jht->probe(probeKeyVecs, probeHashVec, hashSelVec,
-                        numKeys > 1 ? &probeTmpHashVec : nullptr, probedTuples.get());
+                    uint64_t rowMatches = 0;
+                    if (jht->getNumEntries() > 0) {
+                        jht->probe(probeKeyVecs, probeHashVec, hashSelVec,
+                            numKeys > 1 ? &probeTmpHashVec : nullptr, probedTuples.get());
+                    }
                     while (probedTuples[0] != nullptr) {
                         const auto numMatched = jht->matchFlatKeys(probeKeyVecs, probedTuples.get(),
                             matchedTuples.get());
@@ -227,10 +232,19 @@ std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeInnerJoin() {
                             jht->lookup(buildPayloadVecs, buildPayloadColIdxs, matchedTuples.get(),
                                 0, numMatched);
                             output->append(outputVecs);
+                            rowMatches += numMatched;
                         }
                         if (numMatched < DEFAULT_VECTOR_CAPACITY) {
                             break;
                         }
+                    }
+                    if (isLeftJoin && rowMatches == 0) {
+                        // Null-pad: one output row, probe columns kept, build payloads null.
+                        buildOutState->initOriginalAndSelectedSize(1);
+                        for (auto* buildVec : buildPayloadVecs) {
+                            buildVec->setNull(0, true);
+                        }
+                        output->append(outputVecs);
                     }
                 }
             }

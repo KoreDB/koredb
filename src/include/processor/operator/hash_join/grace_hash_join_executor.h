@@ -51,13 +51,18 @@ public:
     void appendProbe(const std::vector<common::ValueVector*>& keyVectors,
         const std::vector<common::ValueVector*>& payloadVectors);
 
-    // Materialize the full inner-join result. Columns: [probeKeys..., probePayloads...,
-    // buildPayloads...]. Consumes both sides (partitions are freed as they are processed).
-    std::unique_ptr<FactorizedTable> computeInnerJoin();
+    // Materialize the full join result. Columns: [probeKeys..., probePayloads...,
+    // buildPayloads...]. For a LEFT join, a probe row with no match emits one row with null build
+    // payloads. Consumes both sides (partitions are freed as they are processed).
+    std::unique_ptr<FactorizedTable> computeInnerJoin() {
+        return computeJoin(false /*isLeftJoin*/);
+    }
+    std::unique_ptr<FactorizedTable> computeLeftJoin() { return computeJoin(true /*isLeftJoin*/); }
 
     common::idx_t getNumPartitions() const { return buildParts.getNumPartitions(); }
 
 private:
+    std::unique_ptr<FactorizedTable> computeJoin(bool isLeftJoin);
     void appendToPartitions(PartitionedFactorizedTable& parts,
         const std::vector<common::ValueVector*>& keyVectors,
         const std::vector<common::ValueVector*>& payloadVectors);

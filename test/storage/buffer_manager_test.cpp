@@ -732,12 +732,12 @@ TEST_F(BufferManagerTest, GraceLeftJoinWithSpilling) {
 }
 
 // Exercises the production GraceHashJoinExecutor end to end under a tiny memory budget that forces
-// partitions to spill during append: feed build + probe, materialize the inner join, and compare
-// the output multiset to a brute-force reference.
-TEST_F(BufferManagerTest, GraceHashJoinExecutorInnerJoin) {
+// partitions to spill during append: feed build + probe, materialize the join (inner or left), and
+// compare the output multiset to a brute-force reference. A left join's null-padded build payload
+// is represented by the sentinel in the multiset.
+static void runGraceExecutorTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
+    bool isLeftJoin) {
     using namespace kuzu::processor;
-    auto* mm = getMemoryManager(*database);
-    auto* fs = getFileSystem(*database);
 
     std::vector<LogicalType> keyTypes;
     keyTypes.push_back(LogicalType::INT64());
@@ -783,9 +783,10 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorInnerJoin) {
     feed(true, numBuild, buildKeyFn);
     feed(false, numProbe, probeKeyFn);
 
-    auto output = exec.computeInnerJoin();
+    auto output = isLeftJoin ? exec.computeLeftJoin() : exec.computeInnerJoin();
 
-    // Brute-force reference: multiset of (probeKey, buildPayload).
+    // Brute-force reference: multiset of (probeKey, buildPayload); left join adds (probeKey,
+    // sentinel) for non-matching probe rows.
     std::map<std::pair<int64_t, int64_t>, int64_t> expected;
     std::unordered_map<int64_t, std::vector<int64_t>> buildByKey;
     for (uint64_t i = 0; i < numBuild; i++) {
@@ -794,6 +795,9 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorInnerJoin) {
     for (uint64_t j = 0; j < numProbe; j++) {
         auto it = buildByKey.find(probeKeyFn(j));
         if (it == buildByKey.end()) {
+            if (isLeftJoin) {
+                expected[{probeKeyFn(j), GRACE_LEFT_NULL_SENTINEL}]++;
+            }
             continue;
         }
         for (auto bp : it->second) {
@@ -801,7 +805,8 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorInnerJoin) {
         }
     }
 
-    // Output columns: [probeKey, probePayload, buildPayload]; compare (probeKey, buildPayload).
+    // Output columns: [probeKey, probePayload, buildPayload]; compare (probeKey, buildPayload) with
+    // a null build payload mapped to the sentinel.
     std::vector<LogicalType> outTypes;
     outTypes.push_back(LogicalType::INT64());
     outTypes.push_back(LogicalType::INT64());
@@ -816,12 +821,24 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorInnerJoin) {
     FlatTupleIterator it(*output, values);
     while (it.hasNextFlatTuple()) {
         it.getNextFlatTuple();
-        got[{values[0]->getValue<int64_t>(), values[2]->getValue<int64_t>()}]++;
+        const int64_t buildPayload =
+            values[2]->isNull() ? GRACE_LEFT_NULL_SENTINEL : values[2]->getValue<int64_t>();
+        got[{values[0]->getValue<int64_t>(), buildPayload}]++;
     }
 
     ASSERT_EQ(got.size(), expected.size());
     ASSERT_TRUE(got == expected)
         << "GraceHashJoinExecutor output multiset differs from brute-force reference";
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorInnerJoin) {
+    runGraceExecutorTest(getMemoryManager(*database), getFileSystem(*database),
+        false /*isLeftJoin*/);
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorLeftJoin) {
+    runGraceExecutorTest(getMemoryManager(*database), getFileSystem(*database),
+        true /*isLeftJoin*/);
 }
 
 class EmptyBufferManagerTest : public DBTest {
