@@ -14,10 +14,14 @@
 #include "common/types/types.h"
 #include "common/types/value/value.h"
 #include "common/vector/value_vector.h"
+#include "function/aggregate/count_star.h"
+#include "function/aggregate/sum.h"
+#include "function/aggregate_function.h"
 #include "function/hash/vector_hash_functions.h"
 #include "graph_test/private_graph_test.h"
 #include "gtest/gtest.h"
 #include "processor/data_pos.h"
+#include "processor/operator/aggregate/partitioned_aggregate_executor.h"
 #include "processor/operator/hash_join/grace_hash_join_executor.h"
 #include "processor/operator/hash_join/hash_join_build.h"
 #include "processor/operator/hash_join/join_hash_table.h"
@@ -1142,6 +1146,132 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorCompositeKeyStringPayload) {
     ASSERT_EQ(got.size(), expected.size());
     ASSERT_TRUE(got == expected)
         << "Composite-key/string-payload Grace join differs from brute-force reference";
+}
+
+// Builds COUNT(*) and SUM(INT64) aggregate functions without going through the binder/catalog, so
+// the executor can be exercised in isolation. COUNT_STAR is taken from its function set (which sets
+// needToHandleNulls); SUM(INT64->INT64) is constructed directly from the concrete SumFunction so no
+// type-widening bind step is needed.
+static std::vector<function::AggregateFunction> makeCountSumAggFuncs() {
+    using namespace kuzu::function;
+    std::vector<AggregateFunction> aggFuncs;
+    auto countStarSet = CountStarFunction::getFunctionSet();
+    aggFuncs.push_back(
+        common::ku_dynamic_cast<AggregateFunction*>(countStarSet[0].get())->copy());
+    aggFuncs.push_back(AggregateFunctionUtils::getAggFunc<SumFunction<int64_t, int64_t>>("SUM",
+        common::LogicalTypeID::INT64, common::LogicalTypeID::INT64, false /*isDistinct*/)
+                           ->copy());
+    return aggFuncs;
+}
+
+// Exercises the out-of-core PartitionedAggregateExecutor: feed rows of (groupKey, value), then
+// GROUP BY groupKey computing COUNT(*) and SUM(value). Runs once with a tiny budget (forcing raw
+// input rows to spill and re-load during append) and once with a large budget (fully in memory), and
+// checks both against the same brute-force reference. A STRING group key additionally exercises
+// overflow serialization of the spilled raw rows. `intKey` picks an INT64 vs STRING group key.
+static void runPartitionedAggTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
+    uint64_t budget, bool intKey) {
+    using namespace kuzu::processor;
+    using namespace kuzu::function;
+
+    const uint64_t numRows = 5000;
+    const int64_t numGroups = 20;
+    auto groupOf = [&](uint64_t i) { return static_cast<int64_t>(i % numGroups); };
+    auto valOf = [&](uint64_t i) { return static_cast<int64_t>((i * 7) % 100); };
+    auto keyStr = [&](int64_t g) { return "g" + std::to_string(g); };
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(intKey ? LogicalType::INT64() : LogicalType::STRING());
+    // Per-function input type: ANY() for COUNT(*), INT64 for SUM. Result types: INT64, INT64.
+    std::vector<LogicalType> aggInputTypes;
+    aggInputTypes.push_back(LogicalType::ANY());
+    aggInputTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> aggResultTypes;
+    aggResultTypes.push_back(LogicalType::INT64());
+    aggResultTypes.push_back(LogicalType::INT64());
+
+    PartitionedAggregateExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_pae.spill").string(),
+        LogicalType::copy(keyTypes), makeCountSumAggFuncs(), LogicalType::copy(aggInputTypes),
+        LogicalType::copy(aggResultTypes), 2 /*logNumPartitions*/, budget);
+
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(keyTypes[0].copy(), mm);
+        ValueVector valVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        valVec.state = state;
+        for (uint64_t b = 0; b < numRows; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numRows - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                const auto g = groupOf(b + r);
+                keyVec.setNull(r, false);
+                if (intKey) {
+                    keyVec.setValue<int64_t>(r, g);
+                } else {
+                    StringVector::addString(&keyVec, r, keyStr(g));
+                }
+                valVec.setNull(r, false);
+                valVec.setValue<int64_t>(r, valOf(b + r));
+            }
+            // aggInputVectors: [nullptr for COUNT(*), &valVec for SUM].
+            exec.append({&keyVec}, {nullptr, &valVec});
+        }
+    }
+
+    auto output = exec.computeAggregates();
+
+    // Brute-force reference: per group, (count, sum).
+    std::map<int64_t, std::pair<int64_t, int64_t>> expected;
+    for (uint64_t i = 0; i < numRows; i++) {
+        auto& e = expected[groupOf(i)];
+        e.first += 1;
+        e.second += valOf(i);
+    }
+
+    // Output columns: [key, count(INT64), sum(INT64)].
+    std::vector<LogicalType> outTypes;
+    outTypes.push_back(keyTypes[0].copy());
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (auto& t : outTypes) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(t.copy())));
+        values.push_back(holders.back().get());
+    }
+    std::map<int64_t, std::pair<int64_t, int64_t>> got;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        int64_t g = intKey ?
+                        values[0]->getValue<int64_t>() :
+                        static_cast<int64_t>(std::stoll(values[0]->getValue<std::string>().substr(1)));
+        got[g] = {values[1]->getValue<int64_t>(), values[2]->getValue<int64_t>()};
+    }
+
+    ASSERT_EQ(got.size(), static_cast<size_t>(numGroups));
+    ASSERT_TRUE(got == expected)
+        << "PartitionedAggregateExecutor result differs from brute-force reference";
+}
+
+TEST_F(BufferManagerTest, PartitionedAggregateExecutorSpillIntKey) {
+    // 4 KiB budget << 5000 rows: forces raw input rows to spill/reload during append.
+    runPartitionedAggTest(getMemoryManager(*database), getFileSystem(*database), 4096 /*budget*/,
+        true /*intKey*/);
+}
+
+TEST_F(BufferManagerTest, PartitionedAggregateExecutorNoSpillIntKey) {
+    // Huge budget: everything stays in memory; must match the spilling run's brute-force reference.
+    runPartitionedAggTest(getMemoryManager(*database), getFileSystem(*database),
+        1ull << 30 /*budget*/, true /*intKey*/);
+}
+
+TEST_F(BufferManagerTest, PartitionedAggregateExecutorSpillStringKey) {
+    // STRING group key under a tiny budget also exercises overflow serialization of spilled rows.
+    runPartitionedAggTest(getMemoryManager(*database), getFileSystem(*database), 4096 /*budget*/,
+        false /*intKey*/);
 }
 
 class EmptyBufferManagerTest : public DBTest {

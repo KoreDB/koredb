@@ -216,12 +216,47 @@ partitions to spill and reload. Both assert the Grace path actually activated (a
 activation counter) so the check is never vacuous. No regression: `api_test` 97/97, `buffer_manager_test`
 20/20, e2e `match` and `generic_hash_join` green.
 
+### 6. Out-of-core aggregation executor — `PartitionedAggregateExecutor`
+
+`processor/operator/aggregate/partitioned_aggregate_executor.{h,cpp}` is the aggregation analogue of
+the join executor: an out-of-core hash `GROUP BY` over an input that may not fit in memory.
+
+- `append(keyVectors, aggInputVectors)` scatters the **raw input rows** (`[groupKeys…,
+  aggInputCols…]`) into a `PartitionedFactorizedTable` by `hash(group keys)`, spilling under a memory
+  budget. Because rows sharing a group key hash to the same partition, every group lives entirely
+  within one partition.
+- `computeAggregates()` processes one partition at a time: reload it, run a **fresh**
+  `AggregateHashTable` over its rows (groups are disjoint across partitions), `finalizeAggregateStates`,
+  emit `[keys…, aggResults…]`, and free it. Results are simply concatenated — **no cross-partition
+  merge**. Peak memory is bounded to roughly one partition's rows plus its group table.
+
+**Why this sidesteps the hard problem.** Only *raw input columns* are ever written to disk (via the
+`FactorizedTable` serialization primitive, which relocates variable-length/overflow data correctly).
+Aggregate **states** — which for `min/max(STRING)`, `collect(LIST)`, etc. carry overflow pointers that
+would be expensive to serialize — **never leave memory**, because each partition is aggregated in one
+in-memory pass. So this works for *every* aggregate function, including stateful ones, without any
+state serialization or pointer swizzling. This is the key difference from the existing in-memory
+`HashAggregate`, whose per-partition queues hold partially-aggregated **states**.
+
+**Scope (v1):** non-distinct aggregates; group keys stored flat and sharing one input state with the
+aggregate-input columns; `ResultSet` multiplicity of 1; no dependent (payload) keys. Not thread-safe
+(single-thread, mirroring the join executor). These match the conservative first cut; broadening is
+the operator-wiring increment (below).
+
+**Verification = differential.** `buffer_manager_test`'s `PartitionedAggregateExecutorSpillIntKey`
+(4 KiB budget, forced spill/reload during append) and `PartitionedAggregateExecutorNoSpillIntKey`
+(fully in memory) both aggregate 5000 rows into 20 groups with `COUNT(*)` + `SUM` and must match the
+same brute-force reference, proving spilling is transparent; `PartitionedAggregateExecutorSpillStringKey`
+adds a STRING group key so the forced-spill path also exercises overflow serialization of the raw
+rows. No regression: `buffer_manager_test` 23/23.
+
 ## Remaining work (the large, careful pieces)
 
 The reusable core (`PartitionedFactorizedTable`), a working out-of-core join (`GraceHashJoinExecutor`,
-inner+left, flat payloads, materialized + streaming), and a **gated live operator** (section 5, INNER
-+ single-chunk output) now exist and are proven correct under spilling. What remains to broaden
-coverage and reach the hard `RETURN *` case:
+inner+left, flat payloads, materialized + streaming), a **gated live join operator** (section 5, INNER
++ single-chunk output), and an out-of-core **aggregation executor** (section 6, library-level) now
+exist and are proven correct under spilling. What remains to broaden coverage and reach the hard
+`RETURN *` case:
 
 1. **Broaden operator eligibility.** The live operator (section 5) is deliberately narrow: INNER,
    single-thread, single-chunk output. Extending it means (a) the **LEFT** null-padding path
@@ -246,8 +281,11 @@ coverage and reach the hard `RETURN *` case:
 5. **`ORDER BY` external merge sort** — spill sorted runs, k-way merge from disk (independent of the
    join work; reuses the `FactorizedTable` serialization primitive).
 
-6. **Partitioned aggregation** — analogous to the join for the aggregate hash table; reuses
-   `PartitionedFactorizedTable` directly (routing rows by group-key hash).
+6. **Partitioned aggregation — live operator wiring.** The library executor exists and is verified
+   (section 6). What remains is the gated operator integration, analogous to the join's section 5: a
+   `spill_aggregate` setting, and routing `HashAggregate`'s build → finalize → scan pipeline through
+   the executor when eligible + single-threaded. Broadening the executor itself (distinct aggregates,
+   dependent/payload keys, `ResultSet` multiplicity > 1, multi-state inputs) is the follow-on.
 
 All reuse the `SpillableComponent` registry (for the raw-buffer, buffer-manager-triggered path) or
 `PartitionedFactorizedTable` / the `FactorizedTable` serialization primitive (for the operator-

@@ -5,6 +5,7 @@ add_library(kuzu_processor_operator_aggregate
         base_aggregate_scan.cpp
         hash_aggregate.cpp
         hash_aggregate_scan.cpp
+        partitioned_aggregate_executor.cpp
         simple_aggregate.cpp
         simple_aggregate_scan.cpp)
 
