@@ -1,3 +1,5 @@
+#include <optional>
+
 #include "binder/expression/aggregate_function_expression.h"
 #include "common/copy_constructors.h"
 #include "common/types/types.h"
@@ -163,6 +165,64 @@ static FactorizedTableSchema getFactorizedTableSchema(const expression_vector& f
     return tableSchema;
 }
 
+// Conservative eligibility for the out-of-core (spilling) aggregation path (see SpillAggregateInfo).
+// Requires: at least one aggregate; all non-distinct; no per-aggregate factorized multiplicity (the
+// executor applies only the scalar ResultSet multiplicity, not `multiplicityChunks`); and all group
+// keys, dependent keys, and aggregate inputs in a single data chunk (the executor appends them
+// through one shared state). When eligible, records the per-aggregate input and result types.
+static SpillAggregateInfo computeSpillAggregateInfo(const expression_vector& aggregates,
+    const std::vector<AggregateFunction>& aggFunctions, const std::vector<AggregateInfo>& aggInfos,
+    const std::vector<DataPos>& flatKeysPos, const std::vector<DataPos>& unFlatKeysPos,
+    const std::vector<DataPos>& payloadsPos) {
+    SpillAggregateInfo info;
+    bool eligible = !aggregates.empty();
+    for (auto& f : aggFunctions) {
+        if (f.isFunctionDistinct()) {
+            eligible = false;
+        }
+    }
+    for (auto& ai : aggInfos) {
+        if (!ai.multiplicityChunksPos.empty()) {
+            eligible = false;
+        }
+    }
+    std::optional<data_chunk_pos_t> chunk;
+    auto note = [&](const DataPos& p) {
+        if (!chunk.has_value()) {
+            chunk = p.dataChunkPos;
+        } else if (*chunk != p.dataChunkPos) {
+            eligible = false;
+        }
+    };
+    for (auto& p : flatKeysPos) {
+        note(p);
+    }
+    for (auto& p : unFlatKeysPos) {
+        note(p);
+    }
+    for (auto& p : payloadsPos) {
+        note(p);
+    }
+    for (auto& ai : aggInfos) {
+        if (ai.aggVectorPos.isValid()) {
+            note(ai.aggVectorPos);
+        }
+    }
+    if (!eligible) {
+        return info; // eligible stays false -> the in-memory path runs
+    }
+    info.eligible = true;
+    for (auto& agg : aggregates) {
+        if (agg->getNumChildren() == 0) {
+            info.aggInputTypes.push_back(LogicalType::ANY()); // COUNT(*)
+        } else {
+            info.aggInputTypes.push_back(agg->getChild(0)->getDataType().copy());
+        }
+        info.aggResultTypes.push_back(agg->getDataType().copy());
+    }
+    return info;
+}
+
 std::unique_ptr<PhysicalOperator> PlanMapper::createDistinctHashAggregate(
     const expression_vector& keys, const expression_vector& payloads, Schema* inSchema,
     Schema* outSchema, std::unique_ptr<PhysicalOperator> prevOperator) {
@@ -193,13 +253,18 @@ std::unique_ptr<PhysicalOperator> PlanMapper::createHashAggregate(const expressi
     for (auto& payload : payloads) {
         payloadTypes.push_back(payload->getDataType().copy());
     }
+    auto flatKeysPos = getDataPos(flatKeys, *inSchema);
+    auto unFlatKeysPos = getDataPos(unFlatKeys, *inSchema);
+    auto payloadsPos = getDataPos(payloads, *inSchema);
+    auto spillInfo = computeSpillAggregateInfo(aggregates, aggFunctions, aggregateInputInfos,
+        flatKeysPos, unFlatKeysPos, payloadsPos);
     auto tableSchema = getFactorizedTableSchema(flatKeys, unFlatKeys, payloads, aggFunctions);
-    HashAggregateInfo aggregateInfo{getDataPos(flatKeys, *inSchema),
-        getDataPos(unFlatKeys, *inSchema), getDataPos(payloads, *inSchema), std::move(tableSchema)};
+    HashAggregateInfo aggregateInfo{std::move(flatKeysPos), std::move(unFlatKeysPos),
+        std::move(payloadsPos), std::move(tableSchema)};
 
-    auto sharedState =
-        std::make_shared<HashAggregateSharedState>(clientContext, std::move(aggregateInfo),
-            aggFunctions, aggregateInputInfos, std::move(keyTypes), std::move(payloadTypes));
+    auto sharedState = std::make_shared<HashAggregateSharedState>(clientContext,
+        std::move(aggregateInfo), aggFunctions, aggregateInputInfos, std::move(keyTypes),
+        std::move(payloadTypes), std::move(spillInfo));
     auto printInfo = std::make_unique<HashAggregatePrintInfo>(allKeys, aggregates);
     auto aggregate = make_unique<HashAggregate>(sharedState, std::move(aggFunctions),
         std::move(aggregateInputInfos), std::move(prevOperator), getOperatorID(),

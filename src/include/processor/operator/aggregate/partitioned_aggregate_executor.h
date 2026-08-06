@@ -20,6 +20,8 @@ class MemoryManager;
 
 namespace processor {
 
+class AggregateHashTable;
+
 // An out-of-core (partitioned) hash aggregation over an input that may not fit in memory.
 //
 // Idea: the raw group-by input rows are radix-partitioned by hash(group keys) into
@@ -75,6 +77,13 @@ public:
     // [keys..., dependentKeys..., aggResults...]. Consumes the input (partitions are freed as they are
     // processed).
     std::unique_ptr<FactorizedTable> computeAggregates();
+
+    // Aggregate every partition into a finalized in-memory AggregateHashTable, one per non-empty
+    // partition (each holds a disjoint set of groups). Consumes the input (partitions are freed as
+    // they are processed). Lets a spilling HashAggregate operator reuse the normal aggregate-scan
+    // path, which reads finalized states out of these tables. Peak memory is O(#groups) (as for the
+    // in-memory path); the *input* side was bounded by spilling during append.
+    std::vector<std::unique_ptr<AggregateHashTable>> finalizeToTables();
 
     common::idx_t getNumPartitions() const { return parts.getNumPartitions(); }
 

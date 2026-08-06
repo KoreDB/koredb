@@ -37,6 +37,14 @@ struct ClientConfigDefault {
     // Per-operator memory budget (bytes) for the Grace hash-join path. 0 means "derive it": the
     // per-query memory limit if set, otherwise the whole buffer pool. A small value forces spilling.
     static constexpr uint64_t SPILL_HASH_JOIN_BUDGET = 0;
+    // When true, an eligible hash aggregation (GROUP BY) radix-partitions its raw input rows by
+    // group-key hash and spills them to disk under a memory budget, so a GROUP BY whose input does
+    // not fit in memory can still complete. Off by default: the in-memory path is unchanged unless
+    // opted in.
+    static constexpr bool SPILL_AGGREGATE = false;
+    // Per-operator memory budget (bytes) for the spilling aggregation path. 0 = derive (as for the
+    // hash-join budget). A small value forces spilling.
+    static constexpr uint64_t SPILL_AGGREGATE_BUDGET = 0;
 };
 
 struct ClientConfig {
@@ -84,6 +92,12 @@ struct ClientConfig {
     // Per-operator memory budget (bytes) for the Grace hash-join path; 0 = derive. See
     // ClientConfigDefault::SPILL_HASH_JOIN_BUDGET.
     uint64_t spillHashJoinBudget = ClientConfigDefault::SPILL_HASH_JOIN_BUDGET;
+    // If an eligible hash aggregation should use the out-of-core spilling path. See
+    // ClientConfigDefault::SPILL_AGGREGATE.
+    bool spillAggregate = ClientConfigDefault::SPILL_AGGREGATE;
+    // Per-operator memory budget (bytes) for the spilling aggregation path; 0 = derive. See
+    // ClientConfigDefault::SPILL_AGGREGATE_BUDGET.
+    uint64_t spillAggregateBudget = ClientConfigDefault::SPILL_AGGREGATE_BUDGET;
 };
 
 } // namespace main

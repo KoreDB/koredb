@@ -304,5 +304,18 @@ std::unique_ptr<FactorizedTable> PartitionedAggregateExecutor::computeAggregates
     return output;
 }
 
+std::vector<std::unique_ptr<AggregateHashTable>>
+PartitionedAggregateExecutor::finalizeToTables() {
+    std::vector<std::unique_ptr<AggregateHashTable>> tables;
+    for (idx_t p = 0; p < parts.getNumPartitions(); p++) {
+        auto ht = aggregatePartition(p);
+        parts.freePartition(p); // raw rows already copied into the table
+        if (ht != nullptr) {
+            tables.push_back(std::move(ht)); // ReaggregatingHashTable -> AggregateHashTable
+        }
+    }
+    return tables;
+}
+
 } // namespace processor
 } // namespace kuzu

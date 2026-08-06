@@ -21,6 +21,7 @@
 #include "graph_test/private_graph_test.h"
 #include "gtest/gtest.h"
 #include "processor/data_pos.h"
+#include "processor/operator/aggregate/hash_aggregate.h"
 #include "processor/operator/aggregate/partitioned_aggregate_executor.h"
 #include "processor/operator/hash_join/grace_hash_join_executor.h"
 #include "processor/operator/hash_join/hash_join_build.h"
@@ -1717,6 +1718,61 @@ TEST_F(BufferManagerTest, GraceHashJoinSpillDifferential) {
 
     ASSERT_GT(getGraceHashJoinActivationCount(), before) << "Grace path did not activate";
     ASSERT_EQ(inMemory, grace) << "Grace (spilling) vs in-memory result mismatch";
+}
+
+// Differential correctness of the live out-of-core (spilling) hash-aggregation operator: the same
+// GROUP BY must produce the same rows with `spill_aggregate` off (in-memory) and on (partitioned),
+// across a range of aggregates including a stateful LIST aggregate (collect). Asserts the spilling
+// path actually activated so the comparison is not vacuous.
+TEST_F(BufferManagerTest, SpillAggregateDifferential) {
+    using kuzu::processor::getSpillAggregateActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    const std::vector<std::string> queries = {
+        "MATCH (p:person) RETURN p.gender, count(*)",
+        "MATCH (p:person) RETURN p.gender, count(*), sum(p.age), min(p.age), max(p.age)",
+        "MATCH (p:person) RETURN p.isStudent, count(*), avg(p.age)",
+        "MATCH (p:person) RETURN p.gender, collect(p.age)", // stateful LIST aggregate
+        "MATCH (p:person) RETURN p.age, count(*), min(p.fName)",
+    };
+    const auto before = getSpillAggregateActivationCount();
+    for (const auto& q : queries) {
+        ASSERT_TRUE(conn->query("CALL spill_aggregate=false;")->isSuccess());
+        const auto inMemory = collectSortedRows(conn.get(), q);
+        ASSERT_TRUE(conn->query("CALL spill_aggregate=true;")->isSuccess());
+        const auto grace = collectSortedRows(conn.get(), q);
+        ASSERT_EQ(inMemory, grace) << "spill_aggregate on vs off mismatch for: " << q;
+    }
+    ASSERT_GT(getSpillAggregateActivationCount(), before)
+        << "no query activated the spilling aggregation path; the differential check is vacuous";
+}
+
+// Same differential check, but with a tiny per-operator budget that forces the raw input rows to
+// spill to disk and reload during append, over enough generated rows/groups to exceed the budget.
+TEST_F(BufferManagerTest, SpillAggregateSpillDifferential) {
+    using kuzu::processor::getSpillAggregateActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE bench(id INT64, k INT64, v STRING, PRIMARY KEY(id));")
+            ->isSuccess());
+    // 5000 rows across 50 groups (k = i % 50), so each group has 100 rows.
+    ASSERT_TRUE(conn->query("UNWIND range(0, 4999) AS i CREATE (:bench {id: i, k: i % 50, v: "
+                            "cast(i % 7 AS STRING)});")
+                    ->isSuccess());
+    const std::string q =
+        "MATCH (b:bench) RETURN b.k, count(*), sum(b.id), min(b.v), collect(b.v)";
+
+    ASSERT_TRUE(conn->query("CALL spill_aggregate=false;")->isSuccess());
+    const auto inMemory = collectSortedRows(conn.get(), q);
+    ASSERT_FALSE(inMemory.empty());
+
+    // 4 KiB budget << 5000 rows -> partitions spill during append and reload on finalize.
+    const auto before = getSpillAggregateActivationCount();
+    ASSERT_TRUE(conn->query("CALL spill_aggregate=true;")->isSuccess());
+    ASSERT_TRUE(conn->query("CALL spill_aggregate_budget=4096;")->isSuccess());
+    const auto grace = collectSortedRows(conn.get(), q);
+
+    ASSERT_GT(getSpillAggregateActivationCount(), before) << "spilling aggregation did not activate";
+    ASSERT_EQ(inMemory, grace) << "spilling vs in-memory aggregation result mismatch";
 }
 
 } // namespace testing

@@ -254,13 +254,59 @@ carries a STRING payload column through; `…MultiplicitySpill` feeds batches of
 partitions see contiguous runs the executor must re-weight. No regression: `buffer_manager_test`
 26/26.
 
+### 7. Live hash-aggregation operator integration (out-of-core, gated)
+
+`spill_aggregate` (BOOL, **default `false`**) turns an eligible `GROUP BY` into the out-of-core path;
+when off, the in-memory path is byte-for-byte unchanged. `spill_aggregate_budget` (UINT64 bytes,
+`0` = derive from `query_memory_limit` else the buffer-pool size) sets the per-operator spill budget.
+The wiring (`map_aggregate.cpp`, `hash_aggregate.{h,cpp}`):
+
+- `PlanMapper::createHashAggregate` computes plan-time `SpillAggregateInfo` (eligibility plus the
+  per-aggregate input and result types) and stores it on the shared `HashAggregateSharedState`.
+- `HashAggregate::initLocalStateInternal` calls `tryActivateGrace` at **runtime** (not plan-mapping
+  time, so it sees the live `spill_aggregate` / `threads` settings — the same reason the join decides
+  in `HashJoinBuild`). When on, eligible, and `numThreads == 1`, it builds a shared
+  `PartitionedAggregateExecutor`.
+- `HashAggregate::executeInternal` then scatters every raw input row into the executor (`append`,
+  spilling under the budget) instead of the local partitioning hash table.
+- `HashAggregateFinalize` routes finalization through `PartitionedAggregateExecutor::finalizeToTables`,
+  which aggregates each spilled partition into a finalized `AggregateHashTable`. Because those tables
+  have the **same schema** as the in-memory `globalPartitions`, the scan path is reused unchanged: only
+  `getNumTuples` / `getPartitionForOffset` (and `finalizePartitions` / `assertFinalized`) gained a
+  `graceActive`-guarded branch that reads the executor's tables instead. Every grace branch is inert
+  when `spill_aggregate` is off.
+
+**Eligibility (conservative; anything else silently uses the in-memory path):** at least one
+non-distinct aggregate; no per-aggregate factorized `multiplicityChunks` (the executor applies only the
+scalar `ResultSet` multiplicity); all group keys, dependent keys, and aggregate inputs in a single data
+chunk; and `numThreads == 1`. Distinct aggregates, multi-chunk inputs, and parallel execution fall back
+to the proven in-memory path.
+
+**Memory bound.** This bounds the **input** side (raw rows spill during append) — the win for a
+`GROUP BY` over an exploded join. The output side (`finalizeToTables` holds all group tables at once)
+is `O(#groups)`, the same as the in-memory path; streaming the output partition-by-partition is a
+follow-on.
+
+**A note on the build.** Adding the two `spill_aggregate*` fields to `ClientConfig` exposed that the
+build's header-dependency tracking under-reports `client_config.h`, so an incremental build left a
+mix of old/new `ClientConfig` layouts (a silent heap corruption that read the new fields as zero, then
+crashed once they were read correctly). A full recompile of `src/` **and** the statically-linked
+extensions fixed it; after any `client_config.h` change, force-rebuild both.
+
+**Verification = differential.** `buffer_manager_test`'s `SpillAggregateDifferential` runs a range of
+`GROUP BY` queries (including `collect` (LIST) and `min` (STRING) stateful aggregates) with
+`spill_aggregate` off vs on and asserts identical result rows; `SpillAggregateSpillDifferential` does
+the same over 5000 generated rows with a 4 KiB budget that forces raw rows to spill and reload. Both
+assert the spilling path actually activated (a process-wide counter) so the check is never vacuous. No
+regression: `buffer_manager_test` 28/28, aggregation e2e (`agg`) 13/13 with the default (off).
+
 ## Remaining work (the large, careful pieces)
 
 The reusable core (`PartitionedFactorizedTable`), a working out-of-core join (`GraceHashJoinExecutor`,
 inner+left, flat payloads, materialized + streaming), a **gated live join operator** (section 5, INNER
-+ single-chunk output), and an out-of-core **aggregation executor** (section 6, library-level) now
-exist and are proven correct under spilling. What remains to broaden coverage and reach the hard
-`RETURN *` case:
++ single-chunk output), an out-of-core **aggregation executor** (section 6), and a **gated live
+aggregation operator** (section 7) now exist and are proven correct under spilling. What remains to
+broaden coverage and reach the hard `RETURN *` case:
 
 1. **Broaden operator eligibility.** The live operator (section 5) is deliberately narrow: INNER,
    single-thread, single-chunk output. Extending it means (a) the **LEFT** null-padding path
@@ -285,12 +331,10 @@ exist and are proven correct under spilling. What remains to broaden coverage an
 5. **`ORDER BY` external merge sort** — spill sorted runs, k-way merge from disk (independent of the
    join work; reuses the `FactorizedTable` serialization primitive).
 
-6. **Partitioned aggregation — live operator wiring.** The library executor exists and is verified
-   (section 6), including dependent (payload) keys and per-row multiplicity. What remains is the gated
-   operator integration, analogous to the join's section 5: a `spill_aggregate` setting, and routing
-   `HashAggregate`'s build → finalize → scan pipeline through the executor when eligible (non-distinct,
-   single-state key/input, single data chunk) + single-threaded. Broadening the executor itself
-   (distinct aggregates, multi-state inputs) is the follow-on.
+6. **Partitioned aggregation — broadening.** The library executor and the gated live operator now
+   exist (sections 6–7). What remains: distinct aggregates, multi-state / multi-chunk inputs,
+   multi-threaded build, and **streaming the output** partition-by-partition (to bound the output side,
+   not just the input side).
 
 All reuse the `SpillableComponent` registry (for the raw-buffer, buffer-manager-triggered path) or
 `PartitionedFactorizedTable` / the `FactorizedTable` serialization primitive (for the operator-

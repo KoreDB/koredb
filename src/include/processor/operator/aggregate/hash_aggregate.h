@@ -17,12 +17,34 @@
 #include "main/client_context.h"
 #include "processor/operator/aggregate/aggregate_input.h"
 #include "processor/operator/aggregate/base_aggregate.h"
+#include "processor/operator/aggregate/partitioned_aggregate_executor.h"
 #include "processor/operator/physical_operator.h"
 #include "processor/result/factorized_table.h"
 #include "processor/result/factorized_table_schema.h"
 
 namespace kuzu {
 namespace processor {
+
+// Test-only: how many times the out-of-core (spilling) aggregation path has been activated in this
+// process. Lets a differential test confirm the spilling path actually ran instead of silently
+// falling back to the in-memory path.
+KUZU_API uint64_t getSpillAggregateActivationCount();
+
+// Static (plan-time) metadata that lets a hash aggregation run the out-of-core (spilling) path when
+// `spill_aggregate` is on. `eligible` is the conservative shape check (see map_aggregate.cpp);
+// aggInputTypes[i] is aggregate i's input type (ANY() for COUNT(*)) and aggResultTypes[i] its result
+// type -- the two lists the PartitionedAggregateExecutor needs.
+struct SpillAggregateInfo {
+    bool eligible = false;
+    std::vector<common::LogicalType> aggInputTypes;
+    std::vector<common::LogicalType> aggResultTypes;
+
+    SpillAggregateInfo() = default;
+    SpillAggregateInfo(SpillAggregateInfo&&) = default;
+    SpillAggregateInfo& operator=(SpillAggregateInfo&&) = default;
+    SpillAggregateInfo(const SpillAggregateInfo&) = delete;
+    SpillAggregateInfo& operator=(const SpillAggregateInfo&) = delete;
+};
 
 struct HashAggregateInfo {
     std::vector<DataPos> flatKeysPos;
@@ -46,7 +68,7 @@ public:
     explicit HashAggregateSharedState(main::ClientContext* context, HashAggregateInfo hashAggInfo,
         const std::vector<function::AggregateFunction>& aggregateFunctions,
         std::span<AggregateInfo> aggregateInfos, std::vector<common::LogicalType> keyTypes,
-        std::vector<common::LogicalType> payloadTypes);
+        std::vector<common::LogicalType> payloadTypes, SpillAggregateInfo spillInfo);
 
     void appendTuples(const FactorizedTable& factorizedTable, ft_col_offset_t hashOffset) override {
         auto numBytesPerTuple = factorizedTable.getTableSchema()->getNumBytesPerTuple();
@@ -93,6 +115,13 @@ public:
 
     void assertFinalized() const;
 
+    // --- Out-of-core (spilling) aggregation ---
+    // Decided lazily at runtime (first build call) rather than at plan-mapping time, so it sees the
+    // live `spill_aggregate` / `threads` settings. Idempotent; safe to call once per build thread.
+    void tryActivateGrace(main::ClientContext* context);
+    bool isGraceActive() const { return graceActive; }
+    PartitionedAggregateExecutor* getGraceExecutor() const { return graceExecutor.get(); }
+
 protected:
     std::tuple<const FactorizedTable*, common::offset_t> getPartitionForOffset(
         common::offset_t offset) const;
@@ -112,6 +141,22 @@ public:
     uint64_t limitNumber;
     storage::MemoryManager* memoryManager;
     std::vector<Partition> globalPartitions;
+
+    // Out-of-core path (all inert unless graceActive). When active, the single build thread scatters
+    // raw input rows into graceExecutor (spilling under a budget) instead of the local hash table;
+    // finalizePartitions aggregates each spilled partition into graceTables; and the scan-path helpers
+    // (getNumTuples / getPartitionForOffset) read from graceTables instead of globalPartitions. The
+    // table schema is identical to globalPartitions', so getTableSchema and the scan are unchanged.
+    // graceKeyTypes/gracePayloadTypes/spillInfo are captured at construction and consumed by
+    // tryActivateGrace when it builds the executor.
+    std::mutex graceMtx;
+    bool graceDecided = false;
+    bool graceActive = false;
+    std::vector<common::LogicalType> graceKeyTypes;
+    std::vector<common::LogicalType> gracePayloadTypes;
+    SpillAggregateInfo spillInfo;
+    std::unique_ptr<PartitionedAggregateExecutor> graceExecutor;
+    std::vector<std::unique_ptr<AggregateHashTable>> graceTables;
 };
 
 struct HashAggregateLocalState {

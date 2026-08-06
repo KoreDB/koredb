@@ -1,5 +1,7 @@
 #include "processor/operator/aggregate/hash_aggregate.h"
 
+#include <atomic>
+#include <filesystem>
 #include <memory>
 
 #include "binder/expression/expression_util.h"
@@ -11,6 +13,8 @@
 #include "processor/operator/aggregate/aggregate_input.h"
 #include "processor/operator/aggregate/base_aggregate.h"
 #include "processor/result/factorized_table_schema.h"
+#include "storage/buffer_manager/buffer_manager.h"
+#include "storage/buffer_manager/memory_manager.h"
 
 using namespace kuzu::common;
 using namespace kuzu::function;
@@ -18,6 +22,13 @@ using namespace kuzu::storage;
 
 namespace kuzu {
 namespace processor {
+
+// Test-only activation counter (see getSpillAggregateActivationCount).
+static std::atomic<uint64_t> spillAggregateActivationCount{0};
+
+uint64_t getSpillAggregateActivationCount() {
+    return spillAggregateActivationCount.load();
+}
 
 std::string HashAggregatePrintInfo::toString() const {
     std::string result = "";
@@ -47,11 +58,16 @@ HashAggregateSharedState::HashAggregateSharedState(main::ClientContext* context,
     HashAggregateInfo hashAggInfo,
     const std::vector<function::AggregateFunction>& aggregateFunctions,
     std::span<AggregateInfo> aggregateInfos, std::vector<LogicalType> keyTypes,
-    std::vector<LogicalType> payloadTypes)
+    std::vector<LogicalType> payloadTypes, SpillAggregateInfo spillInfoParam)
     : BaseAggregateSharedState{aggregateFunctions, getNumPartitionsForParallelism(context)},
       aggInfo{std::move(hashAggInfo)}, limitNumber{common::INVALID_LIMIT},
       memoryManager{context->getMemoryManager()},
       globalPartitions{getNumPartitionsForParallelism(context)} {
+    // Capture key/payload type copies and the spill metadata; the out-of-core executor is built
+    // lazily in tryActivateGrace (at runtime, so it sees the live settings), not here.
+    graceKeyTypes = LogicalType::copy(keyTypes);
+    gracePayloadTypes = LogicalType::copy(payloadTypes);
+    spillInfo = std::move(spillInfoParam);
     std::vector<LogicalType> distinctAggregateKeyTypes;
     for (auto& aggInfo : aggregateInfos) {
         distinctAggregateKeyTypes.push_back(aggInfo.distinctAggKeyType.copy());
@@ -117,6 +133,37 @@ HashAggregateSharedState::HashAggregateSharedState(main::ClientContext* context,
     }
 }
 
+void HashAggregateSharedState::tryActivateGrace(main::ClientContext* context) {
+    std::unique_lock lck{graceMtx};
+    if (graceDecided) {
+        return;
+    }
+    graceDecided = true;
+    // On when `spill_aggregate` is set, the shape is eligible, and execution is single-threaded (the
+    // executor is not thread-safe and there is no cross-thread build barrier). Otherwise the grace
+    // members stay inert and the in-memory path runs.
+    const auto* cc = context->getClientConfig();
+    if (!(cc->spillAggregate && spillInfo.eligible && cc->numThreads == 1)) {
+        return;
+    }
+    auto* mm = context->getMemoryManager();
+    auto* bm = mm->getBufferManager();
+    const auto budget = cc->spillAggregateBudget > 0 ? cc->spillAggregateBudget :
+                        cc->queryMemoryLimit > 0    ? cc->queryMemoryLimit :
+                                                      bm->getMemoryLimit();
+    static std::atomic<uint64_t> spillFileCounter{0};
+    const auto token = spillFileCounter.fetch_add(1);
+    auto path = (std::filesystem::temp_directory_path() /
+                 ("kuzu_spill_agg_" + std::to_string(token) + ".spill"))
+                    .string();
+    graceExecutor = std::make_unique<PartitionedAggregateExecutor>(mm, context->getVFSUnsafe(),
+        std::move(path), LogicalType::copy(graceKeyTypes), LogicalType::copy(gracePayloadTypes),
+        copyVector(aggregateFunctions), std::move(spillInfo.aggInputTypes),
+        std::move(spillInfo.aggResultTypes), 4 /*logNumPartitions*/, budget);
+    graceActive = true;
+    spillAggregateActivationCount.fetch_add(1);
+}
+
 std::pair<uint64_t, uint64_t> HashAggregateSharedState::getNextRangeToRead() {
     std::unique_lock lck{mtx};
     auto startOffset = currentOffset.load();
@@ -135,6 +182,12 @@ std::pair<uint64_t, uint64_t> HashAggregateSharedState::getNextRangeToRead() {
 
 uint64_t HashAggregateSharedState::getNumTuples() const {
     uint64_t numTuples = 0;
+    if (graceActive) {
+        for (auto& table : graceTables) {
+            numTuples += table->getNumEntries();
+        }
+        return numTuples;
+    }
     for (auto& partition : globalPartitions) {
         numTuples += partition.hashTable->getNumEntries();
     }
@@ -142,6 +195,12 @@ uint64_t HashAggregateSharedState::getNumTuples() const {
 }
 
 void HashAggregateSharedState::finalizePartitions() {
+    if (graceActive) {
+        // Aggregate every spilled partition into a finalized in-memory table; the scan path reads
+        // these exactly as it reads globalPartitions' tables (identical schema).
+        graceTables = graceExecutor->finalizeToTables();
+        return;
+    }
     BaseAggregateSharedState::finalizePartitions(globalPartitions, [&](auto& partition) {
         if (!partition.hashTable) {
             // We always initialize the hash table in the first partition
@@ -166,12 +225,16 @@ void HashAggregateSharedState::finalizePartitions() {
 
 std::tuple<const FactorizedTable*, offset_t> HashAggregateSharedState::getPartitionForOffset(
     offset_t offset) const {
-    auto factorizedTableStartOffset = 0;
-    auto partitionIdx = 0;
-    const auto* table = globalPartitions[partitionIdx].hashTable->getFactorizedTable();
+    offset_t factorizedTableStartOffset = 0;
+    size_t partitionIdx = 0;
+    auto tableAt = [&](size_t idx) -> const FactorizedTable* {
+        return graceActive ? graceTables[idx]->getFactorizedTable() :
+                             globalPartitions[idx].hashTable->getFactorizedTable();
+    };
+    const auto* table = tableAt(partitionIdx);
     while (factorizedTableStartOffset + table->getNumTuples() <= offset) {
         factorizedTableStartOffset += table->getNumTuples();
-        table = globalPartitions[++partitionIdx].hashTable->getFactorizedTable();
+        table = tableAt(++partitionIdx);
     }
     return std::make_tuple(table, factorizedTableStartOffset);
 }
@@ -192,6 +255,9 @@ void HashAggregateSharedState::scan(std::span<uint8_t*> entries,
 }
 
 void HashAggregateSharedState::assertFinalized() const {
+    if (graceActive) {
+        return; // grace path finalizes into graceTables, not the globalPartitions queues
+    }
     RUNTIME_CHECK(for (const auto& partition
                        : globalPartitions) {
         KU_ASSERT(partition.finalized);
@@ -245,9 +311,26 @@ void HashAggregate::initLocalStateInternal(ResultSet* resultSet, ExecutionContex
     }
     localState.init(common::ku_dynamic_cast<HashAggregateSharedState*>(sharedState.get()),
         *resultSet, context->clientContext, aggregateFunctions, std::move(distinctAggKeyTypes));
+    // Decide the out-of-core path now (runtime), so it reflects the live `spill_aggregate` setting.
+    getSharedState()->tryActivateGrace(context->clientContext);
 }
 
 void HashAggregate::executeInternal(ExecutionContext* context) {
+    if (getSharedStateReference().isGraceActive()) {
+        // Out-of-core path: scatter every raw input row into the shared executor's partitions (which
+        // spill under the memory budget). No local hash table, no per-partition flush.
+        auto* exec = getSharedState()->getGraceExecutor();
+        std::vector<ValueVector*> aggInputVectors; // one per function; nullptr for COUNT(*)
+        aggInputVectors.reserve(aggInputs.size());
+        for (auto& in : aggInputs) {
+            aggInputVectors.push_back(in.aggregateVector);
+        }
+        while (children[0]->getNextTuple(context)) {
+            exec->append(localState.keyVectors, localState.dependentKeyVectors, aggInputVectors,
+                resultSet->multiplicity);
+        }
+        return;
+    }
     while (children[0]->getNextTuple(context)) {
         const auto numAppendedFlatTuples = localState.append(aggInputs, resultSet->multiplicity);
         metrics->numOutputTuple.increase(numAppendedFlatTuples);

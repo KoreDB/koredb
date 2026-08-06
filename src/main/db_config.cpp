@@ -25,7 +25,8 @@ static ConfigurationOption options[] = { // NOLINT(cert-err58-cpp):
     GET_CONFIGURATION(EnableOptimizerSetting), GET_CONFIGURATION(EnableInternalCatalogSetting),
     GET_CONFIGURATION(EnablePartialResultOnTimeoutSetting),
     GET_CONFIGURATION(QueryMemoryLimitSetting), GET_CONFIGURATION(SpillHashJoinSetting),
-    GET_CONFIGURATION(SpillHashJoinBudgetSetting)};
+    GET_CONFIGURATION(SpillHashJoinBudgetSetting), GET_CONFIGURATION(SpillAggregateSetting),
+    GET_CONFIGURATION(SpillAggregateBudgetSetting)};
 
 DBConfig::DBConfig(const SystemConfig& systemConfig)
     : bufferPoolSize{systemConfig.bufferPoolSize}, maxNumThreads{systemConfig.maxNumThreads},
