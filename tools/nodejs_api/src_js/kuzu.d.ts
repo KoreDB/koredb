@@ -318,6 +318,13 @@ export class QueryResult {
     isTruncated(): boolean;
 
     /**
+     * Get why this result was truncated: "timeout" if the query hit its timeout, "memory_limit" if
+     * it hit its per-query memory limit, or an empty string if the result is complete.
+     * @returns the truncation reason, or an empty string if not truncated.
+     */
+    getTruncationReason(): string;
+
+    /**
      * Get the next row.
      * @returns Promise that resolves to the next row or null if no more rows
      */

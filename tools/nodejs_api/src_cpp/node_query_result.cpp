@@ -18,6 +18,7 @@ Napi::Object NodeQueryResult::Init(Napi::Env env, Napi::Object exports) {
             InstanceMethod("getNextQueryResultSync", &NodeQueryResult::GetNextQueryResultSync),
             InstanceMethod("getNumTuples", &NodeQueryResult::GetNumTuples),
             InstanceMethod("isTruncated", &NodeQueryResult::IsTruncated),
+            InstanceMethod("getTruncationReason", &NodeQueryResult::GetTruncationReason),
             InstanceMethod("getNextSync", &NodeQueryResult::GetNextSync),
             InstanceMethod("getNextAsync", &NodeQueryResult::GetNextAsync),
             InstanceMethod("getColumnDataTypesAsync", &NodeQueryResult::GetColumnDataTypesAsync),
@@ -118,6 +119,17 @@ Napi::Value NodeQueryResult::IsTruncated(const Napi::CallbackInfo& info) {
     Napi::HandleScope scope(env);
     try {
         return Napi::Boolean::New(env, this->queryResult->isTruncated());
+    } catch (const std::exception& exc) {
+        Napi::Error::New(env, std::string(exc.what())).ThrowAsJavaScriptException();
+    }
+    return info.Env().Undefined();
+}
+
+Napi::Value NodeQueryResult::GetTruncationReason(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::HandleScope scope(env);
+    try {
+        return Napi::String::New(env, this->queryResult->getTruncationReason());
     } catch (const std::exception& exc) {
         Napi::Error::New(env, std::string(exc.what())).ThrowAsJavaScriptException();
     }

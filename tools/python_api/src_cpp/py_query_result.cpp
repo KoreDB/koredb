@@ -33,6 +33,7 @@ void PyQueryResult::initialize(py::handle& m) {
         .def("resetIterator", &PyQueryResult::resetIterator)
         .def("isSuccess", &PyQueryResult::isSuccess)
         .def("isTruncated", &PyQueryResult::isTruncated)
+        .def("getTruncationReason", &PyQueryResult::getTruncationReason)
         .def("getErrorMessage", &PyQueryResult::getErrorMessage)
         .def("getCompilingTime", &PyQueryResult::getCompilingTime)
         .def("getExecutionTime", &PyQueryResult::getExecutionTime)
@@ -349,6 +350,10 @@ bool PyQueryResult::isSuccess() const {
 
 bool PyQueryResult::isTruncated() const {
     return queryResult->isTruncated();
+}
+
+std::string PyQueryResult::getTruncationReason() const {
+    return queryResult->getTruncationReason();
 }
 
 std::string PyQueryResult::getErrorMessage() const {

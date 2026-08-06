@@ -634,10 +634,12 @@ std::unique_ptr<QueryResult> ClientContext::executeNoLock(PreparedStatement* pre
         cachedStatement->getColumnTypes());
     queryResult->initResultTableAndIterator(std::move(resultFT));
     // If the query stopped early because it hit a soft limit (timeout or per-query memory limit),
-    // the result table only holds the tuples produced so far. Flag it so callers can tell the result
-    // is partial and re-issue if needed.
-    if (isTimedOut() || isMemoryExceeded()) {
-        queryResult->setTruncated(true);
+    // the result table only holds the tuples produced so far. Record the reason so callers can tell
+    // the result is partial and decide how to re-issue (larger timeout vs. smaller/paginated scope).
+    if (isTimedOut()) {
+        queryResult->setTruncationReason("timeout");
+    } else if (isMemoryExceeded()) {
+        queryResult->setTruncationReason("memory_limit");
     }
     return queryResult;
 }

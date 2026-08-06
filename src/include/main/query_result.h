@@ -63,6 +63,11 @@ public:
      */
     KUZU_API bool isTruncated() const;
     /**
+     * @return why the result was truncated: "timeout" if the query hit its timeout, "memory_limit"
+     * if it hit its per-query memory limit, or an empty string if the result is complete.
+     */
+    KUZU_API std::string getTruncationReason() const;
+    /**
      * @return error message of the query execution if the query fails.
      */
     KUZU_API std::string getErrorMessage() const;
@@ -147,7 +152,7 @@ public:
 private:
     void setColumnHeader(std::vector<std::string> columnNames,
         std::vector<common::LogicalType> columnTypes);
-    void setTruncated(bool truncated_) { truncated = truncated_; }
+    void setTruncationReason(std::string reason) { truncationReason = std::move(reason); }
     void initResultTableAndIterator(std::shared_ptr<processor::FactorizedTable> factorizedTable_);
     void validateQuerySucceed() const;
     std::pair<std::unique_ptr<processor::FlatTuple>, std::unique_ptr<processor::FlatTupleIterator>>
@@ -157,8 +162,9 @@ private:
 private:
     // execution status
     bool success = true;
-    // Whether the result is a partial prefix produced before the query hit its timeout.
-    bool truncated = false;
+    // Non-empty if the result is a partial prefix produced before the query hit a soft limit;
+    // the value is the reason ("timeout" or "memory_limit").
+    std::string truncationReason;
     std::string errMsg;
 
     // header information

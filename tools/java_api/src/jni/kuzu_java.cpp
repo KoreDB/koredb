@@ -643,6 +643,19 @@ JNIEXPORT jboolean JNICALL Java_com_kuzudb_Native_kuzuQueryResultIsTruncated(JNI
     return jboolean();
 }
 
+JNIEXPORT jstring JNICALL Java_com_kuzudb_Native_kuzuQueryResultGetTruncationReason(JNIEnv* env,
+    jclass, jobject thisQR) {
+    try {
+        QueryResult* qr = getQueryResult(env, thisQR);
+        return utf8StringToJstring(env, qr->getTruncationReason());
+    } catch (const Exception& e) {
+        throwJNIException(env, e.what());
+    } catch (...) {
+        throwJNIException(env, "Unknown Error");
+    }
+    return jstring();
+}
+
 JNIEXPORT jstring JNICALL Java_com_kuzudb_Native_kuzuQueryResultGetErrorMessage(JNIEnv* env, jclass,
     jobject thisQR) {
     try {

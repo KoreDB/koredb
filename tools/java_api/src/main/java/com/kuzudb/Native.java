@@ -119,6 +119,8 @@ public class Native {
 
     protected static native boolean kuzuQueryResultIsTruncated(QueryResult queryResult);
 
+    protected static native String kuzuQueryResultGetTruncationReason(QueryResult queryResult);
+
     protected static native String kuzuQueryResultGetErrorMessage(QueryResult queryResult);
 
     protected static native long kuzuQueryResultGetNumColumns(QueryResult queryResult);

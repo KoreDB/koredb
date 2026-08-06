@@ -46,6 +46,8 @@ public:
 
     bool isTruncated() const;
 
+    std::string getTruncationReason() const;
+
     std::string getErrorMessage() const;
 
     double getExecutionTime();

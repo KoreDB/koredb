@@ -140,6 +140,7 @@ TEST_F(ApiTest, TimeOutReturnsPartialResults) {
         conn->query("UNWIND RANGE(1, 100000) AS x UNWIND RANGE(1, 100000) AS y RETURN x, y;");
     ASSERT_TRUE(result->isSuccess());
     ASSERT_TRUE(result->isTruncated());
+    ASSERT_EQ(result->getTruncationReason(), "timeout");
     ASSERT_LT(result->getNumTuples(), 100000ULL * 100000ULL);
 }
 
@@ -151,6 +152,7 @@ TEST_F(ApiTest, QueryMemoryLimitReturnsPartialResults) {
     auto result = conn->query("UNWIND RANGE(1, 20000000) AS x RETURN x;");
     ASSERT_TRUE(result->isSuccess());
     ASSERT_TRUE(result->isTruncated());
+    ASSERT_EQ(result->getTruncationReason(), "memory_limit");
     ASSERT_LT(result->getNumTuples(), 20000000ULL);
 }
 

@@ -225,6 +225,7 @@ describe("Timeout", function () {
       "UNWIND RANGE(1, 100000) AS x UNWIND RANGE(1, 100000) AS y RETURN x, y;"
     );
     assert.isTrue(result.isTruncated());
+    assert.equal(result.getTruncationReason(), "timeout");
     assert.isBelow(result.getNumTuples(), 100000 * 100000);
     await result.close();
   });
@@ -239,6 +240,7 @@ describe("Memory limit", function () {
     // early and returns a partial (truncated) result instead of failing with an out-of-memory error.
     const result = await newConn.query("UNWIND RANGE(1, 20000000) AS x RETURN x;");
     assert.isTrue(result.isTruncated());
+    assert.equal(result.getTruncationReason(), "memory_limit");
     assert.isBelow(result.getNumTuples(), 20000000);
     await result.close();
     await newConn.close();

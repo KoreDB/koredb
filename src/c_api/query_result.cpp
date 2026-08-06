@@ -26,6 +26,14 @@ bool kuzu_query_result_is_truncated(kuzu_query_result* query_result) {
     return static_cast<QueryResult*>(query_result->_query_result)->isTruncated();
 }
 
+char* kuzu_query_result_get_truncation_reason(kuzu_query_result* query_result) {
+    auto reason = static_cast<QueryResult*>(query_result->_query_result)->getTruncationReason();
+    if (reason.empty()) {
+        return nullptr;
+    }
+    return convertToOwnedCString(reason);
+}
+
 char* kuzu_query_result_get_error_message(kuzu_query_result* query_result) {
     auto error_message = static_cast<QueryResult*>(query_result->_query_result)->getErrorMessage();
     if (error_message.empty()) {

@@ -63,6 +63,16 @@ class QueryResult {
   }
 
   /**
+   * Get why this result was truncated: "timeout" if the query hit its timeout, "memory_limit" if it
+   * hit its per-query memory limit, or an empty string if the result is complete.
+   * @returns {String} the truncation reason, or an empty string if not truncated.
+   */
+  getTruncationReason() {
+    this._checkClosed();
+    return this._queryResult.getTruncationReason();
+  }
+
+  /**
    * Get the next row of the query result.
    * @returns {Promise<Object>} a promise that resolves to the next row of the query result. The promise is rejected if there is an error.
    */

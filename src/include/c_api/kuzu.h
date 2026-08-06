@@ -644,6 +644,12 @@ KUZU_C_API bool kuzu_query_result_is_success(kuzu_query_result* query_result);
  */
 KUZU_C_API bool kuzu_query_result_is_truncated(kuzu_query_result* query_result);
 /**
+ * @brief Returns why the result was truncated ("timeout" or "memory_limit"), or null if the result
+ * is complete. The caller is responsible for freeing the returned string with `kuzu_destroy_string`.
+ * @param query_result The query result instance to check.
+ */
+KUZU_C_API char* kuzu_query_result_get_truncation_reason(kuzu_query_result* query_result);
+/**
  * @brief Returns the error message if the query is failed.
  * The caller is responsible for freeing the returned string with `kuzu_destroy_string`.
  * @param query_result The query result instance to check and return error message.

@@ -71,6 +71,18 @@ public class QueryResult implements AutoCloseable {
     }
 
     /**
+     * Get why this result was truncated: "timeout" if the query hit its timeout, "memory_limit" if
+     * it hit its per-query memory limit, or an empty string if the result is complete.
+     *
+     * @return The truncation reason, or an empty string if the result is complete.
+     * @throws RuntimeException If the query result has been destroyed.
+     */
+    public String getTruncationReason() {
+        checkNotDestroyed();
+        return Native.kuzuQueryResultGetTruncationReason(this);
+    }
+
+    /**
      * Get the error message if any.
      *
      * @return Error message of the query execution if the query fails.

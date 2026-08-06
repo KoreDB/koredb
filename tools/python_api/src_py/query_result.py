@@ -493,6 +493,20 @@ class QueryResult:
         self.check_for_query_result_close()
         return self._query_result.isTruncated()
 
+    def get_truncation_reason(self) -> str:
+        """
+        Get why this result was truncated.
+
+        Returns
+        -------
+        str
+            "timeout" if the query hit its timeout, "memory_limit" if it hit its per-query memory
+            limit, or an empty string if the result is complete.
+
+        """
+        self.check_for_query_result_close()
+        return self._query_result.getTruncationReason()
+
     def rows_as_dict(self, state=True) -> Self:
         """
         Change the format of the results, such that each row is a dict with the
