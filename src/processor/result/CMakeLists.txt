@@ -6,6 +6,7 @@ add_library(kuzu_processor_result
         factorized_table_schema.cpp
         factorized_table_util.cpp
         flat_tuple.cpp
+        partitioned_factorized_table.cpp
         pattern_creation_info_table.cpp
         result_set.cpp
         result_set_descriptor.cpp

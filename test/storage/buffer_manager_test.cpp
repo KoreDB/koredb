@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <filesystem>
 
 #include "common/constants.h"
 #include "common/data_chunk/data_chunk_state.h"
@@ -14,6 +15,7 @@
 #include "gtest/gtest.h"
 #include "processor/result/factorized_table.h"
 #include "processor/result/factorized_table_util.h"
+#include "processor/result/partitioned_factorized_table.h"
 #include "spdlog/spdlog.h"
 #include "storage/buffer_manager/buffer_manager.h"
 #include "storage/buffer_manager/memory_manager.h"
@@ -111,6 +113,95 @@ TEST_F(BufferManagerTest, FactorizedTableSerializeRoundTrip) {
         row++;
     }
     ASSERT_EQ(row, numRows);
+}
+
+// Verifies the core of out-of-core (Grace) hash join / partitioned aggregation: build-side tuples
+// are radix-scattered into partitions by the high bits of their hash, each partition can be spilled
+// to disk (position-independent) and reloaded, and appending to a spilled partition transparently
+// reloads it. Covers variable-length (string) data, which is why the serialized spill path is used.
+TEST_F(BufferManagerTest, PartitionedFactorizedTableSpillReload) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    std::vector<LogicalType> columnTypes;
+    columnTypes.push_back(LogicalType::INT64());
+    columnTypes.push_back(LogicalType::STRING());
+
+    // logNumPartitions = 1 -> 2 partitions; the top hash bit selects the partition.
+    const auto spillPath =
+        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_test.spill").string();
+    PartitionedFactorizedTable partitioned(mm, LogicalType::copy(columnTypes), 1, fs, spillPath);
+    ASSERT_EQ(partitioned.getNumPartitions(), 2u);
+
+    const uint64_t numRows = 200;
+    auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+    state->initOriginalAndSelectedSize(numRows);
+    ValueVector intVector(LogicalType::INT64(), mm);
+    ValueVector strVector(LogicalType::STRING(), mm);
+    ValueVector hashVector(LogicalType::INT64(), mm);
+    intVector.state = state;
+    strVector.state = state;
+    hashVector.state = state;
+    for (auto i = 0u; i < numRows; i++) {
+        intVector.setNull(i, false);
+        intVector.setValue<int64_t>(i, static_cast<int64_t>(i));
+        strVector.setNull(i, false);
+        StringVector::addString(&strVector, i, "row-" + std::to_string(i));
+        hashVector.setNull(i, false);
+        // Even rows -> top bit 0 -> partition 0; odd rows -> top bit 1 -> partition 1.
+        hashVector.setValue<uint64_t>(i, (i % 2 == 0) ? 0ULL : (1ULL << 63));
+    }
+    std::vector<ValueVector*> vectors{&intVector, &strVector};
+    partitioned.appendVectors(vectors, hashVector);
+
+    ASSERT_EQ(partitioned.getNumTuples(), numRows);
+    ASSERT_EQ(partitioned.getPartitionNumTuples(0), numRows / 2);
+    ASSERT_EQ(partitioned.getPartitionNumTuples(1), numRows / 2);
+
+    // Spill everything; tuple counts must survive the spill.
+    ASSERT_EQ(partitioned.spillAllPartitions(), 2u);
+    ASSERT_TRUE(partitioned.isSpilled(0));
+    ASSERT_TRUE(partitioned.isSpilled(1));
+    ASSERT_EQ(partitioned.getNumTuples(), numRows);
+
+    // Reload each partition and verify its rows survived the round trip in append order.
+    auto verifyPartition = [&](common::idx_t p, uint64_t firstValue) {
+        auto& table = partitioned.getResidentPartition(p);
+        ASSERT_FALSE(partitioned.isSpilled(p));
+        ASSERT_EQ(table.getNumTuples(), numRows / 2);
+        std::vector<std::unique_ptr<Value>> valueHolders;
+        std::vector<Value*> values;
+        for (auto& type : columnTypes) {
+            valueHolders.push_back(
+                std::make_unique<Value>(Value::createDefaultValue(type.copy())));
+            values.push_back(valueHolders.back().get());
+        }
+        FlatTupleIterator it(table, values);
+        uint64_t expected = firstValue;
+        uint64_t count = 0;
+        while (it.hasNextFlatTuple()) {
+            it.getNextFlatTuple();
+            ASSERT_EQ(values[0]->getValue<int64_t>(), static_cast<int64_t>(expected));
+            ASSERT_EQ(values[1]->getValue<std::string>(), "row-" + std::to_string(expected));
+            expected += 2;
+            count++;
+        }
+        ASSERT_EQ(count, numRows / 2);
+    };
+    verifyPartition(0, 0); // even rows
+    verifyPartition(1, 1); // odd rows
+
+    // Spill again, then append a second identical batch: appending to a spilled partition must
+    // transparently reload it first.
+    ASSERT_EQ(partitioned.spillAllPartitions(), 2u);
+    ASSERT_TRUE(partitioned.isSpilled(0));
+    partitioned.appendVectors(vectors, hashVector);
+    ASSERT_FALSE(partitioned.isSpilled(0));
+    ASSERT_FALSE(partitioned.isSpilled(1));
+    ASSERT_EQ(partitioned.getPartitionNumTuples(0), numRows);
+    ASSERT_EQ(partitioned.getPartitionNumTuples(1), numRows);
+    ASSERT_EQ(partitioned.getNumTuples(), numRows * 2);
 }
 
 class EmptyBufferManagerTest : public DBTest {
