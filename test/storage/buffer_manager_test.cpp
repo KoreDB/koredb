@@ -2,6 +2,8 @@
 #include <filesystem>
 #include <limits>
 #include <map>
+#include <optional>
+#include <random>
 #include <unordered_map>
 
 #include "common/constants.h"
@@ -24,6 +26,8 @@
 #include "processor/operator/aggregate/hash_aggregate.h"
 #include "processor/operator/aggregate/partitioned_aggregate_executor.h"
 #include "processor/operator/hash_join/grace_hash_join_executor.h"
+#include "processor/operator/order_by/external_merge_sort.h"
+#include "processor/result/factorized_table_util.h"
 #include "processor/operator/hash_join/hash_join_build.h"
 #include "processor/operator/hash_join/join_hash_table.h"
 #include "processor/result/factorized_table.h"
@@ -2008,6 +2012,175 @@ TEST_F(BufferManagerTest, SpillAggregateNullKeyDifferential) {
     const auto grace = collectSortedRows(conn.get(), q);
     ASSERT_GT(getSpillAggregateActivationCount(), before) << "spilling aggregation did not activate";
     ASSERT_EQ(inMemory, grace) << "spill_aggregate on vs off mismatch with NULL group keys";
+}
+
+// ---------------------------------------------------------------------------------------------
+// External merge sort (out-of-core ORDER BY) executor.
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+// A row of three nullable INT64 columns: c0, c1 are the sort keys (c0 ASC, c1 DESC), c2 is a
+// payload-only column. std::nullopt represents a NULL.
+struct EmsRow {
+    std::optional<int64_t> c0, c1, c2;
+};
+
+// Order of a single INT64 key column matching OrderByKeyEncoder's semantics: ASC sorts NULLs last,
+// DESC sorts NULLs first; among non-nulls, ASC is increasing and DESC is decreasing. Returns <0, 0,
+// >0.
+int cmpKeyCol(const std::optional<int64_t>& x, const std::optional<int64_t>& y, bool asc) {
+    if (!x.has_value() || !y.has_value()) {
+        if (!x.has_value() && !y.has_value()) {
+            return 0;
+        }
+        // The NULL side sorts last for ASC, first for DESC.
+        const bool xNull = !x.has_value();
+        return (xNull == asc) ? 1 : -1;
+    }
+    const int64_t d = (*x < *y) ? -1 : (*x > *y ? 1 : 0);
+    return asc ? d : -d;
+}
+
+// Key order used to check sortedness of the output: c0 ASC then c1 DESC.
+int cmpKey(const EmsRow& x, const EmsRow& y) {
+    if (const int d0 = cmpKeyCol(x.c0, y.c0, true); d0 != 0) {
+        return d0;
+    }
+    return cmpKeyCol(x.c1, y.c1, false);
+}
+
+// A total order (keys + payload c2) used only to compare the input/output as multisets.
+bool fullLess(const EmsRow& x, const EmsRow& y) {
+    if (const int d = cmpKey(x, y); d != 0) {
+        return d < 0;
+    }
+    return cmpKeyCol(x.c2, y.c2, true) < 0;
+}
+
+void setCol(ValueVector& vec, uint32_t pos, const std::optional<int64_t>& v) {
+    if (v.has_value()) {
+        vec.setNull(pos, false);
+        vec.setValue<int64_t>(pos, *v);
+    } else {
+        vec.setNull(pos, true);
+    }
+}
+
+std::optional<int64_t> getCol(ValueVector& vec, uint32_t pos) {
+    if (vec.isNull(pos)) {
+        return std::nullopt;
+    }
+    return vec.getValue<int64_t>(pos);
+}
+} // namespace
+
+// Differential-style correctness test for the out-of-core sort executor. It sorts many rows with a
+// tiny budget that forces dozens of spilled runs, then asserts (a) the output is sorted by the key
+// order (c0 ASC, c1 DESC, matching the encoder's NULL semantics) and (b) the output is a multiset
+// permutation of the input (no rows lost, duplicated, or corrupted -- including NULLs and the
+// payload-only column). Multi-column keys, ASC+DESC, NULL keys, and payload round-trip are all
+// exercised.
+TEST_F(BufferManagerTest, ExternalMergeSortDifferential) {
+    using kuzu::processor::ExternalMergeSort;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    // Build the OrderByDataInfo. The executor only reads keyTypes/payloadTypes/isAscOrder; the
+    // positions and payload schema are supplied for completeness.
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> payloadTypes;
+    payloadTypes.push_back(LogicalType::INT64());
+    payloadTypes.push_back(LogicalType::INT64());
+    payloadTypes.push_back(LogicalType::INT64());
+    processor::OrderByDataInfo info(
+        std::vector<processor::DataPos>{processor::DataPos(0, 0), processor::DataPos(0, 1)},
+        std::vector<processor::DataPos>{processor::DataPos(0, 0), processor::DataPos(0, 1),
+            processor::DataPos(0, 2)},
+        LogicalType::copy(keyTypes),
+        LogicalType::copy(payloadTypes), std::vector<bool>{true, false},
+        processor::FactorizedTableUtils::createFlatTableSchema(LogicalType::copy(payloadTypes)),
+        std::vector<uint32_t>{0, 1});
+
+    // Generate random rows with frequent key ties (small value domain) and ~12% NULLs everywhere.
+    std::mt19937 rng(0xC0FFEE);
+    auto randCol = [&]() -> std::optional<int64_t> {
+        if (rng() % 100 < 12) {
+            return std::nullopt;
+        }
+        return static_cast<int64_t>(rng() % 40);
+    };
+    const uint32_t numRows = 3000;
+    std::vector<EmsRow> input;
+    input.reserve(numRows);
+    for (auto i = 0u; i < numRows; i++) {
+        input.push_back(EmsRow{randCol(), randCol(), randCol()});
+    }
+
+    const auto spillPath =
+        (std::filesystem::temp_directory_path() / "kuzu_external_merge_sort.spill").string();
+    // 4 KiB budget -> dozens of runs must spill.
+    ExternalMergeSort sorter(info, mm, fs, spillPath, 4096);
+
+    // Append in batches to exercise multiple append() calls and unflat inputs.
+    const uint32_t batchSize = 512;
+    for (auto start = 0u; start < numRows; start += batchSize) {
+        const auto n = std::min(batchSize, numRows - start);
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        state->initOriginalAndSelectedSize(n);
+        ValueVector v0(LogicalType::INT64(), mm), v1(LogicalType::INT64(), mm),
+            v2(LogicalType::INT64(), mm);
+        v0.state = state;
+        v1.state = state;
+        v2.state = state;
+        for (auto i = 0u; i < n; i++) {
+            setCol(v0, i, input[start + i].c0);
+            setCol(v1, i, input[start + i].c1);
+            setCol(v2, i, input[start + i].c2);
+        }
+        std::vector<ValueVector*> keyVectors{&v0, &v1};
+        std::vector<ValueVector*> payloadVectors{&v0, &v1, &v2};
+        sorter.append(keyVectors, payloadVectors);
+    }
+    sorter.finalize();
+    ASSERT_EQ(sorter.getNumTuples(), numRows);
+    ASSERT_GT(sorter.getNumRuns(), 1u) << "budget did not force spilling into multiple runs";
+
+    // Scan the sorted output back out.
+    auto outState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+    ValueVector o0(LogicalType::INT64(), mm), o1(LogicalType::INT64(), mm),
+        o2(LogicalType::INT64(), mm);
+    o0.state = outState;
+    o1.state = outState;
+    o2.state = outState;
+    std::vector<ValueVector*> outVectors{&o0, &o1, &o2};
+    std::vector<EmsRow> output;
+    output.reserve(numRows);
+    uint64_t produced = 0;
+    while ((produced = sorter.scanNext(outVectors)) > 0) {
+        for (auto i = 0u; i < produced; i++) {
+            output.push_back(EmsRow{getCol(o0, i), getCol(o1, i), getCol(o2, i)});
+        }
+    }
+
+    // (a) Completeness: same multiset of rows in and out.
+    ASSERT_EQ(output.size(), input.size());
+    auto sortedIn = input;
+    auto sortedOut = output;
+    std::sort(sortedIn.begin(), sortedIn.end(), fullLess);
+    std::sort(sortedOut.begin(), sortedOut.end(), fullLess);
+    for (auto i = 0u; i < sortedIn.size(); i++) {
+        EXPECT_EQ(sortedIn[i].c0, sortedOut[i].c0) << "row " << i << " c0";
+        EXPECT_EQ(sortedIn[i].c1, sortedOut[i].c1) << "row " << i << " c1";
+        EXPECT_EQ(sortedIn[i].c2, sortedOut[i].c2) << "row " << i << " c2";
+    }
+
+    // (b) Sortedness: the output must be non-decreasing under the key order (c0 ASC, c1 DESC).
+    for (auto i = 1u; i < output.size(); i++) {
+        ASSERT_LE(cmpKey(output[i - 1], output[i]), 0)
+            << "output not sorted at position " << i;
+    }
 }
 
 } // namespace testing

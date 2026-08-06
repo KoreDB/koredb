@@ -1,5 +1,6 @@
 add_library(kuzu_processor_operator_order_by
         OBJECT
+        external_merge_sort.cpp
         key_block_merger.cpp
         order_by.cpp
         order_by_key_encoder.cpp
