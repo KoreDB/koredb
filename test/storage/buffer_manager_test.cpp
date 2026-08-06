@@ -453,6 +453,90 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableMerge) {
     }
 }
 
+// Verifies null flags and multiple fixed/variable-length types survive scatter + spill + reload.
+TEST_F(BufferManagerTest, PartitionedFactorizedTableTypesAndNulls) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    std::vector<LogicalType> columnTypes;
+    columnTypes.push_back(LogicalType::INT64());
+    columnTypes.push_back(LogicalType::STRING());
+    columnTypes.push_back(LogicalType::DOUBLE());
+
+    const auto spillPath =
+        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_nulls.spill").string();
+    PartitionedFactorizedTable partitioned(mm, LogicalType::copy(columnTypes), 1, fs, spillPath);
+
+    const uint64_t numRows = 300;
+    auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+    state->initOriginalAndSelectedSize(numRows);
+    ValueVector intVector(LogicalType::INT64(), mm);
+    ValueVector strVector(LogicalType::STRING(), mm);
+    ValueVector dblVector(LogicalType::DOUBLE(), mm);
+    ValueVector hashVector(LogicalType::INT64(), mm);
+    intVector.state = state;
+    strVector.state = state;
+    dblVector.state = state;
+    hashVector.state = state;
+    // Null patterns: int null when i%3==0, string null when i%4==0, double null when i%5==0.
+    auto intNull = [](uint64_t i) { return i % 3 == 0; };
+    auto strNull = [](uint64_t i) { return i % 4 == 0; };
+    auto dblNull = [](uint64_t i) { return i % 5 == 0; };
+    for (auto i = 0u; i < numRows; i++) {
+        intVector.setNull(i, intNull(i));
+        if (!intNull(i)) {
+            intVector.setValue<int64_t>(i, static_cast<int64_t>(i));
+        }
+        strVector.setNull(i, strNull(i));
+        if (!strNull(i)) {
+            StringVector::addString(&strVector, i, "s" + std::to_string(i));
+        }
+        dblVector.setNull(i, dblNull(i));
+        if (!dblNull(i)) {
+            dblVector.setValue<double>(i, static_cast<double>(i) + 0.5);
+        }
+        hashVector.setNull(i, false);
+        hashVector.setValue<uint64_t>(i, static_cast<uint64_t>(i % 2) << 63);
+    }
+    std::vector<ValueVector*> vectors{&intVector, &strVector, &dblVector};
+    partitioned.appendVectors(vectors, hashVector);
+    ASSERT_EQ(partitioned.getNumTuples(), numRows);
+    ASSERT_EQ(partitioned.spillAllPartitions(), 2u);
+
+    // Reload and verify each row's values and null flags (partition p holds i where i%2==p).
+    uint64_t verified = 0;
+    for (common::idx_t p = 0; p < 2; p++) {
+        auto& table = partitioned.getResidentPartition(p);
+        std::vector<std::unique_ptr<Value>> valueHolders;
+        std::vector<Value*> values;
+        for (auto& type : columnTypes) {
+            valueHolders.push_back(std::make_unique<Value>(Value::createDefaultValue(type.copy())));
+            values.push_back(valueHolders.back().get());
+        }
+        FlatTupleIterator it(table, values);
+        uint64_t i = p;
+        while (it.hasNextFlatTuple()) {
+            it.getNextFlatTuple();
+            ASSERT_EQ(values[0]->isNull(), intNull(i));
+            if (!intNull(i)) {
+                ASSERT_EQ(values[0]->getValue<int64_t>(), static_cast<int64_t>(i));
+            }
+            ASSERT_EQ(values[1]->isNull(), strNull(i));
+            if (!strNull(i)) {
+                ASSERT_EQ(values[1]->getValue<std::string>(), "s" + std::to_string(i));
+            }
+            ASSERT_EQ(values[2]->isNull(), dblNull(i));
+            if (!dblNull(i)) {
+                ASSERT_EQ(values[2]->getValue<double>(), static_cast<double>(i) + 0.5);
+            }
+            i += 2;
+            verified++;
+        }
+    }
+    ASSERT_EQ(verified, numRows);
+}
+
 class EmptyBufferManagerTest : public DBTest {
 public:
     std::string getInputDir() override {
