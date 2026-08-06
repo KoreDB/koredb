@@ -63,6 +63,11 @@ public:
     uint64_t getPartitionNumTuples(common::idx_t partitionIdx) const;
     uint64_t getNumTuples() const;
 
+    // Approximate resident (in-memory) tuple bytes across non-spilled partitions. Counts only the
+    // fixed per-tuple bytes (excludes variable-length overflow), so it is a cheap spill trigger,
+    // not exact memory accounting.
+    uint64_t getResidentTupleBytes() const;
+
     bool isSpilled(common::idx_t partitionIdx) const { return spillStates[partitionIdx].spilled; }
 
     // Returns the partition, reloading it from disk first if it was spilled.
@@ -79,6 +84,11 @@ public:
     // Spill the resident partition holding the most tuples. Returns its tuple count, or 0 if there
     // is no non-empty resident partition.
     uint64_t spillLargestResidentPartition();
+    // Operator-triggered spill driver: spill the largest resident partitions until the resident
+    // tuple bytes are at most maxResidentBytes (or no non-empty resident partition remains).
+    // Returns the number of partitions spilled. The build side calls this to bound its own peak
+    // footprint.
+    common::idx_t spillToReduceResidentBytesTo(uint64_t maxResidentBytes);
 
 private:
     common::FileInfo* getOrCreateFile();
@@ -88,6 +98,7 @@ private:
     storage::MemoryManager* mm;
     std::vector<common::LogicalType> columnTypes;
     common::idx_t logNumPartitions;
+    uint64_t numBytesPerTuple;
     std::vector<std::unique_ptr<FactorizedTable>> partitions;
 
     struct SpillState {

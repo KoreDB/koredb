@@ -31,6 +31,7 @@ PartitionedFactorizedTable::PartitionedFactorizedTable(MemoryManager* mm,
     for (auto p = 0u; p < numPartitions; p++) {
         partitions.push_back(std::make_unique<FactorizedTable>(mm, createSchema()));
     }
+    numBytesPerTuple = partitions[0]->getTableSchema()->getNumBytesPerTuple();
     spillStates.resize(numPartitions);
     scatterBuckets.resize(numPartitions);
 }
@@ -121,6 +122,16 @@ uint64_t PartitionedFactorizedTable::getNumTuples() const {
     return total;
 }
 
+uint64_t PartitionedFactorizedTable::getResidentTupleBytes() const {
+    uint64_t bytes = 0;
+    for (auto p = 0u; p < partitions.size(); p++) {
+        if (!spillStates[p].spilled) {
+            bytes += partitions[p]->getNumTuples() * numBytesPerTuple;
+        }
+    }
+    return bytes;
+}
+
 FactorizedTable& PartitionedFactorizedTable::getResidentPartition(idx_t partitionIdx) {
     reloadPartition(partitionIdx);
     return *partitions[partitionIdx];
@@ -199,6 +210,17 @@ uint64_t PartitionedFactorizedTable::spillLargestResidentPartition() {
     }
     spillPartition(largest);
     return largestNumTuples;
+}
+
+idx_t PartitionedFactorizedTable::spillToReduceResidentBytesTo(uint64_t maxResidentBytes) {
+    idx_t numSpilled = 0;
+    while (getResidentTupleBytes() > maxResidentBytes) {
+        if (spillLargestResidentPartition() == 0) {
+            break; // no non-empty resident partition left to spill
+        }
+        numSpilled++;
+    }
+    return numSpilled;
 }
 
 } // namespace processor

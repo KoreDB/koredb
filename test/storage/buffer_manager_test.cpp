@@ -173,8 +173,7 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableSpillReload) {
         std::vector<std::unique_ptr<Value>> valueHolders;
         std::vector<Value*> values;
         for (auto& type : columnTypes) {
-            valueHolders.push_back(
-                std::make_unique<Value>(Value::createDefaultValue(type.copy())));
+            valueHolders.push_back(std::make_unique<Value>(Value::createDefaultValue(type.copy())));
             values.push_back(valueHolders.back().get());
         }
         FlatTupleIterator it(table, values);
@@ -202,6 +201,68 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableSpillReload) {
     ASSERT_EQ(partitioned.getPartitionNumTuples(0), numRows);
     ASSERT_EQ(partitioned.getPartitionNumTuples(1), numRows);
     ASSERT_EQ(partitioned.getNumTuples(), numRows * 2);
+}
+
+// Verifies the operator-triggered spill driver: spilling the largest resident partitions until the
+// resident tuple bytes fit a budget, without losing tuples, and reloadable afterward.
+TEST_F(BufferManagerTest, PartitionedFactorizedTableBudgetSpill) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    std::vector<LogicalType> columnTypes;
+    columnTypes.push_back(LogicalType::INT64());
+    columnTypes.push_back(LogicalType::STRING());
+
+    const common::idx_t logNumPartitions = 3; // 8 partitions
+    const auto spillPath =
+        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_budget.spill").string();
+    PartitionedFactorizedTable partitioned(mm, LogicalType::copy(columnTypes), logNumPartitions, fs,
+        spillPath);
+    ASSERT_EQ(partitioned.getNumPartitions(), 8u);
+
+    const uint64_t numRows = 800;
+    auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+    state->initOriginalAndSelectedSize(numRows);
+    ValueVector intVector(LogicalType::INT64(), mm);
+    ValueVector strVector(LogicalType::STRING(), mm);
+    ValueVector hashVector(LogicalType::INT64(), mm);
+    intVector.state = state;
+    strVector.state = state;
+    hashVector.state = state;
+    for (auto i = 0u; i < numRows; i++) {
+        intVector.setNull(i, false);
+        intVector.setValue<int64_t>(i, static_cast<int64_t>(i));
+        strVector.setNull(i, false);
+        StringVector::addString(&strVector, i, "v" + std::to_string(i));
+        hashVector.setNull(i, false);
+        // Spread rows evenly across the 8 partitions using the top 3 hash bits.
+        hashVector.setValue<uint64_t>(i, static_cast<uint64_t>(i % 8) << 61);
+    }
+    std::vector<ValueVector*> vectors{&intVector, &strVector};
+    partitioned.appendVectors(vectors, hashVector);
+    ASSERT_EQ(partitioned.getNumTuples(), numRows);
+
+    const auto residentBefore = partitioned.getResidentTupleBytes();
+    ASSERT_GT(residentBefore, 0u);
+
+    // Drive spilling down to half the current resident bytes.
+    const auto budget = residentBefore / 2;
+    const auto numSpilled = partitioned.spillToReduceResidentBytesTo(budget);
+    ASSERT_GT(numSpilled, 0u);
+    ASSERT_LE(partitioned.getResidentTupleBytes(), budget);
+    // Tuple counts must be preserved across the spill.
+    ASSERT_EQ(partitioned.getNumTuples(), numRows);
+
+    // Every spilled partition must reload to its original tuple count.
+    uint64_t reloadedTotal = 0;
+    for (common::idx_t p = 0; p < partitioned.getNumPartitions(); p++) {
+        auto expected = partitioned.getPartitionNumTuples(p);
+        auto& table = partitioned.getResidentPartition(p);
+        ASSERT_EQ(table.getNumTuples(), expected);
+        reloadedTotal += table.getNumTuples();
+    }
+    ASSERT_EQ(reloadedTotal, numRows);
 }
 
 class EmptyBufferManagerTest : public DBTest {

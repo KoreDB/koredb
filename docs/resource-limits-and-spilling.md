@@ -113,7 +113,42 @@ they use in the in-memory overflow buffer. This is the primitive that makes spil
 variable-length data (the reason the raw-buffer spill used by the COPY partitioner cannot be reused
 for query results). Currently intended for flat result tables (it flattens factorized columns).
 
+### 3. Radix-partitioned spillable tuple store — `PartitionedFactorizedTable`
+
+`processor/result/partitioned_factorized_table.{h,cpp}` is the core building block for out-of-core
+(Grace) hash join and partitioned aggregation. It holds `2^logNumPartitions` flat `FactorizedTable`
+partitions and:
+
+- **Scatters** a batch of (unflat) vectors into partitions by the high bits of a per-row hash
+  (`appendVectors`), reusing `FactorizedTable::append` so variable-length columns are materialized
+  correctly. The high bits select the partition so they don't collide with the low bits an
+  in-partition hash table indexes on.
+- **Spills / reloads** individual partitions (`spillPartition` / `reloadPartition`) via the
+  serialization primitive above: a partition is written to a temp file as a position-independent byte
+  range and its `DataBlocks` freed; reload reads the range back and deserializes. Appending to, or
+  reading, a spilled partition transparently reloads it.
+- Exposes an **operator-triggered spill driver** (`spillToReduceResidentBytesTo`,
+  `spillLargestResidentPartition`, `getResidentTupleBytes`) so a build side can bound its own peak
+  footprint to roughly one partition.
+
+**Memory semantics** (the load-bearing detail, verified against `MemoryManager`): freeing a
+partition's 256 KiB page buffers returns them to `MemoryManager::freePages`, and a reused free page
+is re-`pin`ned on the `UNLOCKED` path *without* another `BufferManager::reserve` — so spilling a
+partition lets a later partition/hash-table allocation reuse those pages with **no growth in
+`usedMemory`**. The guarantee is therefore a *page-reuse* bound on the operator's own peak, not a
+drop in the global counter; spilling is **operator-triggered**, not buffer-manager-triggered (a
+`SpillResult` of `{0,0}` would be useless to `reserve`). This is why it does **not** register with
+`Spiller`.
+
+Unit tests (`buffer_manager_test.cpp`): `PartitionedFactorizedTableSpillReload` (scatter routing,
+spill-all, reload round-trip incl. strings, reload-on-append) and `PartitionedFactorizedTableBudgetSpill`
+(budget-driven spill driver preserves all tuples and stays reloadable).
+
 ## Remaining work (the large, careful pieces)
+
+**Operator integration of the Grace hash join is the remaining large piece.** The component above is
+the reusable core; wiring it into the live `HASH_JOIN` operator is a dedicated, factorization-aware
+effort with no safe partial landing, for the reasons below.
 
 1. **Live result-table spill integration.** Wrap a spillable result `FactorizedTable`: serialize to a
    temp file it owns, free its blocks, reload before consumption, and register for the
@@ -136,10 +171,29 @@ for query results). Currently intended for flat result tables (it flattens facto
    spill+reload, is the first task of the integration.
 
 2. **`ORDER BY` external merge sort** — spill sorted runs, k-way merge from disk.
-3. **Partitioned (Grace) hash join** — the piece that actually fixes many-to-many join blow-up. The
-   probe side is random-access, so both inputs must be radix-partitioned by hash and spilled/processed
-   partition-by-partition. This is the largest piece.
-4. **Partitioned aggregation** — analogous to (3) for the aggregate hash table.
+3. **Partitioned (Grace) hash join operator** — the piece that actually fixes many-to-many join
+   blow-up. The reusable core (`PartitionedFactorizedTable`) exists; what remains is the operator
+   wiring, which is substantial:
+   - **Two-phase probe.** Kuzu's probe is a streaming pull (`HashJoinProbe::getNextTuplesInternal`
+     pulls one probe chunk and looks it up in a fully-built in-memory hash table). A non-partitioned
+     probe requires the *entire* build side resident. Grace requires restructuring the probe into a
+     blocking two-phase operator: phase 1 consumes and partitions **all** probe input (spilling probe
+     partitions to match the build partitions); phase 2 loops partition-by-partition — build a
+     `JoinHashTable` from build partition *i*, then scan probe partition *i* and emit matches. This
+     changes the operator from streaming to blocking when spilling is active.
+   - **Factorized payloads.** `PlanMapper::createHashBuildInfo` stores an unflat payload (a payload in
+     a different chunk from the keys) as an `overflow_value_t` **factorized** column — exactly the
+     many-to-many `RETURN *` case. `PartitionedFactorizedTable` targets **flat** tuples (its serialize
+     path flattens factorization, which would materialize the cross-product). So the operator either
+     restricts to flat payloads first, or the partition store must learn to carry factorized columns
+     without flattening (pointer swizzling of the overflow references on spill/reload).
+   - **All join types** (inner / left-outer / mark / count) and **flat & unflat probe keys**, plus the
+     multi-threaded build-merge, must all be handled or explicitly gated.
+   - Gate the whole path behind a setting (default off) so the in-memory path stays byte-for-byte
+     unchanged, and add e2e `.test` cases that force spilling with a low `query_memory_limit`.
+4. **Partitioned aggregation** — analogous to (3) for the aggregate hash table; reuses
+   `PartitionedFactorizedTable` directly.
 
-All four reuse the `SpillableComponent` registry and (for correctness on variable-length data) the
-`FactorizedTable` serialization primitive.
+All reuse the `SpillableComponent` registry (for the raw-buffer, buffer-manager-triggered path) or
+`PartitionedFactorizedTable` / the `FactorizedTable` serialization primitive (for the operator-
+triggered path on variable-length data).
