@@ -84,6 +84,9 @@ public:
     void spillPartition(common::idx_t partitionIdx);
     // Reload a spilled partition from disk. No-op if resident.
     void reloadPartition(common::idx_t partitionIdx);
+    // Discard a partition's data (reset to empty, resident). Frees its blocks without writing to
+    // disk. Used to release a partition once it has been fully consumed, bounding peak memory.
+    void freePartition(common::idx_t partitionIdx);
 
     // Spill every resident, non-empty partition. Returns the number of partitions spilled.
     common::idx_t spillAllPartitions();

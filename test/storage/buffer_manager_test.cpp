@@ -18,6 +18,7 @@
 #include "graph_test/private_graph_test.h"
 #include "gtest/gtest.h"
 #include "processor/data_pos.h"
+#include "processor/operator/hash_join/grace_hash_join_executor.h"
 #include "processor/operator/hash_join/join_hash_table.h"
 #include "processor/result/factorized_table.h"
 #include "processor/result/factorized_table_util.h"
@@ -728,6 +729,99 @@ TEST_F(BufferManagerTest, GraceInnerJoinWithSpilling) {
 TEST_F(BufferManagerTest, GraceLeftJoinWithSpilling) {
     runGraceJoinSpillTest(getMemoryManager(*database), getFileSystem(*database),
         true /*isLeftJoin*/);
+}
+
+// Exercises the production GraceHashJoinExecutor end to end under a tiny memory budget that forces
+// partitions to spill during append: feed build + probe, materialize the inner join, and compare
+// the output multiset to a brute-force reference.
+TEST_F(BufferManagerTest, GraceHashJoinExecutorInnerJoin) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> buildPayloadTypes;
+    buildPayloadTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> probePayloadTypes;
+    probePayloadTypes.push_back(LogicalType::INT64());
+
+    // A 4 KiB budget is far below a partition's size, so spillToReduceResidentBytesTo spills during
+    // append -- exercising the out-of-core path.
+    GraceHashJoinExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_ghje_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "kuzu_ghje_probe.spill").string(),
+        LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
+        LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, 4096 /*memoryBudgetBytes*/);
+
+    const uint64_t numBuild = 2000, numProbe = 1200;
+    auto buildKeyFn = [](uint64_t i) { return static_cast<int64_t>(i % 10); };
+    auto probeKeyFn = [](uint64_t j) { return static_cast<int64_t>(j % 12); };
+
+    auto feed = [&](bool isBuild, uint64_t n, auto keyFn) {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm);
+        ValueVector payVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        payVec.state = state;
+        for (uint64_t b = 0; b < n; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, n - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                keyVec.setNull(r, false);
+                keyVec.setValue<int64_t>(r, keyFn(b + r));
+                payVec.setNull(r, false);
+                payVec.setValue<int64_t>(r, static_cast<int64_t>(b + r));
+            }
+            if (isBuild) {
+                exec.appendBuild({&keyVec}, {&payVec});
+            } else {
+                exec.appendProbe({&keyVec}, {&payVec});
+            }
+        }
+    };
+    feed(true, numBuild, buildKeyFn);
+    feed(false, numProbe, probeKeyFn);
+
+    auto output = exec.computeInnerJoin();
+
+    // Brute-force reference: multiset of (probeKey, buildPayload).
+    std::map<std::pair<int64_t, int64_t>, int64_t> expected;
+    std::unordered_map<int64_t, std::vector<int64_t>> buildByKey;
+    for (uint64_t i = 0; i < numBuild; i++) {
+        buildByKey[buildKeyFn(i)].push_back(static_cast<int64_t>(i));
+    }
+    for (uint64_t j = 0; j < numProbe; j++) {
+        auto it = buildByKey.find(probeKeyFn(j));
+        if (it == buildByKey.end()) {
+            continue;
+        }
+        for (auto bp : it->second) {
+            expected[{probeKeyFn(j), bp}]++;
+        }
+    }
+
+    // Output columns: [probeKey, probePayload, buildPayload]; compare (probeKey, buildPayload).
+    std::vector<LogicalType> outTypes;
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (auto& t : outTypes) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(t.copy())));
+        values.push_back(holders.back().get());
+    }
+    std::map<std::pair<int64_t, int64_t>, int64_t> got;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        got[{values[0]->getValue<int64_t>(), values[2]->getValue<int64_t>()}]++;
+    }
+
+    ASSERT_EQ(got.size(), expected.size());
+    ASSERT_TRUE(got == expected)
+        << "GraceHashJoinExecutor output multiset differs from brute-force reference";
 }
 
 class EmptyBufferManagerTest : public DBTest {

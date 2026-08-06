@@ -197,6 +197,11 @@ void PartitionedFactorizedTable::reloadPartition(idx_t partitionIdx) {
     spillState.numTuples = 0;
 }
 
+void PartitionedFactorizedTable::freePartition(idx_t partitionIdx) {
+    partitions[partitionIdx] = std::make_unique<FactorizedTable>(mm, createSchema());
+    spillStates[partitionIdx] = SpillState{};
+}
+
 idx_t PartitionedFactorizedTable::spillAllPartitions() {
     idx_t numSpilled = 0;
     for (auto p = 0u; p < partitions.size(); p++) {
