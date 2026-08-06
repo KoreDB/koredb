@@ -181,10 +181,12 @@ variable-length strings, but not factorized/unflat payloads). See remaining work
 
 ### 5. Live `HASH_JOIN` operator integration (out-of-core, gated)
 
-`spill_hash_join` (BOOL, **default `false`**) turns an eligible `HASH_JOIN` into the out-of-core
+`spill_hash_join` (BOOL, **default `true`**) turns an eligible `HASH_JOIN` into the out-of-core
 path; when off, the in-memory path is byte-for-byte unchanged. `spill_hash_join_budget` (UINT64
 bytes, `0` = derive from `query_memory_limit` else the buffer-pool size) sets the per-operator spill
-budget. The wiring (`map_hash_join.cpp`, `hash_join_build.cpp`, `hash_join_probe.cpp`):
+budget. With the derived budget the operator partitions in memory and only spills to disk near the
+buffer-pool ceiling, so on-by-default trades a partition/materialize overhead for not-OOMing. The
+wiring (`map_hash_join.cpp`, `hash_join_build.cpp`, `hash_join_probe.cpp`):
 
 - `PlanMapper::mapHashJoin` computes plan-time `GraceHashJoinInfo` (join key/payload types and the
   probe-side non-key output columns to capture) and marks the join *eligible* only for a conservative
@@ -256,36 +258,41 @@ partitions see contiguous runs the executor must re-weight. No regression: `buff
 
 ### 7. Live hash-aggregation operator integration (out-of-core, gated)
 
-`spill_aggregate` (BOOL, **default `false`**) turns an eligible `GROUP BY` into the out-of-core path;
+`spill_aggregate` (BOOL, **default `true`**) turns an eligible `GROUP BY` into the out-of-core path;
 when off, the in-memory path is byte-for-byte unchanged. `spill_aggregate_budget` (UINT64 bytes,
-`0` = derive from `query_memory_limit` else the buffer-pool size) sets the per-operator spill budget.
-The wiring (`map_aggregate.cpp`, `hash_aggregate.{h,cpp}`):
+`0` = derive from `query_memory_limit` else the buffer-pool size) sets the per-operator spill budget
+(divided across build threads). The wiring (`map_aggregate.cpp`, `hash_aggregate.{h,cpp}`):
 
 - `PlanMapper::createHashAggregate` computes plan-time `SpillAggregateInfo` (eligibility plus the
   per-aggregate input and result types) and stores it on the shared `HashAggregateSharedState`.
 - `HashAggregate::initLocalStateInternal` calls `tryActivateGrace` at **runtime** (not plan-mapping
   time, so it sees the live `spill_aggregate` / `threads` settings — the same reason the join decides
-  in `HashJoinBuild`). When on, eligible, and `numThreads == 1`, it builds a shared
-  `PartitionedAggregateExecutor`.
-- `HashAggregate::executeInternal` then scatters every raw input row into the executor (`append`,
-  spilling under the budget) instead of the local partitioning hash table.
-- `HashAggregateFinalize` routes finalization through `PartitionedAggregateExecutor::finalizeToTables`,
-  which aggregates each spilled partition into a finalized `AggregateHashTable`. Because those tables
-  have the **same schema** as the in-memory `globalPartitions`, the scan path is reused unchanged: only
-  `getNumTuples` / `getPartitionForOffset` (and `finalizePartitions` / `assertFinalized`) gained a
-  `graceActive`-guarded branch that reads the executor's tables instead. Every grace branch is inert
-  when `spill_aggregate` is off.
+  in `HashJoinBuild`), then, if grace is active, builds this thread's **own** executor
+  (`createLocalExecutor`, budget = total / `numThreads`).
+- `HashAggregate::executeInternal` scatters every raw input row into **this thread's** executor
+  (`append`, spilling under the per-thread budget) instead of the local partitioning hash table, and
+  hands the executor to the shared state (`registerLocalExecutor`) once its input is drained. Per-thread
+  executors mean the parallel build needs no cross-thread synchronization.
+- `HashAggregateFinalize` (which runs on every thread) does the finalize **once** (guarded by
+  `graceFinalized` under `graceMtx`): `merge` the per-thread executors into one, then
+  `PartitionedAggregateExecutor::finalizeToTables` aggregates each spilled partition into a finalized
+  `AggregateHashTable`. Because those tables have the **same schema** as the in-memory
+  `globalPartitions`, the scan path is reused unchanged: only `getNumTuples` / `getPartitionForOffset`
+  (and `finalizePartitions` / `assertFinalized`) gained a `graceActive`-guarded branch that reads the
+  executor's tables instead. Every grace branch is inert when `spill_aggregate` is off.
 
 **Eligibility (conservative; anything else silently uses the in-memory path):** at least one
 non-distinct aggregate; no per-aggregate factorized `multiplicityChunks` (the executor applies only the
-scalar `ResultSet` multiplicity); all group keys, dependent keys, and aggregate inputs in a single data
-chunk; and `numThreads == 1`. Distinct aggregates, multi-chunk inputs, and parallel execution fall back
-to the proven in-memory path.
+scalar `ResultSet` multiplicity); and all group keys, dependent keys, and aggregate inputs in a single
+data chunk. **Multi-threaded is supported** (unlike the join): each build thread owns an executor and
+they merge at the finalize barrier. Distinct aggregates and multi-chunk inputs fall back to the proven
+in-memory path.
 
 **Memory bound.** This bounds the **input** side (raw rows spill during append) — the win for a
 `GROUP BY` over an exploded join. The output side (`finalizeToTables` holds all group tables at once)
 is `O(#groups)`, the same as the in-memory path; streaming the output partition-by-partition is a
-follow-on.
+follow-on. The merge phase reloads the per-thread spilled partitions to combine them, so it is not
+itself budget-bounded — another reason output-side streaming is future work.
 
 **A note on the build.** Adding the two `spill_aggregate*` fields to `ClientConfig` exposed that the
 build's header-dependency tracking under-reports `client_config.h`, so an incremental build left a
@@ -296,9 +303,20 @@ extensions fixed it; after any `client_config.h` change, force-rebuild both.
 **Verification = differential.** `buffer_manager_test`'s `SpillAggregateDifferential` runs a range of
 `GROUP BY` queries (including `collect` (LIST) and `min` (STRING) stateful aggregates) with
 `spill_aggregate` off vs on and asserts identical result rows; `SpillAggregateSpillDifferential` does
-the same over 5000 generated rows with a 4 KiB budget that forces raw rows to spill and reload. Both
-assert the spilling path actually activated (a process-wide counter) so the check is never vacuous. No
-regression: `buffer_manager_test` 28/28, aggregation e2e (`agg`) 13/13 with the default (off).
+the same over 5000 generated rows with a 4 KiB budget that forces raw rows to spill and reload;
+`SpillAggregateMultiThreadDifferential` runs `threads=4` spilling against the single-threaded in-memory
+reference (exercising per-thread executors + merge). All assert the spilling path actually activated (a
+process-wide counter) so the check is never vacuous.
+
+### Defaults: spilling is on by default
+
+`spill_hash_join` and `spill_aggregate` both **default to `true`** (`SpillDefaultsOn` asserts an
+eligible join and `GROUP BY` activate grace with no `CALL` setting). With the derived budget (whole
+buffer pool) eligible operators partition in memory and only spill to disk near the ceiling, trading a
+partition/materialize overhead for not-OOMing. This also means the whole test suite exercises the grace
+paths: no regression with defaults on across `buffer_manager_test` 32/32, `api_test` 97/97, and e2e
+`agg`/`match`/`subquery`/`projection`/`filter`/`order_by`/`optional_match`. Because the e2e runner
+sorts non-`CHECK_ORDER` results, grace's partition-order output does not perturb those comparisons.
 
 ## Remaining work (the large, careful pieces)
 

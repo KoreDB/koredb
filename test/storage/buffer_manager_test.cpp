@@ -1889,5 +1889,27 @@ TEST_F(BufferManagerTest, SpillAggregateMultiThreadDifferential) {
         << "multi-threaded spilling vs single-threaded in-memory aggregation mismatch";
 }
 
+// Verifies spill_hash_join and spill_aggregate are ON by default: an eligible GROUP BY and an
+// eligible join activate the out-of-core paths without any CALL spill_* setting.
+TEST_F(BufferManagerTest, SpillDefaultsOn) {
+    using kuzu::processor::getGraceHashJoinActivationCount;
+    using kuzu::processor::getSpillAggregateActivationCount;
+    // The join path is single-threaded only; pin threads=1 so it is eligible. This does not touch the
+    // spill_* settings, which is what we are checking default the way.
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+
+    const auto aggBefore = getSpillAggregateActivationCount();
+    ASSERT_TRUE(conn->query("MATCH (p:person) RETURN p.gender, count(*)")->isSuccess());
+    ASSERT_GT(getSpillAggregateActivationCount(), aggBefore)
+        << "spill_aggregate should be ON by default";
+
+    const auto joinBefore = getGraceHashJoinActivationCount();
+    ASSERT_TRUE(conn->query("MATCH (a:person), (b:person) WHERE a.gender = b.gender "
+                            "RETURN a.fName, b.fName")
+                    ->isSuccess());
+    ASSERT_GT(getGraceHashJoinActivationCount(), joinBefore)
+        << "spill_hash_join should be ON by default";
+}
+
 } // namespace testing
 } // namespace kuzu
