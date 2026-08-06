@@ -1,5 +1,7 @@
 #include <cstdint>
 #include <filesystem>
+#include <map>
+#include <unordered_map>
 
 #include "common/constants.h"
 #include "common/data_chunk/data_chunk_state.h"
@@ -11,8 +13,11 @@
 #include "common/types/types.h"
 #include "common/types/value/value.h"
 #include "common/vector/value_vector.h"
+#include "function/hash/vector_hash_functions.h"
 #include "graph_test/private_graph_test.h"
 #include "gtest/gtest.h"
+#include "processor/data_pos.h"
+#include "processor/operator/hash_join/join_hash_table.h"
 #include "processor/result/factorized_table.h"
 #include "processor/result/factorized_table_util.h"
 #include "processor/result/partitioned_factorized_table.h"
@@ -535,6 +540,172 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableTypesAndNulls) {
         }
     }
     ASSERT_EQ(verified, numRows);
+}
+
+// End-to-end proof that a full Grace inner hash join is CORRECT when both sides are
+// radix-partitioned and spilled to disk: partition build+probe by hash(key), spill everything, then
+// per partition reload the build partition, build a real JoinHashTable from it, reload the probe
+// partition, and probe. The output multiset is compared against a brute-force nested-loop join over
+// the original inputs -- so any mistake in partitioning, spilling, or probe usage disagrees with
+// the reference. This validates the algorithm the eventual out-of-core HASH_JOIN operator will
+// implement.
+TEST_F(BufferManagerTest, GraceInnerJoinWithSpilling) {
+    using namespace kuzu::processor;
+    using namespace kuzu::function;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+
+    const common::idx_t logNumPartitions = 2; // 4 partitions
+    const uint64_t numBuild = 2000;           // key = i % 10  -> 200 build rows per key
+    const uint64_t numProbe = 1200;           // key = j % 12  -> keys 10,11 never match
+
+    auto buildKeyFn = [](uint64_t i) { return static_cast<int64_t>(i % 10); };
+    auto probeKeyFn = [](uint64_t j) { return static_cast<int64_t>(j % 12); };
+
+    // Brute-force reference: multiset of (probeKey, buildPayload) over all matches.
+    std::map<std::pair<int64_t, int64_t>, int64_t> expected;
+    std::unordered_map<int64_t, std::vector<int64_t>> buildByKey;
+    for (uint64_t i = 0; i < numBuild; i++) {
+        buildByKey[buildKeyFn(i)].push_back(static_cast<int64_t>(i));
+    }
+    for (uint64_t j = 0; j < numProbe; j++) {
+        auto it = buildByKey.find(probeKeyFn(j));
+        if (it == buildByKey.end()) {
+            continue;
+        }
+        for (auto bp : it->second) {
+            expected[{probeKeyFn(j), bp}]++;
+        }
+    }
+
+    // Partition build and probe by hash(key), using the same hash function the join uses.
+    std::vector<LogicalType> ptTypes;
+    ptTypes.push_back(LogicalType::INT64()); // key
+    ptTypes.push_back(LogicalType::INT64()); // payload
+    PartitionedFactorizedTable buildParts(mm, LogicalType::copy(ptTypes), logNumPartitions, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_grace_build.spill").string());
+    PartitionedFactorizedTable probeParts(mm, LogicalType::copy(ptTypes), logNumPartitions, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_grace_probe.spill").string());
+
+    auto partitionInput = [&](PartitionedFactorizedTable& parts, uint64_t n, auto keyFn) {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm);
+        ValueVector payVec(LogicalType::INT64(), mm);
+        ValueVector hashVec(LogicalType::HASH(), mm);
+        keyVec.state = state;
+        payVec.state = state;
+        hashVec.state = state;
+        for (uint64_t b = 0; b < n; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, n - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                keyVec.setNull(r, false);
+                keyVec.setValue<int64_t>(r, keyFn(b + r));
+                payVec.setNull(r, false);
+                payVec.setValue<int64_t>(r, static_cast<int64_t>(b + r));
+            }
+            VectorHashFunction::computeHash(keyVec, state->getSelVector(), hashVec,
+                state->getSelVector());
+            std::vector<ValueVector*> vs{&keyVec, &payVec};
+            parts.appendVectors(vs, hashVec);
+        }
+    };
+    partitionInput(buildParts, numBuild, buildKeyFn);
+    partitionInput(probeParts, numProbe, probeKeyFn);
+
+    // Force both sides to disk (simulate memory pressure between build and probe).
+    buildParts.spillAllPartitions();
+    probeParts.spillAllPartitions();
+
+    // JoinHashTable layout: [key(INT64), payload(INT64), hash(HASH), prevPtr(INT64)].
+    auto makeJHTSchema = []() {
+        FactorizedTableSchema s;
+        s.appendColumn(ColumnSchema(false /*isUnFlat*/, 0 /*groupID*/,
+            LogicalTypeUtils::getRowLayoutSize(LogicalType::INT64())));
+        s.appendColumn(
+            ColumnSchema(false, 0, LogicalTypeUtils::getRowLayoutSize(LogicalType::INT64())));
+        s.appendColumn(ColumnSchema(false, INVALID_DATA_CHUNK_POS,
+            LogicalTypeUtils::getRowLayoutSize(LogicalType::HASH())));
+        s.appendColumn(ColumnSchema(false, INVALID_DATA_CHUNK_POS,
+            LogicalTypeUtils::getRowLayoutSize(LogicalType::INT64())));
+        return s;
+    };
+
+    std::map<std::pair<int64_t, int64_t>, int64_t> got;
+
+    auto probeKeyState = DataChunkState::getSingleValueDataChunkState();
+    ValueVector probeKeyVec(LogicalType::INT64(), mm);
+    probeKeyVec.state = probeKeyState;
+    ValueVector jhtHashVec(LogicalType::HASH(), mm); // scratch for probe hashing
+    SelectionVector hashSelVec(DEFAULT_VECTOR_CAPACITY);
+    auto probedTuples = std::make_unique<uint8_t*[]>(DEFAULT_VECTOR_CAPACITY);
+    auto matchedTuples = std::make_unique<uint8_t*[]>(DEFAULT_VECTOR_CAPACITY);
+
+    for (common::idx_t p = 0; p < buildParts.getNumPartitions(); p++) {
+        // Build a JoinHashTable from the (reloaded) build partition p.
+        std::vector<LogicalType> jhtKeyTypes;
+        jhtKeyTypes.push_back(LogicalType::INT64());
+        auto jht = std::make_unique<JoinHashTable>(*mm, std::move(jhtKeyTypes), makeJHTSchema());
+        auto& buildPart = buildParts.getResidentPartition(p);
+        if (buildPart.getNumTuples() > 0) {
+            auto scanState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+            ValueVector bKey(LogicalType::INT64(), mm);
+            ValueVector bPay(LogicalType::INT64(), mm);
+            bKey.state = scanState;
+            bPay.state = scanState;
+            std::vector<ValueVector*> scanVecs{&bKey, &bPay};
+            for (uint64_t t = 0; t < buildPart.getNumTuples(); t += DEFAULT_VECTOR_CAPACITY) {
+                const auto m =
+                    std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, buildPart.getNumTuples() - t);
+                scanState->initOriginalAndSelectedSize(m);
+                buildPart.scan(std::span<ValueVector*>(scanVecs), t, m);
+                jht->appendVectors({&bKey}, {&bPay}, scanState.get());
+            }
+            jht->allocateHashSlots(jht->getNumEntries());
+            jht->buildHashSlots();
+        }
+
+        auto& probePart = probeParts.getResidentPartition(p);
+        if (probePart.getNumTuples() == 0 || jht->getNumEntries() == 0) {
+            continue; // no matches possible in this partition (co-partitioned by the same hash)
+        }
+        const auto payloadColOffset = jht->getTableSchema()->getColOffset(1);
+        auto pScanState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector pKey(LogicalType::INT64(), mm);
+        ValueVector pPay(LogicalType::INT64(), mm);
+        pKey.state = pScanState;
+        pPay.state = pScanState;
+        std::vector<ValueVector*> pScanVecs{&pKey, &pPay};
+        for (uint64_t t = 0; t < probePart.getNumTuples(); t += DEFAULT_VECTOR_CAPACITY) {
+            const auto m =
+                std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, probePart.getNumTuples() - t);
+            pScanState->initOriginalAndSelectedSize(m);
+            probePart.scan(std::span<ValueVector*>(pScanVecs), t, m);
+            for (uint64_t r = 0; r < m; r++) {
+                const int64_t probeKey = pKey.getValue<int64_t>(r);
+                probeKeyVec.setNull(0, false);
+                probeKeyVec.setValue<int64_t>(0, probeKey);
+                probeKeyState->getSelVectorUnsafe().setToUnfiltered(1);
+                probedTuples[0] = nullptr;
+                jht->probe({&probeKeyVec}, jhtHashVec, hashSelVec, nullptr, probedTuples.get());
+                while (probedTuples[0] != nullptr) {
+                    const auto numMatched =
+                        jht->matchFlatKeys({&probeKeyVec}, probedTuples.get(), matchedTuples.get());
+                    for (common::sel_t mi = 0; mi < numMatched; mi++) {
+                        const int64_t buildPayload =
+                            *reinterpret_cast<int64_t*>(matchedTuples[mi] + payloadColOffset);
+                        got[{probeKey, buildPayload}]++;
+                    }
+                    if (numMatched < DEFAULT_VECTOR_CAPACITY) {
+                        break; // chain fully walked
+                    }
+                }
+            }
+        }
+    }
+
+    ASSERT_EQ(got.size(), expected.size());
+    ASSERT_TRUE(got == expected) << "Grace join output multiset differs from brute-force reference";
 }
 
 class EmptyBufferManagerTest : public DBTest {
