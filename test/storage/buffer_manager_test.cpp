@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <map>
 #include <unordered_map>
 
@@ -542,18 +543,17 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableTypesAndNulls) {
     ASSERT_EQ(verified, numRows);
 }
 
-// End-to-end proof that a full Grace inner hash join is CORRECT when both sides are
-// radix-partitioned and spilled to disk: partition build+probe by hash(key), spill everything, then
-// per partition reload the build partition, build a real JoinHashTable from it, reload the probe
-// partition, and probe. The output multiset is compared against a brute-force nested-loop join over
-// the original inputs -- so any mistake in partitioning, spilling, or probe usage disagrees with
-// the reference. This validates the algorithm the eventual out-of-core HASH_JOIN operator will
-// implement.
-TEST_F(BufferManagerTest, GraceInnerJoinWithSpilling) {
+// Sentinel build payload used to represent a null-padded (unmatched) row in a LEFT join.
+static constexpr int64_t GRACE_LEFT_NULL_SENTINEL = std::numeric_limits<int64_t>::min();
+
+// Runs a full Grace hash join (inner or left) with BOTH sides radix-partitioned and spilled to
+// disk, and asserts the output multiset equals a brute-force nested-loop reference. Any mistake in
+// partitioning, spilling, or probe usage disagrees with the reference. This validates the algorithm
+// the eventual out-of-core HASH_JOIN operator will implement, reusing the real JoinHashTable.
+static void runGraceJoinSpillTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
+    bool isLeftJoin) {
     using namespace kuzu::processor;
     using namespace kuzu::function;
-    auto* mm = getMemoryManager(*database);
-    auto* fs = getFileSystem(*database);
 
     const common::idx_t logNumPartitions = 2; // 4 partitions
     const uint64_t numBuild = 2000;           // key = i % 10  -> 200 build rows per key
@@ -562,7 +562,8 @@ TEST_F(BufferManagerTest, GraceInnerJoinWithSpilling) {
     auto buildKeyFn = [](uint64_t i) { return static_cast<int64_t>(i % 10); };
     auto probeKeyFn = [](uint64_t j) { return static_cast<int64_t>(j % 12); };
 
-    // Brute-force reference: multiset of (probeKey, buildPayload) over all matches.
+    // Brute-force reference: multiset of (probeKey, buildPayload) over all matches; for LEFT join a
+    // probe row with no match contributes (probeKey, sentinel).
     std::map<std::pair<int64_t, int64_t>, int64_t> expected;
     std::unordered_map<int64_t, std::vector<int64_t>> buildByKey;
     for (uint64_t i = 0; i < numBuild; i++) {
@@ -571,6 +572,9 @@ TEST_F(BufferManagerTest, GraceInnerJoinWithSpilling) {
     for (uint64_t j = 0; j < numProbe; j++) {
         auto it = buildByKey.find(probeKeyFn(j));
         if (it == buildByKey.end()) {
+            if (isLeftJoin) {
+                expected[{probeKeyFn(j), GRACE_LEFT_NULL_SENTINEL}]++;
+            }
             continue;
         }
         for (auto bp : it->second) {
@@ -666,8 +670,8 @@ TEST_F(BufferManagerTest, GraceInnerJoinWithSpilling) {
         }
 
         auto& probePart = probeParts.getResidentPartition(p);
-        if (probePart.getNumTuples() == 0 || jht->getNumEntries() == 0) {
-            continue; // no matches possible in this partition (co-partitioned by the same hash)
+        if (probePart.getNumTuples() == 0) {
+            continue;
         }
         const auto payloadColOffset = jht->getTableSchema()->getColOffset(1);
         auto pScanState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
@@ -687,6 +691,7 @@ TEST_F(BufferManagerTest, GraceInnerJoinWithSpilling) {
                 probeKeyVec.setValue<int64_t>(0, probeKey);
                 probeKeyState->getSelVectorUnsafe().setToUnfiltered(1);
                 probedTuples[0] = nullptr;
+                uint64_t rowMatches = 0;
                 jht->probe({&probeKeyVec}, jhtHashVec, hashSelVec, nullptr, probedTuples.get());
                 while (probedTuples[0] != nullptr) {
                     const auto numMatched =
@@ -695,10 +700,14 @@ TEST_F(BufferManagerTest, GraceInnerJoinWithSpilling) {
                         const int64_t buildPayload =
                             *reinterpret_cast<int64_t*>(matchedTuples[mi] + payloadColOffset);
                         got[{probeKey, buildPayload}]++;
+                        rowMatches++;
                     }
                     if (numMatched < DEFAULT_VECTOR_CAPACITY) {
                         break; // chain fully walked
                     }
+                }
+                if (isLeftJoin && rowMatches == 0) {
+                    got[{probeKey, GRACE_LEFT_NULL_SENTINEL}]++;
                 }
             }
         }
@@ -706,6 +715,19 @@ TEST_F(BufferManagerTest, GraceInnerJoinWithSpilling) {
 
     ASSERT_EQ(got.size(), expected.size());
     ASSERT_TRUE(got == expected) << "Grace join output multiset differs from brute-force reference";
+}
+
+// Full out-of-core INNER hash join proven correct against a brute-force reference (see helper).
+TEST_F(BufferManagerTest, GraceInnerJoinWithSpilling) {
+    runGraceJoinSpillTest(getMemoryManager(*database), getFileSystem(*database),
+        false /*isLeftJoin*/);
+}
+
+// Full out-of-core LEFT-OUTER hash join: matches plus null-padded rows for non-matching probe keys,
+// all under forced spilling, proven correct against a brute-force reference.
+TEST_F(BufferManagerTest, GraceLeftJoinWithSpilling) {
+    runGraceJoinSpillTest(getMemoryManager(*database), getFileSystem(*database),
+        true /*isLeftJoin*/);
 }
 
 class EmptyBufferManagerTest : public DBTest {
