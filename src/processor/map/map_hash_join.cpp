@@ -119,6 +119,22 @@ static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoi
     if (eligible && (outputAllPos.empty() || !sameChunk(outputAllPos))) {
         eligible = false;
     }
+    // Exclude nested/NODE/REL payloads and outputs. Such a value occupies a single schema position
+    // (so the single-chunk check above passes) but expands to multiple runtime vectors, possibly
+    // across chunks, which the single-chunk flat emission cannot reproduce -- e.g. a `RETURN` of full
+    // nodes otherwise silently drops rows. Scalar/string columns are the verified surface; anything
+    // nested falls back to the proven in-memory path.
+    auto anyNested = [](const expression_vector& exprs) {
+        for (auto& e : exprs) {
+            if (LogicalTypeUtils::isNested(e->getDataType())) {
+                return true;
+            }
+        }
+        return false;
+    };
+    if (eligible && (anyNested(payloads) || anyNested(probeKeys) || anyNested(probeNonKeyExprs))) {
+        eligible = false;
+    }
     if (!eligible) {
         return info; // eligible stays false -> operator uses the in-memory path
     }

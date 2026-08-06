@@ -1911,5 +1911,50 @@ TEST_F(BufferManagerTest, SpillDefaultsOn) {
         << "spill_hash_join should be ON by default";
 }
 
+// Differential correctness of the Grace join for RETURN-node / multi-column shapes (which activate
+// grace by default): each query must return the same rows with spill_hash_join off (in-memory) and on
+// (partitioned). Guards against the default-on path being wrong for common `RETURN *`-style joins.
+TEST_F(BufferManagerTest, GraceHashJoinReturnNodeDifferential) {
+    using kuzu::processor::getGraceHashJoinActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    const std::vector<std::string> queries = {
+        "MATCH (a:person),(b:person) WHERE a.ID=b.ID RETURN a, b",
+        "MATCH (a:person),(b:person) WHERE a.age=b.age RETURN a, b.fName",
+        "MATCH (a:person),(b:person) WHERE a.gender=b.gender RETURN a.fName, a.age, b.fName, b.age",
+        "MATCH (a:person),(b:person) WHERE a.gender=b.gender RETURN a, b",
+    };
+    const auto before = getGraceHashJoinActivationCount();
+    for (const auto& q : queries) {
+        ASSERT_TRUE(conn->query("CALL spill_hash_join=false;")->isSuccess());
+        const auto inMemory = collectSortedRows(conn.get(), q);
+        ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
+        const auto grace = collectSortedRows(conn.get(), q);
+        ASSERT_EQ(inMemory, grace) << "Grace vs in-memory mismatch for: " << q;
+    }
+    // At least the all-scalar multi-column query stays Grace-eligible; the nested/NODE ones fall back.
+    ASSERT_GT(getGraceHashJoinActivationCount(), before)
+        << "no RETURN query activated the Grace path; the check is vacuous";
+}
+
+// Audits the spilling aggregation for nested (LIST) group keys / aggregate inputs / results, which
+// the default-on path would otherwise run untested. Each GROUP BY must return the same rows with
+// spill_aggregate off and on. (Whichever the operator deems ineligible simply falls back; either way
+// the result must be correct.)
+TEST_F(BufferManagerTest, SpillAggregateNestedDifferential) {
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    const std::vector<std::string> queries = {
+        "MATCH (p:person) RETURN p.gender, collect(p.usedNames)", // nested (LIST) aggregate input
+        "MATCH (p:person) RETURN p.workedHours, count(*)",        // nested (LIST) group key
+        "MATCH (p:person) RETURN p.gender, count(p.workedHours)", // count over a LIST column
+    };
+    for (const auto& q : queries) {
+        ASSERT_TRUE(conn->query("CALL spill_aggregate=false;")->isSuccess());
+        const auto inMemory = collectSortedRows(conn.get(), q);
+        ASSERT_TRUE(conn->query("CALL spill_aggregate=true;")->isSuccess());
+        const auto grace = collectSortedRows(conn.get(), q);
+        ASSERT_EQ(inMemory, grace) << "spill_aggregate on vs off mismatch for: " << q;
+    }
+}
+
 } // namespace testing
 } // namespace kuzu
