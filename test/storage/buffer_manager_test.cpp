@@ -841,6 +841,115 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorLeftJoin) {
         true /*isLeftJoin*/);
 }
 
+// Same forced-spill scenario as runGraceExecutorTest, but drives the resumable streaming probe
+// (initProbeStream + getNextChunk) instead of materializing the whole join, and checks the streamed
+// output multiset against the same brute-force reference. Each streamed chunk is one probe row (flat)
+// times its matched build payloads (unflat), so we expand the factorized chunk back into rows. This
+// is the exact emission the live HASH_JOIN operator will consume.
+static void runGraceStreamTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
+    bool isLeftJoin) {
+    using namespace kuzu::processor;
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> buildPayloadTypes;
+    buildPayloadTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> probePayloadTypes;
+    probePayloadTypes.push_back(LogicalType::INT64());
+
+    GraceHashJoinExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_ghjs_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "kuzu_ghjs_probe.spill").string(),
+        LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
+        LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, 4096 /*memoryBudgetBytes*/);
+
+    const uint64_t numBuild = 2000, numProbe = 1200;
+    auto buildKeyFn = [](uint64_t i) { return static_cast<int64_t>(i % 10); };
+    auto probeKeyFn = [](uint64_t j) { return static_cast<int64_t>(j % 12); };
+
+    auto feed = [&](bool isBuild, uint64_t n, auto keyFn) {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm);
+        ValueVector payVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        payVec.state = state;
+        for (uint64_t b = 0; b < n; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, n - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                keyVec.setNull(r, false);
+                keyVec.setValue<int64_t>(r, keyFn(b + r));
+                payVec.setNull(r, false);
+                payVec.setValue<int64_t>(r, static_cast<int64_t>(b + r));
+            }
+            if (isBuild) {
+                exec.appendBuild({&keyVec}, {&payVec});
+            } else {
+                exec.appendProbe({&keyVec}, {&payVec});
+            }
+        }
+    };
+    feed(true, numBuild, buildKeyFn);
+    feed(false, numProbe, probeKeyFn);
+
+    // Output vectors: probe columns flat (single-value state), build payload unflat.
+    auto flatState = DataChunkState::getSingleValueDataChunkState();
+    auto buildState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+    ValueVector probeKeyOut(LogicalType::INT64(), mm);
+    ValueVector probePayOut(LogicalType::INT64(), mm);
+    ValueVector buildPayOut(LogicalType::INT64(), mm);
+    probeKeyOut.state = flatState;
+    probePayOut.state = flatState;
+    buildPayOut.state = buildState;
+
+    exec.initProbeStream({&probeKeyOut, &probePayOut}, {&buildPayOut}, isLeftJoin);
+
+    std::map<std::pair<int64_t, int64_t>, int64_t> got;
+    while (exec.getNextChunk()) {
+        const auto probePos = probeKeyOut.state->getSelVector()[0];
+        const int64_t probeKey = probeKeyOut.getValue<int64_t>(probePos);
+        const auto& bsel = buildState->getSelVector();
+        for (auto k = 0u; k < bsel.getSelSize(); k++) {
+            const auto bpos = bsel[k];
+            const int64_t buildPayload = buildPayOut.isNull(bpos) ?
+                                             GRACE_LEFT_NULL_SENTINEL :
+                                             buildPayOut.getValue<int64_t>(bpos);
+            got[{probeKey, buildPayload}]++;
+        }
+    }
+
+    // Brute-force reference (identical to runGraceExecutorTest).
+    std::map<std::pair<int64_t, int64_t>, int64_t> expected;
+    std::unordered_map<int64_t, std::vector<int64_t>> buildByKey;
+    for (uint64_t i = 0; i < numBuild; i++) {
+        buildByKey[buildKeyFn(i)].push_back(static_cast<int64_t>(i));
+    }
+    for (uint64_t j = 0; j < numProbe; j++) {
+        auto it = buildByKey.find(probeKeyFn(j));
+        if (it == buildByKey.end()) {
+            if (isLeftJoin) {
+                expected[{probeKeyFn(j), GRACE_LEFT_NULL_SENTINEL}]++;
+            }
+            continue;
+        }
+        for (auto bp : it->second) {
+            expected[{probeKeyFn(j), bp}]++;
+        }
+    }
+
+    ASSERT_EQ(got.size(), expected.size());
+    ASSERT_TRUE(got == expected)
+        << "GraceHashJoinExecutor streamed output multiset differs from brute-force reference";
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorStreamInnerJoin) {
+    runGraceStreamTest(getMemoryManager(*database), getFileSystem(*database), false /*isLeftJoin*/);
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorStreamLeftJoin) {
+    runGraceStreamTest(getMemoryManager(*database), getFileSystem(*database), true /*isLeftJoin*/);
+}
+
 // Composite (2-column) join key + a variable-length (STRING) build payload, under forced spilling.
 // Validates multi-key co-partitioning (the routing hash matches JoinHashTable's internal multi-key
 // hash) and that string payloads survive spill/reload/lookup/append.

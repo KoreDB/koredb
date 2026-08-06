@@ -103,6 +103,39 @@ void GraceHashJoinExecutor::appendProbe(const std::vector<ValueVector*>& keyVect
     appendToPartitions(probeParts, keyVectors, payloadVectors);
 }
 
+std::unique_ptr<JoinHashTable> GraceHashJoinExecutor::buildHashTableForPartition(idx_t p) {
+    auto jht = std::make_unique<JoinHashTable>(*mm, copyTypes(keyTypes), makeJoinHashTableSchema());
+    auto& buildPart = buildParts.getResidentPartition(p);
+    if (buildPart.getNumTuples() > 0) {
+        auto scanState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        std::vector<std::unique_ptr<ValueVector>> holders;
+        std::vector<ValueVector*> bKeyVecs, bPayVecs, bAllVecs;
+        for (auto& t : keyTypes) {
+            auto v = std::make_unique<ValueVector>(t.copy(), mm);
+            v->state = scanState;
+            bKeyVecs.push_back(v.get());
+            bAllVecs.push_back(v.get());
+            holders.push_back(std::move(v));
+        }
+        for (auto& t : buildPayloadTypes) {
+            auto v = std::make_unique<ValueVector>(t.copy(), mm);
+            v->state = scanState;
+            bPayVecs.push_back(v.get());
+            bAllVecs.push_back(v.get());
+            holders.push_back(std::move(v));
+        }
+        for (uint64_t t = 0; t < buildPart.getNumTuples(); t += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, buildPart.getNumTuples() - t);
+            scanState->initOriginalAndSelectedSize(m);
+            buildPart.scan(std::span<ValueVector*>(bAllVecs), t, m);
+            jht->appendVectors(bKeyVecs, bPayVecs, scanState.get());
+        }
+        jht->allocateHashSlots(jht->getNumEntries());
+        jht->buildHashSlots();
+    }
+    return jht;
+}
+
 std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJoin) {
     auto output = std::make_unique<FactorizedTable>(mm, makeOutputSchema());
     const auto numBuildPayloads = buildPayloadTypes.size();
@@ -152,37 +185,7 @@ std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJ
 
     for (idx_t p = 0; p < buildParts.getNumPartitions(); p++) {
         // Build a JoinHashTable from the (reloaded) build partition p.
-        auto jht =
-            std::make_unique<JoinHashTable>(*mm, copyTypes(keyTypes), makeJoinHashTableSchema());
-        auto& buildPart = buildParts.getResidentPartition(p);
-        if (buildPart.getNumTuples() > 0) {
-            auto scanState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
-            std::vector<std::unique_ptr<ValueVector>> holders;
-            std::vector<ValueVector*> bKeyVecs, bPayVecs, bAllVecs;
-            for (auto& t : keyTypes) {
-                auto v = std::make_unique<ValueVector>(t.copy(), mm);
-                v->state = scanState;
-                bKeyVecs.push_back(v.get());
-                bAllVecs.push_back(v.get());
-                holders.push_back(std::move(v));
-            }
-            for (auto& t : buildPayloadTypes) {
-                auto v = std::make_unique<ValueVector>(t.copy(), mm);
-                v->state = scanState;
-                bPayVecs.push_back(v.get());
-                bAllVecs.push_back(v.get());
-                holders.push_back(std::move(v));
-            }
-            for (uint64_t t = 0; t < buildPart.getNumTuples(); t += DEFAULT_VECTOR_CAPACITY) {
-                const auto m =
-                    std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, buildPart.getNumTuples() - t);
-                scanState->initOriginalAndSelectedSize(m);
-                buildPart.scan(std::span<ValueVector*>(bAllVecs), t, m);
-                jht->appendVectors(bKeyVecs, bPayVecs, scanState.get());
-            }
-            jht->allocateHashSlots(jht->getNumEntries());
-            jht->buildHashSlots();
-        }
+        auto jht = buildHashTableForPartition(p);
 
         auto& probePart = probeParts.getResidentPartition(p);
         // For an inner join an empty build partition yields no matches; for a left join its probe
@@ -253,6 +256,166 @@ std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJ
         probeParts.freePartition(p);
     }
     return output;
+}
+
+void GraceHashJoinExecutor::initProbeStream(std::vector<ValueVector*> probeOutVecs,
+    std::vector<ValueVector*> buildOutVecs, bool isLeftJoin) {
+    KU_ASSERT(probeOutVecs.size() == numKeys + probePayloadTypes.size());
+    KU_ASSERT(buildOutVecs.size() == buildPayloadTypes.size());
+    streamProbeOutVecs = std::move(probeOutVecs);
+    streamBuildOutVecs = std::move(buildOutVecs);
+    streamProbeKeyVecs.assign(streamProbeOutVecs.begin(),
+        streamProbeOutVecs.begin() + static_cast<int64_t>(numKeys));
+    streamBuildState = streamBuildOutVecs.empty() ? nullptr : streamBuildOutVecs[0]->state.get();
+    streamLeftJoin = isLeftJoin;
+    streamBuildColIdxs.resize(buildPayloadTypes.size());
+    std::iota(streamBuildColIdxs.begin(), streamBuildColIdxs.end(),
+        static_cast<uint32_t>(numKeys));
+
+    streamHashVec = std::make_unique<ValueVector>(LogicalType::HASH(), mm);
+    if (numKeys > 1) {
+        streamTmpHashVec = std::make_unique<ValueVector>(LogicalType::HASH(), mm);
+    }
+    streamHashSelVec = std::make_unique<SelectionVector>(DEFAULT_VECTOR_CAPACITY);
+    streamProbedTuples = std::make_unique<uint8_t*[]>(DEFAULT_VECTOR_CAPACITY);
+    streamMatchedTuples = std::make_unique<uint8_t*[]>(DEFAULT_VECTOR_CAPACITY);
+
+    // Unflat buffer for scanning the probe partition a vector at a time; per-row values are copied
+    // out into the flat probe output vectors.
+    streamProbeScanState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+    streamProbeScanHolders.clear();
+    streamProbeScanVecs.clear();
+    for (auto& t : keyTypes) {
+        auto v = std::make_unique<ValueVector>(t.copy(), mm);
+        v->state = streamProbeScanState;
+        streamProbeScanVecs.push_back(v.get());
+        streamProbeScanHolders.push_back(std::move(v));
+    }
+    for (auto& t : probePayloadTypes) {
+        auto v = std::make_unique<ValueVector>(t.copy(), mm);
+        v->state = streamProbeScanState;
+        streamProbeScanVecs.push_back(v.get());
+        streamProbeScanHolders.push_back(std::move(v));
+    }
+
+    streamNextPartition = 0;
+    streamHasPartition = false;
+    streamProbePart = nullptr;
+    streamProbeNumRows = 0;
+    streamProbeRowIdx = 0;
+    streamBlockSize = 0;
+    streamBlockOffset = 0;
+    streamRowActive = false;
+    streamRowMatchCount = 0;
+    streamInitialized = true;
+}
+
+bool GraceHashJoinExecutor::streamLoadNextPartition() {
+    if (streamHasPartition) {
+        buildParts.freePartition(streamCurPartition);
+        probeParts.freePartition(streamCurPartition);
+        streamHasPartition = false;
+        streamJHT.reset();
+        streamProbePart = nullptr;
+    }
+    while (streamNextPartition < buildParts.getNumPartitions()) {
+        const auto p = streamNextPartition++;
+        auto& probePart = probeParts.getResidentPartition(p);
+        if (probePart.getNumTuples() == 0) {
+            // No probe rows here -> no output regardless of join type; free both sides and move on.
+            buildParts.freePartition(p);
+            probeParts.freePartition(p);
+            continue;
+        }
+        streamCurPartition = p;
+        streamJHT = buildHashTableForPartition(p);
+        streamProbePart = &probePart;
+        streamProbeNumRows = probePart.getNumTuples();
+        streamProbeRowIdx = 0;
+        streamBlockSize = 0;
+        streamBlockOffset = 0;
+        streamHasPartition = true;
+        return true;
+    }
+    return false;
+}
+
+void GraceHashJoinExecutor::streamLoadProbeRow() {
+    if (streamBlockOffset >= streamBlockSize) {
+        const auto remaining = streamProbeNumRows - streamProbeRowIdx;
+        const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, remaining);
+        streamProbeScanState->initOriginalAndSelectedSize(m);
+        streamProbePart->scan(std::span<ValueVector*>(streamProbeScanVecs), streamProbeRowIdx, m);
+        streamBlockSize = m;
+        streamBlockOffset = 0;
+    }
+    // Copy this row into the flat (single-value) probe output vectors.
+    for (auto i = 0u; i < streamProbeOutVecs.size(); i++) {
+        streamProbeOutVecs[i]->state->getSelVectorUnsafe().setToUnfiltered(1);
+        streamProbeOutVecs[i]->copyFromVectorData(0, streamProbeScanVecs[i], streamBlockOffset);
+    }
+    streamBlockOffset++;
+    streamProbeRowIdx++;
+}
+
+bool GraceHashJoinExecutor::getNextChunk() {
+    KU_ASSERT(streamInitialized);
+    while (true) {
+        // (1) Ship the next batch of matches for the active probe row, if any.
+        if (streamRowActive) {
+            auto* probed = streamProbedTuples.get();
+            bool shipped = false;
+            if (probed[0] != nullptr) {
+                const auto numMatched =
+                    streamJHT->matchFlatKeys(streamProbeKeyVecs, probed, streamMatchedTuples.get());
+                if (numMatched > 0) {
+                    if (streamBuildState != nullptr) {
+                        streamBuildState->initOriginalAndSelectedSize(numMatched);
+                    }
+                    streamJHT->lookup(streamBuildOutVecs, streamBuildColIdxs,
+                        streamMatchedTuples.get(), 0, numMatched);
+                    streamRowMatchCount += numMatched;
+                    streamRowActive = (probed[0] != nullptr);
+                    shipped = true;
+                } else {
+                    // Chain exhausted with no (more) matches for this row.
+                    streamRowActive = false;
+                }
+            } else {
+                streamRowActive = false;
+            }
+            if (shipped) {
+                return true;
+            }
+            // Row fully processed. For a left join, emit a null-padded row if it never matched.
+            if (streamLeftJoin && streamRowMatchCount == 0) {
+                if (streamBuildState != nullptr) {
+                    streamBuildState->initOriginalAndSelectedSize(1);
+                }
+                for (auto* v : streamBuildOutVecs) {
+                    v->setNull(0, true);
+                }
+                streamRowMatchCount = 1; // guard against re-padding; advance on the next call
+                return true;
+            }
+            // Otherwise fall through to load the next probe row.
+        }
+        // (2) Ensure a partition with unscanned probe rows is loaded.
+        if (!streamHasPartition || streamProbeRowIdx >= streamProbeNumRows) {
+            if (!streamLoadNextPartition()) {
+                return false;
+            }
+        }
+        // (3) Load the next probe row and probe the current partition's hash table.
+        streamLoadProbeRow();
+        streamProbedTuples[0] = nullptr;
+        if (streamJHT->getNumEntries() > 0) {
+            streamJHT->probe(streamProbeKeyVecs, *streamHashVec, *streamHashSelVec,
+                numKeys > 1 ? streamTmpHashVec.get() : nullptr, streamProbedTuples.get());
+        }
+        streamRowActive = true;
+        streamRowMatchCount = 0;
+    }
 }
 
 } // namespace processor
