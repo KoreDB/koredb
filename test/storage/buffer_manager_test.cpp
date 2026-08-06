@@ -1858,5 +1858,36 @@ TEST_F(BufferManagerTest, SpillAggregateSpillDifferential) {
     ASSERT_EQ(inMemory, grace) << "spilling vs in-memory aggregation result mismatch";
 }
 
+// Multi-threaded out-of-core aggregation: with threads > 1, each build thread scatters into its own
+// executor and they are merged at the finalize barrier. The result must match the single-threaded
+// in-memory reference. (A passing run does not prove race-freedom — the design is race-free by
+// construction — but it exercises the per-thread-executor + merge path end to end.)
+TEST_F(BufferManagerTest, SpillAggregateMultiThreadDifferential) {
+    using kuzu::processor::getSpillAggregateActivationCount;
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE bench(id INT64, k INT64, PRIMARY KEY(id));")->isSuccess());
+    ASSERT_TRUE(
+        conn->query("UNWIND range(0, 9999) AS i CREATE (:bench {id: i, k: i % 37});")->isSuccess());
+    const std::string q = "MATCH (b:bench) RETURN b.k, count(*), sum(b.id), min(b.id)";
+
+    // Baseline: single-threaded, in-memory.
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    ASSERT_TRUE(conn->query("CALL spill_aggregate=false;")->isSuccess());
+    const auto baseline = collectSortedRows(conn.get(), q);
+    ASSERT_FALSE(baseline.empty());
+
+    // Multi-threaded, spilling under a tiny per-operator budget (shared across threads).
+    const auto before = getSpillAggregateActivationCount();
+    ASSERT_TRUE(conn->query("CALL threads=4;")->isSuccess());
+    ASSERT_TRUE(conn->query("CALL spill_aggregate=true;")->isSuccess());
+    ASSERT_TRUE(conn->query("CALL spill_aggregate_budget=8192;")->isSuccess());
+    const auto grace = collectSortedRows(conn.get(), q);
+
+    ASSERT_GT(getSpillAggregateActivationCount(), before)
+        << "multi-threaded spilling aggregation did not activate";
+    ASSERT_EQ(baseline, grace)
+        << "multi-threaded spilling vs single-threaded in-memory aggregation mismatch";
+}
+
 } // namespace testing
 } // namespace kuzu

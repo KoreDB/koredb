@@ -116,11 +116,17 @@ public:
     void assertFinalized() const;
 
     // --- Out-of-core (spilling) aggregation ---
-    // Decided lazily at runtime (first build call) rather than at plan-mapping time, so it sees the
-    // live `spill_aggregate` / `threads` settings. Idempotent; safe to call once per build thread.
+    // Decide the spilling path lazily at runtime (first build call) rather than at plan-mapping time,
+    // so it sees the live `spill_aggregate` / `threads` settings. Idempotent (fully serialized on
+    // graceMtx); safe to call from every build thread.
     void tryActivateGrace(main::ClientContext* context);
     bool isGraceActive() const { return graceActive; }
-    PartitionedAggregateExecutor* getGraceExecutor() const { return graceExecutor.get(); }
+    // Build a fresh per-thread executor (its own spill file, budget = total / numThreads). Each build
+    // thread scatters into its own executor so append needs no cross-thread synchronization. Only
+    // valid after tryActivateGrace has activated grace.
+    std::unique_ptr<PartitionedAggregateExecutor> createLocalExecutor();
+    // Hand a finished per-thread executor to the shared state for merging at finalization.
+    void registerLocalExecutor(std::unique_ptr<PartitionedAggregateExecutor> exec);
 
 protected:
     std::tuple<const FactorizedTable*, common::offset_t> getPartitionForOffset(
@@ -147,15 +153,20 @@ public:
     // finalizePartitions aggregates each spilled partition into graceTables; and the scan-path helpers
     // (getNumTuples / getPartitionForOffset) read from graceTables instead of globalPartitions. The
     // table schema is identical to globalPartitions', so getTableSchema and the scan are unchanged.
-    // graceKeyTypes/gracePayloadTypes/spillInfo are captured at construction and consumed by
-    // tryActivateGrace when it builds the executor.
+    // graceKeyTypes/gracePayloadTypes/spillInfo are captured at construction; tryActivateGrace records
+    // the per-thread budget/vfs, each build thread creates its own executor (createLocalExecutor) and
+    // registers it (registerLocalExecutor), and finalizePartitions merges them into one before
+    // finalizeToTables. graceMtx serializes the decision and the executor registrations.
     std::mutex graceMtx;
     bool graceDecided = false;
     bool graceActive = false;
+    bool graceFinalized = false; // finalizePartitions runs on every thread; do the merge once
+    uint64_t graceBudget = 0;    // per-thread spill budget
+    common::VirtualFileSystem* graceVfs = nullptr;
     std::vector<common::LogicalType> graceKeyTypes;
     std::vector<common::LogicalType> gracePayloadTypes;
     SpillAggregateInfo spillInfo;
-    std::unique_ptr<PartitionedAggregateExecutor> graceExecutor;
+    std::vector<std::unique_ptr<PartitionedAggregateExecutor>> graceExecutors;
     std::vector<std::unique_ptr<AggregateHashTable>> graceTables;
 };
 
@@ -164,6 +175,9 @@ struct HashAggregateLocalState {
     std::vector<common::ValueVector*> dependentKeyVectors;
     common::DataChunkState* leadingState = nullptr;
     std::unique_ptr<PartitioningAggregateHashTable> aggregateHashTable;
+    // Per-thread out-of-core executor (only when grace is active); moved to the shared state at the
+    // end of this thread's build.
+    std::unique_ptr<PartitionedAggregateExecutor> graceExecutor;
 
     void init(HashAggregateSharedState* sharedState, ResultSet& resultSet,
         main::ClientContext* context, std::vector<function::AggregateFunction>& aggregateFunctions,

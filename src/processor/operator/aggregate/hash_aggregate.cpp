@@ -1,5 +1,6 @@
 #include "processor/operator/aggregate/hash_aggregate.h"
 
+#include <algorithm>
 #include <atomic>
 #include <filesystem>
 #include <memory>
@@ -139,29 +140,41 @@ void HashAggregateSharedState::tryActivateGrace(main::ClientContext* context) {
         return;
     }
     graceDecided = true;
-    // On when `spill_aggregate` is set, the shape is eligible, and execution is single-threaded (the
-    // executor is not thread-safe and there is no cross-thread build barrier). Otherwise the grace
-    // members stay inert and the in-memory path runs.
+    // On when `spill_aggregate` is set and the shape is eligible. Multi-threaded is supported: each
+    // build thread scatters into its own executor (createLocalExecutor) with no shared mutation, and
+    // the executors are merged at the finalize barrier. Otherwise the grace members stay inert and the
+    // in-memory path runs.
     const auto* cc = context->getClientConfig();
-    if (!(cc->spillAggregate && spillInfo.eligible && cc->numThreads == 1)) {
+    if (!(cc->spillAggregate && spillInfo.eligible)) {
         return;
     }
-    auto* mm = context->getMemoryManager();
-    auto* bm = mm->getBufferManager();
-    const auto budget = cc->spillAggregateBudget > 0 ? cc->spillAggregateBudget :
-                        cc->queryMemoryLimit > 0    ? cc->queryMemoryLimit :
-                                                      bm->getMemoryLimit();
+    auto* bm = memoryManager->getBufferManager();
+    const auto totalBudget = cc->spillAggregateBudget > 0 ? cc->spillAggregateBudget :
+                             cc->queryMemoryLimit > 0    ? cc->queryMemoryLimit :
+                                                           bm->getMemoryLimit();
+    const auto nThreads = std::max<uint64_t>(1, cc->numThreads);
+    graceBudget = std::max<uint64_t>(1, totalBudget / nThreads); // per-thread share of the budget
+    graceVfs = context->getVFSUnsafe();
+    graceActive = true;
+    spillAggregateActivationCount.fetch_add(1);
+}
+
+std::unique_ptr<PartitionedAggregateExecutor> HashAggregateSharedState::createLocalExecutor() {
     static std::atomic<uint64_t> spillFileCounter{0};
     const auto token = spillFileCounter.fetch_add(1);
     auto path = (std::filesystem::temp_directory_path() /
                  ("kuzu_spill_agg_" + std::to_string(token) + ".spill"))
                     .string();
-    graceExecutor = std::make_unique<PartitionedAggregateExecutor>(mm, context->getVFSUnsafe(),
-        std::move(path), LogicalType::copy(graceKeyTypes), LogicalType::copy(gracePayloadTypes),
-        copyVector(aggregateFunctions), std::move(spillInfo.aggInputTypes),
-        std::move(spillInfo.aggResultTypes), 4 /*logNumPartitions*/, budget);
-    graceActive = true;
-    spillAggregateActivationCount.fetch_add(1);
+    return std::make_unique<PartitionedAggregateExecutor>(memoryManager, graceVfs, std::move(path),
+        LogicalType::copy(graceKeyTypes), LogicalType::copy(gracePayloadTypes),
+        copyVector(aggregateFunctions), LogicalType::copy(spillInfo.aggInputTypes),
+        LogicalType::copy(spillInfo.aggResultTypes), 4 /*logNumPartitions*/, graceBudget);
+}
+
+void HashAggregateSharedState::registerLocalExecutor(
+    std::unique_ptr<PartitionedAggregateExecutor> exec) {
+    std::unique_lock lck{graceMtx};
+    graceExecutors.push_back(std::move(exec));
 }
 
 std::pair<uint64_t, uint64_t> HashAggregateSharedState::getNextRangeToRead() {
@@ -196,9 +209,23 @@ uint64_t HashAggregateSharedState::getNumTuples() const {
 
 void HashAggregateSharedState::finalizePartitions() {
     if (graceActive) {
-        // Aggregate every spilled partition into a finalized in-memory table; the scan path reads
+        // finalizePartitions runs on every build thread; do the merge + finalize exactly once (others
+        // block on the lock, then observe graceFinalized and skip). Merge the per-thread executors
+        // into one (co-partitioned, so a group still lands in a single merged partition), then
+        // aggregate every spilled partition into a finalized in-memory table. The scan path reads
         // these exactly as it reads globalPartitions' tables (identical schema).
-        graceTables = graceExecutor->finalizeToTables();
+        std::unique_lock lck{graceMtx};
+        if (graceFinalized) {
+            return;
+        }
+        graceFinalized = true;
+        if (!graceExecutors.empty()) {
+            auto& merged = graceExecutors[0];
+            for (size_t i = 1; i < graceExecutors.size(); i++) {
+                merged->merge(*graceExecutors[i]);
+            }
+            graceTables = merged->finalizeToTables();
+        }
         return;
     }
     BaseAggregateSharedState::finalizePartitions(globalPartitions, [&](auto& partition) {
@@ -309,17 +336,22 @@ void HashAggregate::initLocalStateInternal(ResultSet* resultSet, ExecutionContex
     for (auto& info : aggInfos) {
         distinctAggKeyTypes.push_back(info.distinctAggKeyType.copy());
     }
-    localState.init(common::ku_dynamic_cast<HashAggregateSharedState*>(sharedState.get()),
-        *resultSet, context->clientContext, aggregateFunctions, std::move(distinctAggKeyTypes));
+    auto* ss = common::ku_dynamic_cast<HashAggregateSharedState*>(sharedState.get());
     // Decide the out-of-core path now (runtime), so it reflects the live `spill_aggregate` setting.
-    getSharedState()->tryActivateGrace(context->clientContext);
+    ss->tryActivateGrace(context->clientContext);
+    localState.init(ss, *resultSet, context->clientContext, aggregateFunctions,
+        std::move(distinctAggKeyTypes));
+    if (ss->isGraceActive()) {
+        localState.graceExecutor = ss->createLocalExecutor();
+    }
 }
 
 void HashAggregate::executeInternal(ExecutionContext* context) {
     if (getSharedStateReference().isGraceActive()) {
-        // Out-of-core path: scatter every raw input row into the shared executor's partitions (which
-        // spill under the memory budget). No local hash table, no per-partition flush.
-        auto* exec = getSharedState()->getGraceExecutor();
+        // Out-of-core path: scatter every raw input row into this thread's own executor (which spills
+        // under the per-thread budget). No local hash table, no cross-thread synchronization; the
+        // executor is handed off to the shared state for merging once this thread's input is drained.
+        auto* exec = localState.graceExecutor.get();
         std::vector<ValueVector*> aggInputVectors; // one per function; nullptr for COUNT(*)
         aggInputVectors.reserve(aggInputs.size());
         for (auto& in : aggInputs) {
@@ -329,6 +361,7 @@ void HashAggregate::executeInternal(ExecutionContext* context) {
             exec->append(localState.keyVectors, localState.dependentKeyVectors, aggInputVectors,
                 resultSet->multiplicity);
         }
+        getSharedState()->registerLocalExecutor(std::move(localState.graceExecutor));
         return;
     }
     while (children[0]->getNextTuple(context)) {
