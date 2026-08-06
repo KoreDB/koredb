@@ -170,25 +170,66 @@ side. Correctness is proven against a brute-force nested-loop reference under **
 `GraceHashJoinExecutorInnerJoin`, `GraceHashJoinExecutorLeftJoin` validate the production class with a
 4 KiB budget that spills during append).
 
-**Scope / not yet done:** inner & left join only; **flat** payload columns (fixed-layout and
-variable-length strings, but not factorized/unflat payloads); output is **materialized** (not
-streamed); single-threaded. See remaining work below.
+The executor also exposes a resumable **streaming** probe (`initProbeStream` / `getNextChunk`) that
+emits the join one factorized chunk at a time (probe columns flat, build payloads unflat) instead of
+materializing it whole — validated against the materialized reference
+(`GraceHashJoinExecutorStream{Inner,Left}Join`). It is a reusable primitive for a future
+factorized-output operator path; the live operator (section 5) currently uses the materialized form.
+
+**Scope / not yet done:** inner & left join; **flat** payload columns (fixed-layout and
+variable-length strings, but not factorized/unflat payloads). See remaining work below.
+
+### 5. Live `HASH_JOIN` operator integration (out-of-core, gated)
+
+`spill_hash_join` (BOOL, **default `false`**) turns an eligible `HASH_JOIN` into the out-of-core
+path; when off, the in-memory path is byte-for-byte unchanged. `spill_hash_join_budget` (UINT64
+bytes, `0` = derive from `query_memory_limit` else the buffer-pool size) sets the per-operator spill
+budget. The wiring (`map_hash_join.cpp`, `hash_join_build.cpp`, `hash_join_probe.cpp`):
+
+- `PlanMapper::mapHashJoin` computes plan-time `GraceHashJoinInfo` (join key/payload types and the
+  probe-side non-key output columns to capture) and marks the join *eligible* only for a conservative
+  shape (see below). It is stored on the shared `HashJoinSharedState`.
+- `HashJoinBuild`, when `spill_hash_join` is on, `numThreads == 1`, and the join is eligible, scatters
+  every build row into a shared `GraceHashJoinExecutor` (`appendBuild`, spilling under the budget)
+  instead of building an in-memory hash table.
+- `HashJoinProbe` then drains its probe child into `appendProbe`, calls `computeInnerJoin` once to
+  **materialize** the result, and scans it back into the output vectors across `getNextTuplesInternal`
+  calls (`FactorizedTable::scan`), one row per call for a flat output chunk or a vector of rows for an
+  unflat one.
+
+**Why materialize, not stream, in v1.** The probe operator is not a pipeline breaker: its result set
+*is* the output result set. For the eligible shape all output columns live in **one** data chunk, so
+the natural emission is to scan a fully-materialized (row-per-tuple) table back into that single
+chunk. The factorized streaming primitive assumes probe-flat / build-unflat live in *separate* chunks
+— true for other plans but not this one — so it is kept as a library primitive (above) for later.
+
+**Eligibility (conservative; anything else silently uses the in-memory path):** INNER only, no mark,
+non-empty build payloads, `numThreads == 1`, the build side is a single data chunk, and **all** output
+columns live in a single data chunk. Multi-chunk (factorized) outputs, `RETURN *`-style unflat build
+payloads, LEFT/MARK/COUNT joins, and parallel execution all fall back. Silent fallback is safe because
+the fallback is the proven in-memory join.
+
+**Verification = differential.** `buffer_manager_test`'s `GraceHashJoinDifferential` runs several
+many-to-many self-joins with `spill_hash_join` off vs on and asserts identical result multisets;
+`GraceHashJoinSpillDifferential` does the same over 2000 generated rows with a 4 KiB budget that forces
+partitions to spill and reload. Both assert the Grace path actually activated (a process-wide
+activation counter) so the check is never vacuous. No regression: `api_test` 97/97, `buffer_manager_test`
+20/20, e2e `match` and `generic_hash_join` green.
 
 ## Remaining work (the large, careful pieces)
 
-The reusable core (`PartitionedFactorizedTable`) and a working out-of-core join
-(`GraceHashJoinExecutor`, inner+left, flat payloads) now exist and are proven correct under spilling.
-What remains to make out-of-core joins **query-visible** and cover the hard `RETURN *` case:
+The reusable core (`PartitionedFactorizedTable`), a working out-of-core join (`GraceHashJoinExecutor`,
+inner+left, flat payloads, materialized + streaming), and a **gated live operator** (section 5, INNER
++ single-chunk output) now exist and are proven correct under spilling. What remains to broaden
+coverage and reach the hard `RETURN *` case:
 
-1. **Wire `GraceHashJoinExecutor` into the live `HASH_JOIN` operator, gated.** With the executor in
-   place this is now tractable: in a spilling mode, `HashJoinBuild` feeds rows via `appendBuild`
-   instead of building one hash table, and `HashJoinProbe` becomes two-phase — phase 1 drains its
-   probe child into `appendProbe`, phase 2 calls `computeInnerJoin`/`computeLeftJoin` and scans the
-   materialized output across `getNextTuplesInternal` calls. Requires: a setting (default off) so the
-   in-memory path is byte-for-byte unchanged; the shared build/probe state; matching the plan's output
-   vector positions; a fallback to the in-memory path for unsupported cases; and e2e `.test` cases
-   that force spilling with a low `query_memory_limit`. Correctness-critical (a wrong join silently
-   returns wrong rows), so it must land fully verified, not in pieces.
+1. **Broaden operator eligibility.** The live operator (section 5) is deliberately narrow: INNER,
+   single-thread, single-chunk output. Extending it means (a) the **LEFT** null-padding path
+   end-to-end (the executor already does it; only the operator emission is unverified), (b)
+   **multi-threaded** build/probe — the hard part, since the probe side has no cross-thread barrier
+   today, so a barrier or per-thread partition merge is needed, and (c) **factorized / multi-chunk
+   output** — emit probe-flat / build-unflat across separate output chunks using the executor's
+   streaming `getNextChunk` instead of the single-chunk materialize+scan.
 
 2. **Factorized (unflat) payloads — the `RETURN *` case.** `PlanMapper::createHashBuildInfo` stores a
    payload from a different chunk than the keys as an `overflow_value_t` **factorized** column.
@@ -196,15 +237,11 @@ What remains to make out-of-core joins **query-visible** and cover the hard `RET
    factorization, which would materialize the cross-product). Supporting factorized payloads without
    flattening needs pointer *swizzling* of the overflow references on spill/reload (convert absolute
    pointers to relative offsets before writing, back to pointers after). This is what many real
-   many-to-many `RETURN *` queries need, and is the largest remaining sub-piece.
+   many-to-many `RETURN *` queries need, and is the largest remaining sub-piece. It is also the
+   gateway to the multi-chunk operator output in item 1(c).
 
-3. **Streaming output** for the executor (`getNextJoinChunk`) so a huge join result is produced in
-   `DEFAULT_VECTOR_CAPACITY` chunks rather than materialized whole — mirrors
-   `HashJoinProbe::getInnerJoinResultForFlatKey`'s resumable `nextMatchedTupleIdx` cursor, generalized
-   over partitions. Needed before the operator can stream large outputs.
-
-4. **Remaining join types & keys** — mark / count joins and multi-column / unflat probe keys in the
-   executor (inner + left + single flat key are done).
+3. **Remaining join types & keys** — mark / count joins and multi-column / unflat probe keys in the
+   executor (inner + left + single/composite flat key are done).
 
 5. **`ORDER BY` external merge sort** — spill sorted runs, k-way merge from disk (independent of the
    join work; reuses the `FactorizedTable` serialization primitive).

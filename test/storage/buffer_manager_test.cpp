@@ -19,6 +19,7 @@
 #include "gtest/gtest.h"
 #include "processor/data_pos.h"
 #include "processor/operator/hash_join/grace_hash_join_executor.h"
+#include "processor/operator/hash_join/hash_join_build.h"
 #include "processor/operator/hash_join/join_hash_table.h"
 #include "processor/result/factorized_table.h"
 #include "processor/result/factorized_table_util.h"
@@ -942,6 +943,84 @@ static void runGraceStreamTest(storage::MemoryManager* mm, common::VirtualFileSy
         << "GraceHashJoinExecutor streamed output multiset differs from brute-force reference";
 }
 
+// Reproduction: the join key is ALSO materialized as a build payload (same vector passed as both
+// key and payload), as happens when a query returns the build-side join key. Every output row's
+// key column must equal its duplicated-key payload column.
+TEST_F(BufferManagerTest, GraceHashJoinExecutorKeyAsPayload) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> buildPayloadTypes; // [dup-of-key INT64, tag INT64]
+    buildPayloadTypes.push_back(LogicalType::INT64());
+    buildPayloadTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> probePayloadTypes;
+    probePayloadTypes.push_back(LogicalType::INT64());
+
+    GraceHashJoinExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_ghjk_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "kuzu_ghjk_probe.spill").string(),
+        LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
+        LogicalType::copy(probePayloadTypes), 2, 1u << 30 /*no spill*/);
+
+    const uint64_t numBuild = 1000, numProbe = 500;
+    auto keyFn = [](uint64_t i) { return static_cast<int64_t>(i % 50); };
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector key(LogicalType::INT64(), mm), tag(LogicalType::INT64(), mm);
+        key.state = state;
+        tag.state = state;
+        for (uint64_t b = 0; b < numBuild; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numBuild - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                key.setValue<int64_t>(r, keyFn(b + r));
+                tag.setValue<int64_t>(r, static_cast<int64_t>(b + r));
+            }
+            // key vector passed as key AND as the first payload.
+            exec.appendBuild({&key}, {&key, &tag});
+        }
+    }
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector key(LogicalType::INT64(), mm), ppay(LogicalType::INT64(), mm);
+        key.state = state;
+        ppay.state = state;
+        for (uint64_t b = 0; b < numProbe; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numProbe - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                key.setValue<int64_t>(r, keyFn(b + r));
+                ppay.setValue<int64_t>(r, static_cast<int64_t>(b + r));
+            }
+            exec.appendProbe({&key}, {&ppay});
+        }
+    }
+    auto output = exec.computeInnerJoin();
+    // Output columns: [probeKey, probePayload, buildKeyDup, buildTag]. probeKey must equal the
+    // duplicated build key column in every row.
+    std::vector<LogicalType> outTypes;
+    for (int i = 0; i < 4; i++) {
+        outTypes.push_back(LogicalType::INT64());
+    }
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (auto& t : outTypes) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(t.copy())));
+        values.push_back(holders.back().get());
+    }
+    uint64_t rows = 0;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        ASSERT_EQ(values[0]->getValue<int64_t>(), values[2]->getValue<int64_t>())
+            << "probeKey != buildKeyDup at row " << rows;
+        rows++;
+    }
+    ASSERT_GT(rows, 0u);
+}
+
 TEST_F(BufferManagerTest, GraceHashJoinExecutorStreamInnerJoin) {
     runGraceStreamTest(getMemoryManager(*database), getFileSystem(*database), false /*isLeftJoin*/);
 }
@@ -1173,6 +1252,71 @@ TEST_F(BufferManagerTest, TestBMEvictionSlowRead) {
         }
     });
 #endif
+}
+
+// Run a query and return its rows as a sorted list of strings (order-independent multiset compare).
+static std::vector<std::string> collectSortedRows(main::Connection* conn,
+    const std::string& query) {
+    auto result = conn->query(query);
+    EXPECT_TRUE(result->isSuccess()) << result->getErrorMessage();
+    std::vector<std::string> rows;
+    while (result->hasNext()) {
+        rows.push_back(result->getNext()->toString());
+    }
+    std::sort(rows.begin(), rows.end());
+    return rows;
+}
+
+// Differential correctness of the live out-of-core (Grace) HASH_JOIN operator: the same query must
+// produce the same rows with `spill_hash_join` off (in-memory) and on (partitioned). Uses
+// many-to-many self-joins so the probe side is flattened and the join is Grace-eligible, and asserts
+// the Grace path actually activated so the comparison is not vacuous.
+TEST_F(BufferManagerTest, GraceHashJoinDifferential) {
+    using kuzu::processor::getGraceHashJoinActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    const std::vector<std::string> queries = {
+        "MATCH (a:person), (b:person) WHERE a.gender = b.gender RETURN a.fName, b.fName",
+        "MATCH (a:person), (b:person) WHERE a.age = b.age RETURN a.ID, b.ID, b.fName",
+        "MATCH (a:person), (b:person) WHERE a.isStudent = b.isStudent RETURN a.ID, b.age",
+    };
+    const auto before = getGraceHashJoinActivationCount();
+    for (const auto& q : queries) {
+        ASSERT_TRUE(conn->query("CALL spill_hash_join=false;")->isSuccess());
+        const auto inMemory = collectSortedRows(conn.get(), q);
+        ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
+        const auto grace = collectSortedRows(conn.get(), q);
+        ASSERT_EQ(inMemory, grace) << "Grace vs in-memory result mismatch for: " << q;
+    }
+    ASSERT_GT(getGraceHashJoinActivationCount(), before)
+        << "no query activated the Grace hash-join path; the differential check is vacuous";
+}
+
+// Same differential check, but with a tiny per-operator budget that forces the partitions to spill
+// to disk and reload (the real out-of-core path), over enough generated rows to exceed the budget.
+TEST_F(BufferManagerTest, GraceHashJoinSpillDifferential) {
+    using kuzu::processor::getGraceHashJoinActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE bench(id INT64, k INT64, v STRING, PRIMARY KEY(id));")
+            ->isSuccess());
+    // 2000 rows, each key value shared by exactly two rows -> a many-to-many self-join.
+    ASSERT_TRUE(conn->query("UNWIND range(0, 1999) AS i CREATE (:bench {id: i, k: i % 1000, v: "
+                            "cast(i AS STRING)});")
+                    ->isSuccess());
+    const std::string q = "MATCH (a:bench), (b:bench) WHERE a.k = b.k RETURN a.id, b.v";
+
+    ASSERT_TRUE(conn->query("CALL spill_hash_join=false;")->isSuccess());
+    const auto inMemory = collectSortedRows(conn.get(), q);
+    ASSERT_FALSE(inMemory.empty());
+
+    // 4 KiB budget << build side (2000 rows) -> partitions spill during append and reload on probe.
+    const auto before = getGraceHashJoinActivationCount();
+    ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
+    ASSERT_TRUE(conn->query("CALL spill_hash_join_budget=4096;")->isSuccess());
+    const auto grace = collectSortedRows(conn.get(), q);
+
+    ASSERT_GT(getGraceHashJoinActivationCount(), before) << "Grace path did not activate";
+    ASSERT_EQ(inMemory, grace) << "Grace (spilling) vs in-memory result mismatch";
 }
 
 } // namespace testing

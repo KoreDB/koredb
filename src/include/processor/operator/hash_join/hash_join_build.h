@@ -3,6 +3,8 @@
 #include <mutex>
 
 #include "binder/expression/expression.h"
+#include "common/enums/join_type.h"
+#include "common/types/types.h"
 #include "join_hash_table.h"
 #include "processor/operator/physical_operator.h"
 #include "processor/operator/sink.h"
@@ -11,6 +13,35 @@
 
 namespace kuzu {
 namespace processor {
+
+class GraceHashJoinExecutor;
+
+// Test-only: how many times the out-of-core (Grace) hash-join path has been activated in this
+// process. Lets a differential test confirm the spilling path actually ran (rather than silently
+// falling back to the in-memory path and proving nothing).
+KUZU_API uint64_t getGraceHashJoinActivationCount();
+
+// Static (plan-time) metadata that lets the HASH_JOIN operator run the out-of-core (Grace) path when
+// the `spill_hash_join` setting is on and the join shape is supported. `eligible` is the conservative
+// shape check (INNER, no mark, non-empty build payloads, single-chunk build side, all output columns
+// in one data chunk); when false the operator always uses the in-memory path. The type lists mirror
+// the executor's schema ([keys...], build payloads, probe non-key columns) and `probeNonKeyPos`
+// locates the probe-side non-key output columns (everything the probe contributes that is not a join
+// key) in the probe/output result set.
+struct GraceHashJoinInfo {
+    bool eligible = false;
+    common::JoinType joinType = common::JoinType::INNER;
+    std::vector<common::LogicalType> keyTypes;
+    std::vector<common::LogicalType> buildPayloadTypes;
+    std::vector<common::LogicalType> probeNonKeyTypes;
+    std::vector<DataPos> probeNonKeyPos;
+
+    GraceHashJoinInfo() = default;
+    GraceHashJoinInfo(GraceHashJoinInfo&&) = default;
+    GraceHashJoinInfo& operator=(GraceHashJoinInfo&&) = default;
+    GraceHashJoinInfo(const GraceHashJoinInfo&) = delete;
+    GraceHashJoinInfo& operator=(const GraceHashJoinInfo&) = delete;
+};
 
 struct HashJoinBuildPrintInfo final : OPPrintInfo {
     binder::expression_vector keys;
@@ -40,16 +71,32 @@ class HashJoinBuild;
 // task/pipeline, and probed by the HashJoinProbe operators.
 class HashJoinSharedState {
 public:
-    explicit HashJoinSharedState(std::unique_ptr<JoinHashTable> hashTable)
-        : hashTable{std::move(hashTable)} {};
+    // Constructor and destructor are defined out of line so std::unique_ptr<GraceHashJoinExecutor>
+    // only needs a forward declaration here (the inline constructor would otherwise instantiate the
+    // member's destructor for exception cleanup, requiring the complete type).
+    explicit HashJoinSharedState(std::unique_ptr<JoinHashTable> hashTable);
+    ~HashJoinSharedState();
 
     void mergeLocalHashTable(JoinHashTable& localHashTable);
 
     JoinHashTable* getHashTable() { return hashTable.get(); }
 
+    // --- Grace (out-of-core) join state ---
+    void setGraceInfo(GraceHashJoinInfo info) { graceInfo = std::move(info); }
+    const GraceHashJoinInfo& getGraceInfo() const { return graceInfo; }
+    bool isGraceActive() const { return graceActive; }
+    void setGraceActive() { graceActive = true; }
+    GraceHashJoinExecutor* getGraceExecutor() const { return graceExecutor.get(); }
+    // Out of line: assigning the unique_ptr destroys the old target, which needs the complete type.
+    void setGraceExecutor(std::unique_ptr<GraceHashJoinExecutor> executor);
+
 protected:
     std::mutex mtx;
     std::unique_ptr<JoinHashTable> hashTable;
+    // Populated by the mapper; consumed at runtime when spilling is enabled and the shape is eligible.
+    GraceHashJoinInfo graceInfo;
+    bool graceActive = false;
+    std::unique_ptr<GraceHashJoinExecutor> graceExecutor;
 };
 
 struct HashJoinBuildInfo {

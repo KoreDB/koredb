@@ -1,3 +1,5 @@
+#include <unordered_set>
+
 #include "binder/expression/expression_util.h"
 #include "main/client_context.h"
 #include "planner/operator/logical_hash_join.h"
@@ -59,6 +61,81 @@ HashJoinBuildInfo PlanMapper::createHashBuildInfo(const Schema& buildSideSchema,
         std::move(tableSchema));
 }
 
+// Computes the static (plan-time) metadata that lets the HASH_JOIN operator run the out-of-core
+// (Grace) path when `spill_hash_join` is enabled. Conservative: only INNER joins with no mark,
+// non-empty build payloads, a single-chunk build side, and all output columns in one data chunk are
+// marked eligible; every other shape keeps `eligible == false` and uses the in-memory path.
+static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoin,
+    const Schema& outSchema, const expression_vector& probeKeys, const expression_vector& payloads,
+    const std::vector<LogicalType>& buildKeyTypes, const std::vector<DataPos>& buildAllPos,
+    const std::vector<DataPos>& probeKeysDataPos, const std::vector<DataPos>& probePayloadsOutPos) {
+    GraceHashJoinInfo info;
+    info.joinType = hashJoin.getJoinType();
+    const auto jt = hashJoin.getJoinType();
+    // v1 supports INNER only. The executor also implements LEFT, but the operator's null-padding
+    // path is not yet end-to-end verified, so LEFT joins keep the in-memory path for now.
+    bool eligible = jt == JoinType::INNER && !hashJoin.hasMark() && !payloads.empty();
+    auto sameChunk = [](const std::vector<DataPos>& ps) {
+        if (ps.empty()) {
+            return true;
+        }
+        const auto c = ps[0].dataChunkPos;
+        for (auto& p : ps) {
+            if (p.dataChunkPos != c) {
+                return false;
+            }
+        }
+        return true;
+    };
+    // Build side must be one data chunk (all columns stored flat, one append state).
+    if (eligible && !sameChunk(buildAllPos)) {
+        eligible = false;
+    }
+    // Probe output columns = everything in scope that is neither a build payload nor a probe key
+    // (the mark is excluded by the no-mark requirement above). These are the probe non-key columns
+    // that must be captured and re-emitted; the probe keys are captured separately.
+    std::unordered_set<std::string> excluded;
+    for (auto& p : payloads) {
+        excluded.insert(p->getUniqueName());
+    }
+    for (auto& k : probeKeys) {
+        excluded.insert(k->getUniqueName());
+    }
+    std::vector<DataPos> outputAllPos = probeKeysDataPos;
+    outputAllPos.insert(outputAllPos.end(), probePayloadsOutPos.begin(), probePayloadsOutPos.end());
+    expression_vector probeNonKeyExprs;
+    if (eligible) {
+        for (auto& expr : outSchema.getExpressionsInScope()) {
+            if (excluded.contains(expr->getUniqueName())) {
+                continue;
+            }
+            outputAllPos.push_back(DataPos(outSchema.getExpressionPos(*expr)));
+            probeNonKeyExprs.push_back(expr);
+        }
+    }
+    // The operator materializes the join and scans it back into one output chunk, so every output
+    // column must live in a single data chunk. The chunk may be flat (one row emitted per call) or
+    // unflat (a vector of rows per call); the operator adapts at runtime.
+    if (eligible && (outputAllPos.empty() || !sameChunk(outputAllPos))) {
+        eligible = false;
+    }
+    if (!eligible) {
+        return info; // eligible stays false -> operator uses the in-memory path
+    }
+    info.eligible = true;
+    for (auto& t : buildKeyTypes) {
+        info.keyTypes.push_back(t.copy());
+    }
+    for (auto& p : payloads) {
+        info.buildPayloadTypes.push_back(p->getDataType().copy());
+    }
+    for (auto& e : probeNonKeyExprs) {
+        info.probeNonKeyTypes.push_back(e->getDataType().copy());
+        info.probeNonKeyPos.push_back(DataPos(outSchema.getExpressionPos(*e)));
+    }
+    return info;
+}
+
 std::unique_ptr<PhysicalOperator> PlanMapper::mapHashJoin(const LogicalOperator* logicalOperator) {
     auto hashJoin = logicalOperator->constPtrCast<LogicalHashJoin>();
     auto outSchema = hashJoin->getSchema();
@@ -84,6 +161,11 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapHashJoin(const LogicalOperator*
         ExpressionUtil::excludeExpressions(hashJoin->getExpressionsToMaterialize(), probeKeys);
     // Create build
     auto buildInfo = createHashBuildInfo(*buildSchema, buildKeys, payloads);
+    // Capture the build-side column data positions before buildInfo is moved into the operator, so
+    // the Grace eligibility check below can verify the build side is a single data chunk.
+    std::vector<DataPos> graceBuildAllPos = buildInfo.keysPos;
+    graceBuildAllPos.insert(graceBuildAllPos.end(), buildInfo.payloadsPos.begin(),
+        buildInfo.payloadsPos.end());
     auto globalHashTable = std::make_unique<JoinHashTable>(*clientContext->getMemoryManager(),
         LogicalType::copy(buildKeyTypes), buildInfo.tableSchema.copy());
     auto sharedState = std::make_shared<HashJoinSharedState>(std::move(globalHashTable));
@@ -109,6 +191,8 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapHashJoin(const LogicalOperator*
     } else {
         probeDataInfo.markDataPos = DataPos::getInvalidPos();
     }
+    sharedState->setGraceInfo(computeGraceHashJoinInfo(*hashJoin, *outSchema, probeKeys, payloads,
+        buildKeyTypes, graceBuildAllPos, probeKeysDataPos, probePayloadsOutPos));
     auto probePrintInfo = std::make_unique<HashJoinProbePrintInfo>(probeKeys);
     auto hashJoinProbe = make_unique<HashJoinProbe>(sharedState, hashJoin->getJoinType(),
         hashJoin->requireFlatProbeKeys(), probeDataInfo, std::move(probeSidePrevOperator),

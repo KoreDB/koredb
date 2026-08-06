@@ -102,6 +102,10 @@ private:
     uint64_t getCountJoinResult();
     uint64_t getJoinResult();
 
+    // Out-of-core (Grace) path: drain the probe child into the shared executor's partitions, then
+    // stream the join result one factorized chunk at a time into the output vectors.
+    bool getNextGraceTuples(ExecutionContext* context);
+
 private:
     std::shared_ptr<HashJoinSharedState> sharedState;
     common::JoinType joinType;
@@ -117,6 +121,16 @@ private:
     std::unique_ptr<common::ValueVector> hashVector;
     std::unique_ptr<common::ValueVector> tmpHashVector;
     common::SelectionVector hashSelVec;
+
+    // Grace path only. Its output shape is a single flattened (unflat) data chunk holding all output
+    // columns, matching plans that materialize the join into one group. The probe child is drained,
+    // the join is materialized once, then scanned out in DEFAULT_VECTOR_CAPACITY-sized chunks.
+    std::vector<common::ValueVector*> probeNonKeyVectors; // probe-side non-key output columns
+    std::vector<common::ValueVector*> graceOutputVectors; // [keys..., nonKeys..., buildPayloads...]
+    std::unique_ptr<FactorizedTable> graceOutput;         // materialized join result
+    common::DataChunkState* graceOutputState = nullptr;   // shared state of all output columns
+    uint64_t graceScanCursor = 0;
+    bool graceDrained = false; // probe child fully drained + join materialized
 };
 
 } // namespace processor

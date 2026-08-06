@@ -278,5 +278,29 @@ struct QueryMemoryLimitSetting {
     }
 };
 
+struct SpillHashJoinSetting {
+    static constexpr auto name = "spill_hash_join";
+    static constexpr auto inputType = common::LogicalTypeID::BOOL;
+    static void setContext(ClientContext* context, const common::Value& parameter) {
+        parameter.validateType(inputType);
+        context->getClientConfigUnsafe()->spillHashJoin = parameter.getValue<bool>();
+    }
+    static common::Value getSetting(const ClientContext* context) {
+        return common::Value::createValue(context->getClientConfig()->spillHashJoin);
+    }
+};
+
+struct SpillHashJoinBudgetSetting {
+    static constexpr auto name = "spill_hash_join_budget";
+    static constexpr auto inputType = common::LogicalTypeID::UINT64;
+    static void setContext(ClientContext* context, const common::Value& parameter) {
+        parameter.validateType(inputType);
+        context->getClientConfigUnsafe()->spillHashJoinBudget = parameter.getValue<uint64_t>();
+    }
+    static common::Value getSetting(const ClientContext* context) {
+        return common::Value::createValue(context->getClientConfig()->spillHashJoinBudget);
+    }
+};
+
 } // namespace main
 } // namespace kuzu

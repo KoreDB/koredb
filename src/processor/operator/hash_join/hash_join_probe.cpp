@@ -1,7 +1,11 @@
 #include "processor/operator/hash_join/hash_join_probe.h"
 
+#include <algorithm>
+#include <span>
+
 #include "binder/expression/expression_util.h"
 #include "processor/execution_context.h"
+#include "processor/operator/hash_join/grace_hash_join_executor.h"
 
 using namespace kuzu::common;
 
@@ -39,6 +43,11 @@ void HashJoinProbe::initLocalStateInternal(ResultSet* resultSet, ExecutionContex
     if (keyVectors.size() > 1) {
         tmpHashVector = std::make_unique<ValueVector>(LogicalType::HASH(),
             context->clientContext->getMemoryManager());
+    }
+    if (sharedState->isGraceActive()) {
+        for (auto& pos : sharedState->getGraceInfo().probeNonKeyPos) {
+            probeNonKeyVectors.push_back(resultSet->getValueVector(pos).get());
+        }
     }
 }
 
@@ -195,7 +204,49 @@ uint64_t HashJoinProbe::getJoinResult() {
 // 2) populate values from matched tuples into resultKeyDataChunk , buildSideFlatResultDataChunk
 // (all flat data chunks from the build side are merged into one) and buildSideVectorPtrs (each
 // VectorPtr corresponds to one unFlat build side data chunk that is appended to the resultSet).
+bool HashJoinProbe::getNextGraceTuples(ExecutionContext* context) {
+    auto* exec = sharedState->getGraceExecutor();
+    if (!graceDrained) {
+        // Phase 1: drain the probe child into the executor's (spilling) probe partitions.
+        while (children[0]->getNextTuple(context)) {
+            for (auto i = 0u; i < resultSet->multiplicity; ++i) {
+                exec->appendProbe(keyVectors, probeNonKeyVectors);
+            }
+        }
+        // Phase 2: materialize the whole join. Output column order is
+        // [probeKeys..., probeNonKeys..., buildPayloads...]; the operator scans it back into the
+        // matching output vectors, which all share one flattened (unflat) chunk.
+        graceOutput = joinType == JoinType::LEFT ? exec->computeLeftJoin() : exec->computeInnerJoin();
+        graceOutputVectors = keyVectors;
+        graceOutputVectors.insert(graceOutputVectors.end(), probeNonKeyVectors.begin(),
+            probeNonKeyVectors.end());
+        graceOutputVectors.insert(graceOutputVectors.end(), vectorsToReadInto.begin(),
+            vectorsToReadInto.end());
+        graceOutputState = graceOutputVectors[0]->state.get();
+        graceScanCursor = 0;
+        graceDrained = true;
+        resultSet->multiplicity = 1; // rows are fully expanded into the materialized output
+    }
+    const auto total = graceOutput->getNumTuples();
+    if (graceScanCursor >= total) {
+        return false;
+    }
+    // A flat output chunk carries one row per call; an unflat one carries a vector of rows.
+    uint64_t n = 1;
+    if (!graceOutputState->isFlat()) {
+        n = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, total - graceScanCursor);
+        graceOutputState->initOriginalAndSelectedSize(n);
+    }
+    graceOutput->scan(std::span<ValueVector*>(graceOutputVectors), graceScanCursor, n);
+    graceScanCursor += n;
+    metrics->numOutputTuple.increase(n);
+    return true;
+}
+
 bool HashJoinProbe::getNextTuplesInternal(ExecutionContext* context) {
+    if (sharedState->isGraceActive()) {
+        return getNextGraceTuples(context);
+    }
     uint64_t numPopulatedTuples = 0;
     do {
         if (!getMatchedTuples(context)) {

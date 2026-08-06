@@ -30,6 +30,13 @@ struct ClientConfigDefault {
     static constexpr bool ENABLE_PARTIAL_RESULT_ON_TIMEOUT = true;
     // 0 means no per-query memory limit (only the database-wide buffer pool size applies).
     static constexpr uint64_t QUERY_MEMORY_LIMIT = 0;
+    // When true, an eligible HASH_JOIN runs the out-of-core (Grace) path that radix-partitions both
+    // sides and spills to disk under a memory budget, so a join whose build side does not fit in
+    // memory can still complete. Off by default: the in-memory path is unchanged unless opted in.
+    static constexpr bool SPILL_HASH_JOIN = false;
+    // Per-operator memory budget (bytes) for the Grace hash-join path. 0 means "derive it": the
+    // per-query memory limit if set, otherwise the whole buffer pool. A small value forces spilling.
+    static constexpr uint64_t SPILL_HASH_JOIN_BUDGET = 0;
 };
 
 struct ClientConfig {
@@ -71,6 +78,12 @@ struct ClientConfig {
     // and returns partial results (QueryResult::isTruncated() == true) instead of failing with an
     // out-of-memory error.
     uint64_t queryMemoryLimit = ClientConfigDefault::QUERY_MEMORY_LIMIT;
+    // If an eligible HASH_JOIN should use the out-of-core (Grace) spilling path. See
+    // ClientConfigDefault::SPILL_HASH_JOIN.
+    bool spillHashJoin = ClientConfigDefault::SPILL_HASH_JOIN;
+    // Per-operator memory budget (bytes) for the Grace hash-join path; 0 = derive. See
+    // ClientConfigDefault::SPILL_HASH_JOIN_BUDGET.
+    uint64_t spillHashJoinBudget = ClientConfigDefault::SPILL_HASH_JOIN_BUDGET;
 };
 
 } // namespace main

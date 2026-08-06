@@ -24,7 +24,8 @@ static ConfigurationOption options[] = { // NOLINT(cert-err58-cpp):
     GET_CONFIGURATION(ForceCheckpointClosingDBSetting), GET_CONFIGURATION(SpillToDiskSetting),
     GET_CONFIGURATION(EnableOptimizerSetting), GET_CONFIGURATION(EnableInternalCatalogSetting),
     GET_CONFIGURATION(EnablePartialResultOnTimeoutSetting),
-    GET_CONFIGURATION(QueryMemoryLimitSetting)};
+    GET_CONFIGURATION(QueryMemoryLimitSetting), GET_CONFIGURATION(SpillHashJoinSetting),
+    GET_CONFIGURATION(SpillHashJoinBudgetSetting)};
 
 DBConfig::DBConfig(const SystemConfig& systemConfig)
     : bufferPoolSize{systemConfig.bufferPoolSize}, maxNumThreads{systemConfig.maxNumThreads},
