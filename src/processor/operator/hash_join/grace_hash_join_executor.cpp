@@ -303,6 +303,123 @@ std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJ
     return output;
 }
 
+std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeMarkJoinImpl(idx_t onlyPartition) {
+    // Output columns: [probeKeys..., probePayloads..., mark(BOOL)], all flat -- exactly one row per
+    // probe row. Build payloads are never read for a MARK join, only key existence.
+    auto types = concatTypes(keyTypes, probePayloadTypes);
+    types.push_back(LogicalType::BOOL());
+    auto output = std::make_unique<FactorizedTable>(mm,
+        FactorizedTableUtils::createFlatTableSchema(std::move(types)));
+
+    // Flat probe-row output vectors (keys + payloads) plus a flat mark vector, all sharing one
+    // single-value state.
+    auto flatState = DataChunkState::getSingleValueDataChunkState();
+    std::vector<std::unique_ptr<ValueVector>> probeHolders;
+    std::vector<ValueVector*> probeKeyVecs, probePayloadVecs;
+    for (auto& t : keyTypes) {
+        auto v = std::make_unique<ValueVector>(t.copy(), mm);
+        v->state = flatState;
+        probeKeyVecs.push_back(v.get());
+        probeHolders.push_back(std::move(v));
+    }
+    for (auto& t : probePayloadTypes) {
+        auto v = std::make_unique<ValueVector>(t.copy(), mm);
+        v->state = flatState;
+        probePayloadVecs.push_back(v.get());
+        probeHolders.push_back(std::move(v));
+    }
+    auto markVec = std::make_unique<ValueVector>(LogicalType::BOOL(), mm);
+    markVec->state = flatState;
+
+    std::vector<ValueVector*> outputVecs;
+    outputVecs.insert(outputVecs.end(), probeKeyVecs.begin(), probeKeyVecs.end());
+    outputVecs.insert(outputVecs.end(), probePayloadVecs.begin(), probePayloadVecs.end());
+    outputVecs.push_back(markVec.get());
+
+    // Probe scratch.
+    SelectionVector hashSelVec(DEFAULT_VECTOR_CAPACITY);
+    ValueVector probeHashVec(LogicalType::HASH(), mm);
+    ValueVector probeTmpHashVec(LogicalType::HASH(), mm);
+    auto probedTuples = std::make_unique<uint8_t*[]>(DEFAULT_VECTOR_CAPACITY);
+    auto matchedTuples = std::make_unique<uint8_t*[]>(DEFAULT_VECTOR_CAPACITY);
+
+    const idx_t pBegin = (onlyPartition == ALL_PARTITIONS) ? 0 : onlyPartition;
+    const idx_t pEnd =
+        (onlyPartition == ALL_PARTITIONS) ? buildParts.getNumPartitions() : onlyPartition + 1;
+    for (idx_t p = pBegin; p < pEnd; p++) {
+        auto jht = buildHashTableForPartition(p);
+        auto& probePart = probeParts.getResidentPartition(p);
+        if (probePart.getNumTuples() > 0) {
+            auto pScanState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+            std::vector<std::unique_ptr<ValueVector>> holders;
+            std::vector<ValueVector*> pKeyVecs, pPayVecs, pAllVecs;
+            for (auto& t : keyTypes) {
+                auto v = std::make_unique<ValueVector>(t.copy(), mm);
+                v->state = pScanState;
+                pKeyVecs.push_back(v.get());
+                pAllVecs.push_back(v.get());
+                holders.push_back(std::move(v));
+            }
+            for (auto& t : probePayloadTypes) {
+                auto v = std::make_unique<ValueVector>(t.copy(), mm);
+                v->state = pScanState;
+                pPayVecs.push_back(v.get());
+                pAllVecs.push_back(v.get());
+                holders.push_back(std::move(v));
+            }
+            for (uint64_t t = 0; t < probePart.getNumTuples(); t += DEFAULT_VECTOR_CAPACITY) {
+                const auto m =
+                    std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, probePart.getNumTuples() - t);
+                pScanState->initOriginalAndSelectedSize(m);
+                probePart.scan(std::span<ValueVector*>(pAllVecs), t, m);
+                for (uint64_t r = 0; r < m; r++) {
+                    // A NULL join key never matches in an equi-join (mark == false), mirroring the
+                    // in-memory MARK path which discards NULL keys before probing.
+                    bool keyIsNull = false;
+                    for (auto i = 0u; i < numKeys; i++) {
+                        if (pKeyVecs[i]->isNull(r)) {
+                            keyIsNull = true;
+                            break;
+                        }
+                    }
+                    for (auto i = 0u; i < numKeys; i++) {
+                        probeKeyVecs[i]->copyFromVectorData(0, pKeyVecs[i], r);
+                    }
+                    for (auto i = 0u; i < probePayloadVecs.size(); i++) {
+                        probePayloadVecs[i]->copyFromVectorData(0, pPayVecs[i], r);
+                    }
+                    flatState->getSelVectorUnsafe().setToUnfiltered(1);
+                    bool matched = false;
+                    if (!keyIsNull && jht->getNumEntries() > 0) {
+                        probedTuples[0] = nullptr;
+                        jht->probe(probeKeyVecs, probeHashVec, hashSelVec,
+                            numKeys > 1 ? &probeTmpHashVec : nullptr, probedTuples.get());
+                        // Existence only: stop at the first real match (matchFlatKeys walks the whole
+                        // collision chain for a single flat key, returning < CAPACITY once exhausted).
+                        while (probedTuples[0] != nullptr) {
+                            const auto numMatched = jht->matchFlatKeys(probeKeyVecs,
+                                probedTuples.get(), matchedTuples.get());
+                            if (numMatched > 0) {
+                                matched = true;
+                                break;
+                            }
+                            if (numMatched < DEFAULT_VECTOR_CAPACITY) {
+                                break;
+                            }
+                        }
+                    }
+                    markVec->setNull(0, false);
+                    markVec->setValue<bool>(0, matched);
+                    output->append(outputVecs);
+                }
+            }
+        }
+        buildParts.freePartition(p);
+        probeParts.freePartition(p);
+    }
+    return output;
+}
+
 void GraceHashJoinExecutor::initFlatStream(std::vector<ValueVector*> outVecs, bool isLeftJoin) {
     KU_ASSERT(outVecs.size() == numKeys + probePayloadTypes.size() + buildPayloadTypes.size());
     streamFlatOutVecs = std::move(outVecs);

@@ -108,6 +108,18 @@ public:
         return computeJoin(isLeftJoin, p);
     }
 
+    // --- MARK (EXISTS / semi-join) --------------------------------------------------------------
+    // Emit exactly ONE output row per probe row -- columns [probeKeys..., probePayloads...,
+    // mark(BOOL)] -- where mark is whether that probe row had >=1 build match. A NULL join key or an
+    // empty build partition yields mark == false; no build payloads are read (a MARK join's build
+    // side materializes only keys). Co-partitioning makes existence decidable one partition at a
+    // time. computeMarkJoin() materializes the whole result; computeMarkPartition(p) restricts it to
+    // partition p and frees that pair, bounding peak memory for the streaming operator path.
+    std::unique_ptr<FactorizedTable> computeMarkJoin() { return computeMarkJoinImpl(ALL_PARTITIONS); }
+    std::unique_ptr<FactorizedTable> computeMarkPartition(common::idx_t p) {
+        return computeMarkJoinImpl(p);
+    }
+
     common::idx_t getNumPartitions() const { return buildParts.getNumPartitions(); }
 
 private:
@@ -119,6 +131,9 @@ private:
     // pair freed), bounding peak memory for the flat-stream path.
     std::unique_ptr<FactorizedTable> computeJoin(bool isLeftJoin,
         common::idx_t onlyPartition = ALL_PARTITIONS);
+    // Shared implementation behind computeMarkJoin()/computeMarkPartition(). onlyPartition ==
+    // ALL_PARTITIONS materializes the whole MARK result; a real index restricts it to that partition.
+    std::unique_ptr<FactorizedTable> computeMarkJoinImpl(common::idx_t onlyPartition);
     // Build a JoinHashTable from the (reloaded) build partition p. Empty partition -> empty table.
     std::unique_ptr<JoinHashTable> buildHashTableForPartition(common::idx_t p);
     // Streaming helpers.

@@ -1002,6 +1002,121 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorLeftJoin) {
         true /*isLeftJoin*/);
 }
 
+// Exercises the MARK (EXISTS / semi-join) grace path: for each probe row emit exactly one output row
+// [probeKey, probePayload, mark], where mark == whether the probe key exists in the build side (a
+// NULL probe key never matches -> false). The build side carries keys only (no payload), as a MARK
+// join does. Runs under a supplied memory budget -- a large budget stays in memory, a tiny one forces
+// partitions to spill during append -- and both must agree with the same brute-force reference. The
+// probe payload is the unique row index, so every probe row's mark can be checked independently.
+static void runGraceMarkJoinTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
+    uint64_t budget) {
+    using namespace kuzu::processor;
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> buildPayloadTypes; // MARK reads no build payload.
+    std::vector<LogicalType> probePayloadTypes;
+    probePayloadTypes.push_back(LogicalType::INT64());
+
+    GraceHashJoinExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_ghje_mark_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "kuzu_ghje_mark_probe.spill").string(),
+        LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
+        LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, budget);
+
+    const uint64_t numBuild = 2000, numProbe = 1200;
+    auto buildKeyFn = [](uint64_t i) { return static_cast<int64_t>(i % 10); }; // keys 0..9 present
+    auto probeKeyFn = [](uint64_t j) { return static_cast<int64_t>(j % 12); }; // 10,11 never match
+    auto probeKeyIsNull = [](uint64_t j) { return (j % 7) == 0; };
+
+    // Feed build (key only).
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        for (uint64_t b = 0; b < numBuild; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numBuild - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                keyVec.setNull(r, false);
+                keyVec.setValue<int64_t>(r, buildKeyFn(b + r));
+            }
+            exec.appendBuild({&keyVec}, {});
+        }
+    }
+    // Feed probe (key + unique payload); every 7th probe row has a NULL key.
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm);
+        ValueVector payVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        payVec.state = state;
+        for (uint64_t b = 0; b < numProbe; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numProbe - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                if (probeKeyIsNull(b + r)) {
+                    keyVec.setNull(r, true);
+                } else {
+                    keyVec.setNull(r, false);
+                    keyVec.setValue<int64_t>(r, probeKeyFn(b + r));
+                }
+                payVec.setNull(r, false);
+                payVec.setValue<int64_t>(r, static_cast<int64_t>(b + r));
+            }
+            exec.appendProbe({&keyVec}, {&payVec});
+        }
+    }
+
+    auto output = exec.computeMarkJoin();
+
+    // Brute-force reference: probePayload (unique) -> expected mark.
+    std::vector<bool> buildHas(12, false);
+    for (uint64_t i = 0; i < numBuild; i++) {
+        buildHas[static_cast<size_t>(buildKeyFn(i))] = true;
+    }
+    std::map<int64_t, bool> expected;
+    for (uint64_t j = 0; j < numProbe; j++) {
+        const bool mark = !probeKeyIsNull(j) && buildHas[static_cast<size_t>(probeKeyFn(j))];
+        expected[static_cast<int64_t>(j)] = mark;
+    }
+
+    // Output columns: [probeKey, probePayload, mark]; index by the unique probePayload.
+    std::vector<LogicalType> outTypes;
+    outTypes.push_back(LogicalType::INT64()); // probeKey
+    outTypes.push_back(LogicalType::INT64()); // probePayload (unique row index)
+    outTypes.push_back(LogicalType::BOOL());  // mark
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (auto& t : outTypes) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(t.copy())));
+        values.push_back(holders.back().get());
+    }
+    std::map<int64_t, bool> got;
+    uint64_t rowCount = 0;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        got[values[1]->getValue<int64_t>()] = values[2]->getValue<bool>();
+        rowCount++;
+    }
+
+    ASSERT_EQ(rowCount, numProbe) << "MARK join must emit exactly one row per probe row";
+    ASSERT_EQ(got.size(), expected.size());
+    ASSERT_TRUE(got == expected)
+        << "GraceHashJoinExecutor MARK output differs from brute-force reference";
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorMarkJoinInMemory) {
+    runGraceMarkJoinTest(getMemoryManager(*database), getFileSystem(*database),
+        1ull << 30 /*1 GiB budget: stays in memory*/);
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorMarkJoinSpill) {
+    runGraceMarkJoinTest(getMemoryManager(*database), getFileSystem(*database),
+        4096 /*forces spill during append*/);
+}
+
 // Same forced-spill scenario as runGraceExecutorTest, but drives the resumable streaming probe
 // (initProbeStream + getNextChunk) instead of materializing the whole join, and checks the streamed
 // output multiset against the same brute-force reference. Each streamed chunk is one probe row (flat)
