@@ -17,8 +17,33 @@ SortSharedState::SortSharedState() : nextTableIdx{0}, numBytesPerTuple{0} {
 
 SortSharedState::~SortSharedState() = default;
 
-void SortSharedState::setExternalSorter(std::unique_ptr<ExternalMergeSort> sorter) {
-    externalSorter = std::move(sorter);
+ExternalMergeSort* SortSharedState::addExternalGenerator(
+    std::unique_ptr<ExternalMergeSort> generator) {
+    std::unique_lock lck{mtx};
+    auto* raw = generator.get();
+    externalGenerators.push_back(std::move(generator));
+    return raw;
+}
+
+ExternalMergeSort* SortSharedState::prepareExternalMerge() {
+    // Called once, on the single scan thread, strictly after every OrderBy generator finalized (the
+    // pipeline barrier guarantees this), so no locking is needed here.
+    if (externalMergePrepared) {
+        return externalCoordinator;
+    }
+    externalMergePrepared = true;
+    if (externalGenerators.empty()) {
+        return nullptr;
+    }
+    // Gather every generator's sorted runs (each in its own spill file) and hand them to generator 0,
+    // which streams a single k-way merge across all of them.
+    std::vector<ExternalMergeSort::RunSource> allSources;
+    for (auto& generator : externalGenerators) {
+        generator->collectRunSources(allSources);
+    }
+    externalCoordinator = externalGenerators[0].get();
+    externalCoordinator->setMergeSources(std::move(allSources));
+    return externalCoordinator;
 }
 
 void SortSharedState::init(const OrderByDataInfo& orderByDataInfo) {

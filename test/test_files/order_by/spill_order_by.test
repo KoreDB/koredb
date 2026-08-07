@@ -53,3 +53,16 @@
 2|commonprefix2
 1|commonprefix1
 0|commonprefix0
+# Multi-threaded external sort (threads>1): run generation fans out across threads and the single
+# scan thread k-way merges across all threads' runs. The total order must be identical.
+-STATEMENT CALL threads=4;
+---- ok
+-STATEMENT MATCH (n:t) RETURN n.id, n.a ORDER BY n.a ASC, n.id ASC;
+-CHECK_ORDER
+---- 6
+0|0
+5|0
+2|1
+4|2
+1|3
+3|4

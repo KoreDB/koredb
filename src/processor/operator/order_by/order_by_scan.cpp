@@ -14,9 +14,10 @@ void OrderByScanLocalState::init(std::vector<DataPos>& outVectorPos, SortSharedS
         vectorsToRead.push_back(resultSet.getValueVector(dataPos).get());
     }
     if (sharedState.isExternalActive()) {
-        // Out-of-core path: stream the sorted output from the external merge sort executor.
-        externalSorter = sharedState.getExternalSorter();
-        numTuples = externalSorter->getNumTuples();
+        // Out-of-core path: prepare the cross-thread k-way merge (once, on this single scan thread)
+        // and stream the sorted output from the coordinator.
+        externalSorter = sharedState.prepareExternalMerge();
+        numTuples = externalSorter != nullptr ? externalSorter->getNumTuples() : 0;
     } else {
         payloadScanner = std::make_unique<PayloadScanner>(sharedState.getMergedKeyBlock(),
             sharedState.getPayloadTables());

@@ -2239,5 +2239,44 @@ TEST_F(BufferManagerTest, SpillOrderByDifferential) {
         << "external merge sort path did not activate";
 }
 
+// Multi-threaded run generation for the out-of-core ORDER BY: with threads>1 each thread produces its
+// own spilled runs and the single scan thread k-way merges across all of them. A total order (a unique
+// n.id tiebreaker) makes the result deterministic regardless of thread count, so the multi-threaded
+// external result must equal the single-threaded in-memory result. A tiny budget (split per generator)
+// forces each thread to spill multiple runs, stressing the cross-file merge.
+TEST_F(BufferManagerTest, SpillOrderByMultiThreadedDifferential) {
+    using kuzu::processor::getExternalMergeSortActivationCount;
+    ASSERT_TRUE(conn->query("CREATE NODE TABLE ob(id INT64, a INT64, b DOUBLE, s STRING, us STRING, "
+                            "PRIMARY KEY(id));")
+                    ->isSuccess());
+    ASSERT_TRUE(conn->query("UNWIND range(0, 7999) AS i CREATE (:ob {id: i, a: (i * 7) % 50, "
+                            "b: (i % 13) * 1.5, s: 'row' + cast(i % 20 AS STRING), "
+                            "us: 'commonprefix' + cast(i AS STRING)});")
+                    ->isSuccess());
+    const std::vector<std::string> queries = {
+        "MATCH (n:ob) RETURN n.a, n.id, n.s ORDER BY n.a ASC, n.id DESC",
+        "MATCH (n:ob) RETURN n.id, n.b ORDER BY n.b DESC, n.id ASC",
+        "MATCH (n:ob) RETURN n.id, n.us ORDER BY n.us ASC",
+        "MATCH (n:ob) RETURN n.a, n.us, n.id ORDER BY n.a ASC, n.us DESC",
+    };
+    const auto before = getExternalMergeSortActivationCount();
+    for (const auto& q : queries) {
+        // Reference: single-threaded in-memory sort.
+        ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+        ASSERT_TRUE(conn->query("CALL spill_order_by=false;")->isSuccess());
+        const auto reference = collectOrderedRows(conn.get(), q);
+        // Candidate: multi-threaded external merge sort with a tiny per-generator budget.
+        ASSERT_TRUE(conn->query("CALL threads=4;")->isSuccess());
+        ASSERT_TRUE(conn->query("CALL spill_order_by=true;")->isSuccess());
+        ASSERT_TRUE(conn->query("CALL spill_order_by_budget=4096;")->isSuccess());
+        const auto external = collectOrderedRows(conn.get(), q);
+        ASSERT_EQ(reference, external)
+            << "multi-threaded external sort vs in-memory mismatch for: " << q;
+    }
+    ASSERT_GT(getExternalMergeSortActivationCount(), before)
+        << "external merge sort path did not activate";
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+}
+
 } // namespace testing
 } // namespace kuzu

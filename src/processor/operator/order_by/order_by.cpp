@@ -65,9 +65,15 @@ static std::unique_ptr<ExternalMergeSort> makeExternalSorter(ExecutionContext* c
     // Budget: the explicit spill_order_by_budget if set, else the per-query memory limit if set, else
     // the whole buffer pool (spill only near the hard ceiling).
     const auto* config = cc->getClientConfig();
-    const auto budget = config->spillOrderByBudget > 0 ? config->spillOrderByBudget :
-                        config->queryMemoryLimit > 0   ? config->queryMemoryLimit :
-                                                         mm->getBufferManager()->getMemoryLimit();
+    auto budget = config->spillOrderByBudget > 0 ? config->spillOrderByBudget :
+                  config->queryMemoryLimit > 0   ? config->queryMemoryLimit :
+                                                   mm->getBufferManager()->getMemoryLimit();
+    // Each thread runs its own generator concurrently, so split the budget evenly to keep the
+    // aggregate resident footprint bounded (fall back to the whole budget if that would round to 0).
+    const auto numThreads = std::max<uint64_t>(1, config->numThreads);
+    if (budget / numThreads > 0) {
+        budget /= numThreads;
+    }
     const auto token = externalSortSpillFileCounter.fetch_add(1);
     const auto tempDir = std::filesystem::temp_directory_path();
     const auto stem = "kuzu_ems_" + std::to_string(opId) + "_" + std::to_string(token) + ".spill";
@@ -90,15 +96,15 @@ void OrderBy::initLocalStateInternal(ResultSet* resultSet, ExecutionContext* con
     for (auto& dataPos : info.keysPos) {
         orderByVectors.push_back(resultSet->getValueVector(dataPos).get());
     }
-    // Decide the out-of-core (external merge sort) path. Single-threaded only (the scan must read the
-    // sorted output in order and there is no cross-thread run merge yet), gated by `spill_order_by`,
-    // and only for eligible key/payload shapes. Otherwise fall back to the in-memory sort.
+    // Decide the out-of-core (external merge sort) path, gated by `spill_order_by` and only for
+    // eligible key/payload shapes. The decision is deterministic, so every thread agrees. Each thread
+    // registers its own generator (run generation is embarrassingly parallel); the cross-thread k-way
+    // merge happens later on the single scan thread (see SortSharedState::prepareExternalMerge).
+    // Otherwise fall back to the in-memory sort.
     auto* cc = context->clientContext;
-    if (cc->getClientConfig()->spillOrderBy && cc->getClientConfig()->numThreads == 1 &&
-        isExternalSortEligible(info)) {
-        if (sharedState->getExternalSorter() == nullptr) {
-            sharedState->setExternalSorter(makeExternalSorter(context, info, id));
-        }
+    if (cc->getClientConfig()->spillOrderBy && isExternalSortEligible(info)) {
+        externalActive = true;
+        externalGen = sharedState->addExternalGenerator(makeExternalSorter(context, info, id));
         sharedState->setExternalActive();
         externalSortActivationCount.fetch_add(1);
     } else {
@@ -112,14 +118,14 @@ void OrderBy::initGlobalStateInternal(ExecutionContext* /*context*/) {
 }
 
 void OrderBy::executeInternal(ExecutionContext* context) {
-    if (sharedState->isExternalActive()) {
-        auto* sorter = sharedState->getExternalSorter();
+    if (externalActive) {
+        // Append + finalize this thread's own generator (no shared mutation on the hot path).
         while (children[0]->getNextTuple(context)) {
             for (auto i = 0u; i < resultSet->multiplicity; i++) {
-                sorter->append(orderByVectors, payloadVectors);
+                externalGen->append(orderByVectors, payloadVectors);
             }
         }
-        sorter->finalize();
+        externalGen->finalize();
         return;
     }
     // Append thread-local tuples.

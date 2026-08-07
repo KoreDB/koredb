@@ -386,34 +386,44 @@ broaden coverage and reach the hard `RETURN *` case:
 
    Gated by `spill_order_by` (+`spill_order_by_budget`), plumbed exactly like `spill_aggregate` (section
    7), **off by default**. `OrderBy::initLocalStateInternal` activates the path at runtime when
-   `spill_order_by` is on, `numThreads == 1`, and the sort is eligible; otherwise the in-memory sort
-   runs byte-for-byte unchanged. **Eligibility:** fixed-width or `STRING` keys, non-nested payloads, and
-   a single input data chunk.
-   - **Run generation** (`append`): reuse `OrderByKeyEncoder` to turn each tuple's keys into a
-     memcmp-comparable byte prefix and pair it with the payload captured as self-describing
-     `Value::serialize` bytes; buffer these `(key, payload)` records until the budget is hit, then sort
-     the run in memory and spill it to a single scratch file. Decoupling the payload as per-row `Value`
-     bytes (rather than a spilled `FactorizedTable`) means runs carry no back-pointers and need no
-     re-basing.
+   `spill_order_by` is on and the sort is eligible; otherwise the in-memory sort runs byte-for-byte
+   unchanged. **Eligibility:** fixed-width or `STRING` keys, non-nested payloads, and a single input data
+   chunk. **Multi-threaded** (`threads > 1`) is supported — see run generation below.
+   - **Run generation** (`append`, per thread): each `OrderBy` thread owns its own `ExternalMergeSort`
+     generator and spill file, so run generation is embarrassingly parallel and lock-free on the hot
+     path (only registration into the shared state takes the mutex, mirroring `getLocalPayloadTable`).
+     It reuses `OrderByKeyEncoder` to turn each tuple's keys into a memcmp-comparable byte prefix and
+     pairs it with the payload captured as self-describing `Value::serialize` bytes; it buffers these
+     `(key, payload)` records until the budget is hit, then sorts the run in memory and spills it. The
+     budget is split evenly across `threads` so the aggregate resident footprint stays bounded.
+     Decoupling the payload as per-row `Value` bytes (rather than a spilled `FactorizedTable`) means runs
+     carry no back-pointers and need no re-basing — which is also what lets runs from *different* threads
+     (different spill files) merge together with no fix-up.
    - **Comparison** (`compareRecords`): plain `memcmp` of the encoded key for fixed-width keys;
      otherwise column-by-column, resolving a `STRING` column's 12-byte-prefix tie against the full
      string captured in the payload before moving to the next column — byte-for-byte matching the
      in-memory `KeyBlockMerger::compareTuplePtrWithStringCol` (down to treating trailing non-string
      columns after the last string column as a tie), so the spilled order is identical to the in-memory
      sort. Used for both the in-run sort and the merge heap.
-   - **Merge / scan** (`scanNext`, driven by `OrderByScan`): a **k-way streaming merge** — one
-     `BufferedFileReader` per run, a min-heap on `compareRecords` — emits sorted tuples straight into
-     the output vectors (`Value::deserialize` → `copyFromValue`). Because each run head's full payload
-     is already resident, the string tie-break needs no extra disk reads. Memory is bounded to ~the
-     budget during generation and ~one buffered page per run during the merge; disk reads are sequential
-     per run.
+   - **Merge / scan** (`scanNext`, driven by `OrderByScan`): after the pipeline barrier, the single scan
+     thread calls `SortSharedState::prepareExternalMerge`, which gathers every generator's runs into
+     one coordinator as file-scoped `RunSource`s and streams a **k-way merge across all threads' runs** —
+     one `BufferedFileReader` per run (each addressing its originating spill file), a min-heap on
+     `compareRecords` — emitting sorted tuples straight into the output vectors (`Value::deserialize` →
+     `copyFromValue`). Reads are positioned (`FileInfo::readFromFile` takes an explicit offset), so many
+     cursors over the same or different files never interfere. Because each run head's full payload is
+     already resident, the string tie-break needs no extra disk reads. Memory is bounded to ~the budget
+     during generation and ~one buffered page per open run during the merge; disk reads are sequential
+     per run. `OrderByScan` is `isParallel() == false`, so the merge always runs single-threaded.
 
    `OrderByMerge` naturally no-ops (the executor merges internally, so `sortedKeyBlocks` stays empty).
    Verified by `buffer_manager_test`: `ExternalMergeSortDifferential` (library — 3000 rows, 4 KiB
-   budget forcing 6 spilled runs, multiset + key-order checks over multi-column ASC/DESC/NULL keys) and
+   budget forcing 6 spilled runs, multiset + key-order checks over multi-column ASC/DESC/NULL keys),
    `SpillOrderByDifferential` (operator — 5000 rows, total-order queries including long `STRING` keys
-   that share a 12-char prefix, spill on vs off must match, activation asserted), plus e2e
-   `order_by/spill_order_by.test`.
+   that share a 12-char prefix, spill on vs off must match, activation asserted), and
+   `SpillOrderByMultiThreadedDifferential` (operator — 8000 rows, `threads=4` external vs `threads=1`
+   in-memory must match, tiny per-generator budget forcing many cross-file runs), plus e2e
+   `order_by/spill_order_by.test` (which includes a `threads=4` case).
 
    *Out of scope — nested keys.* Ordering by a nested value (`LIST`/`ARRAY`/`STRUCT`/`MAP`/`UNION`) is
    rejected engine-wide at bind time (`isOrderByKeyTypeSupported` in `bind_projection_clause.cpp`), so no
@@ -424,8 +434,8 @@ broaden coverage and reach the hard `RETURN *` case:
    *payloads* (a scalar key carrying a nested return column, e.g. `RETURN p.scores ORDER BY p.id`) are a
    real fallback the external path could add later — `Value::serialize` already handles nested values.
 
-   *Remaining sub-pieces:* **multi-threaded** run generation (per-thread executors merged at a barrier),
-   **factorized / multi-chunk** inputs, and — smaller — **nested-payload** support (above).
+   *Remaining sub-pieces:* **factorized / multi-chunk** inputs, and — smaller — **nested-payload**
+   support (above). Multi-threaded run generation is now implemented (above).
 
 6. **Partitioned aggregation — broadening.** The library executor and the gated live operator now
    exist (sections 6–7). What remains: distinct aggregates, multi-state / multi-chunk inputs,

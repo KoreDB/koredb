@@ -62,6 +62,10 @@ private:
     std::shared_ptr<SortSharedState> sharedState;
     std::vector<common::ValueVector*> orderByVectors;
     std::vector<common::ValueVector*> payloadVectors;
+    // Per-thread out-of-core state, decided in initLocalStateInternal (deterministic across threads).
+    // When externalActive, this thread appends to its own generator instead of the in-memory path.
+    bool externalActive = false;
+    ExternalMergeSort* externalGen = nullptr;
 };
 
 } // namespace processor

@@ -196,6 +196,26 @@ void ExternalMergeSort::finalize() {
     }
 }
 
+void ExternalMergeSort::collectRunSources(std::vector<RunSource>& out) {
+    // Make this generator's runs durable before another instance reads them during the merge.
+    if (writer != nullptr) {
+        writer->flush();
+    }
+    out.reserve(out.size() + runs.size());
+    for (auto& run : runs) {
+        out.push_back(RunSource{fileInfo.get(), run.fileOffset, run.numTuples});
+    }
+}
+
+void ExternalMergeSort::setMergeSources(std::vector<RunSource> sources) {
+    mergeSources = std::move(sources);
+    mergeTotalTuples = 0;
+    for (auto& src : mergeSources) {
+        mergeTotalTuples += src.numTuples;
+    }
+    isCoordinator = true;
+}
+
 void ExternalMergeSort::advanceCursor(MergeCursor& cursor) {
     if (cursor.remaining == 0) {
         cursor.valid = false;
@@ -226,13 +246,19 @@ void ExternalMergeSort::initMerge() {
     if (writer != nullptr) {
         writer->flush();
     }
-    cursors.reserve(runs.size());
-    for (auto& run : runs) {
+    // Standalone (library/self) use: no coordinator sources were set, so merge our own runs.
+    if (mergeSources.empty() && !isCoordinator) {
+        collectRunSources(mergeSources);
+        mergeTotalTuples = numTuples;
+    }
+    cursors.reserve(mergeSources.size());
+    for (auto& src : mergeSources) {
         auto cursor = std::make_unique<MergeCursor>();
-        auto reader = std::make_unique<BufferedFileReader>(*fileInfo);
-        reader->resetReadOffset(run.fileOffset);
+        // Each run may live in a different generator's spill file (multi-threaded merge).
+        auto reader = std::make_unique<BufferedFileReader>(*src.file);
+        reader->resetReadOffset(src.fileOffset);
         cursor->deser = std::make_unique<Deserializer>(std::move(reader));
-        cursor->remaining = run.numTuples;
+        cursor->remaining = src.numTuples;
         advanceCursor(*cursor);
         cursors.push_back(std::move(cursor));
     }

@@ -22,8 +22,12 @@ public:
 
     // Out-of-core (external merge) sort path, chosen at runtime when spill_order_by is on and the
     // sort is eligible; when inactive the in-memory payloadTables/sortedKeyBlocks path runs.
-    void setExternalSorter(std::unique_ptr<ExternalMergeSort> sorter);
-    ExternalMergeSort* getExternalSorter() const { return externalSorter.get(); }
+    //
+    // Multi-threaded run generation: each OrderBy thread registers its own generator here (thread-safe,
+    // mirroring getLocalPayloadTable). After the barrier, prepareExternalMerge (called once on the
+    // single scan thread) hands every generator's runs to one coordinator for a single k-way merge.
+    ExternalMergeSort* addExternalGenerator(std::unique_ptr<ExternalMergeSort> generator);
+    ExternalMergeSort* prepareExternalMerge();
     void setExternalActive() { externalActive = true; }
     bool isExternalActive() const { return externalActive; }
 
@@ -55,7 +59,10 @@ private:
     std::unique_ptr<std::queue<std::shared_ptr<MergedKeyBlocks>>> sortedKeyBlocks;
     uint32_t numBytesPerTuple;
     std::vector<StrKeyColInfo> strKeyColsInfo;
-    std::unique_ptr<ExternalMergeSort> externalSorter;
+    // Per-thread external-sort run generators; index 0 doubles as the merge coordinator.
+    std::vector<std::unique_ptr<ExternalMergeSort>> externalGenerators;
+    ExternalMergeSort* externalCoordinator = nullptr;
+    bool externalMergePrepared = false;
     bool externalActive = false;
 };
 
