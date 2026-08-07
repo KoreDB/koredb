@@ -1117,6 +1117,128 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorMarkJoinSpill) {
         4096 /*forces spill during append*/);
 }
 
+// Exercises the COUNT (size / COUNT{} subquery) grace path: the build side is pre-aggregated to one
+// (key, count) row per key; for each probe row emit exactly one output row [probeKey, probePayload,
+// count], where count is the matched key's stored count or 0 when the key is absent (a NULL probe key
+// counts as absent). Runs under a supplied budget (large == in memory, tiny == forced spill), both
+// checked against the same brute-force reference. The probe payload is the unique row index.
+static void runGraceCountJoinTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
+    uint64_t budget) {
+    using namespace kuzu::processor;
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> buildPayloadTypes; // the pre-aggregated count column
+    buildPayloadTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> probePayloadTypes;
+    probePayloadTypes.push_back(LogicalType::INT64());
+
+    GraceHashJoinExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_ghje_count_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "kuzu_ghje_count_probe.spill").string(),
+        LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
+        LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, budget);
+
+    const int64_t numKeys = 800; // build keys 0..799, each with a distinct count
+    const uint64_t numProbe = 1200;
+    auto countOf = [](int64_t k) { return static_cast<int64_t>((k % 13) + 1); }; // 1..13, never 0
+    auto probeKeyFn = [](uint64_t j) { return static_cast<int64_t>(j % 1000); };  // 800..999 absent
+    auto probeKeyIsNull = [](uint64_t j) { return (j % 11) == 0; };
+
+    // Build: one (key, count) row per key (pre-aggregated). Feed in vector-sized batches.
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm);
+        ValueVector cntVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        cntVec.state = state;
+        for (int64_t b = 0; b < numKeys; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<int64_t>(DEFAULT_VECTOR_CAPACITY, numKeys - b);
+            state->initOriginalAndSelectedSize(m);
+            for (int64_t r = 0; r < m; r++) {
+                keyVec.setNull(r, false);
+                keyVec.setValue<int64_t>(r, b + r);
+                cntVec.setNull(r, false);
+                cntVec.setValue<int64_t>(r, countOf(b + r));
+            }
+            exec.appendBuild({&keyVec}, {&cntVec});
+        }
+    }
+    // Probe: key + unique payload; every 11th probe row has a NULL key.
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm);
+        ValueVector payVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        payVec.state = state;
+        for (uint64_t b = 0; b < numProbe; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numProbe - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                if (probeKeyIsNull(b + r)) {
+                    keyVec.setNull(r, true);
+                } else {
+                    keyVec.setNull(r, false);
+                    keyVec.setValue<int64_t>(r, probeKeyFn(b + r));
+                }
+                payVec.setNull(r, false);
+                payVec.setValue<int64_t>(r, static_cast<int64_t>(b + r));
+            }
+            exec.appendProbe({&keyVec}, {&payVec});
+        }
+    }
+
+    auto output = exec.computeCountJoin();
+
+    // Brute-force reference: probePayload (unique) -> expected count.
+    std::map<int64_t, int64_t> expected;
+    for (uint64_t j = 0; j < numProbe; j++) {
+        int64_t cnt = 0;
+        if (!probeKeyIsNull(j)) {
+            const auto k = probeKeyFn(j);
+            if (k < numKeys) {
+                cnt = countOf(k);
+            }
+        }
+        expected[static_cast<int64_t>(j)] = cnt;
+    }
+
+    // Output columns: [probeKey, probePayload, count]; index by the unique probePayload.
+    std::vector<LogicalType> outTypes;
+    outTypes.push_back(LogicalType::INT64()); // probeKey
+    outTypes.push_back(LogicalType::INT64()); // probePayload
+    outTypes.push_back(LogicalType::INT64()); // count
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (auto& t : outTypes) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(t.copy())));
+        values.push_back(holders.back().get());
+    }
+    std::map<int64_t, int64_t> got;
+    uint64_t rowCount = 0;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        got[values[1]->getValue<int64_t>()] = values[2]->getValue<int64_t>();
+        rowCount++;
+    }
+
+    ASSERT_EQ(rowCount, numProbe) << "COUNT join must emit exactly one row per probe row";
+    ASSERT_EQ(got.size(), expected.size());
+    ASSERT_TRUE(got == expected)
+        << "GraceHashJoinExecutor COUNT output differs from brute-force reference";
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorCountJoinInMemory) {
+    runGraceCountJoinTest(getMemoryManager(*database), getFileSystem(*database),
+        1ull << 30 /*1 GiB budget: stays in memory*/);
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorCountJoinSpill) {
+    runGraceCountJoinTest(getMemoryManager(*database), getFileSystem(*database),
+        4096 /*forces spill during append*/);
+}
+
 // Same forced-spill scenario as runGraceExecutorTest, but drives the resumable streaming probe
 // (initProbeStream + getNextChunk) instead of materializing the whole join, and checks the streamed
 // output multiset against the same brute-force reference. Each streamed chunk is one probe row (flat)

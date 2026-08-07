@@ -120,6 +120,21 @@ public:
         return computeMarkJoinImpl(p);
     }
 
+    // --- COUNT (size(...) / COUNT{} subquery) ---------------------------------------------------
+    // The build side of a COUNT join is pre-aggregated to one (key, count) row per key, so each probe
+    // row has at most one match. Emit exactly one output row per probe row -- [probeKeys...,
+    // probePayloads...(the count column)] -- reading the matched key's count, or 0 when the key is
+    // absent (a NULL join key counts as absent). This is LEFT-join-shaped (every probe row survives),
+    // differing only in that a non-match yields count 0 instead of a NULL build payload. Single-chunk
+    // output. computeCountPartition(p) restricts it to one partition (and frees the pair), bounding peak
+    // memory for the streaming operator path.
+    std::unique_ptr<FactorizedTable> computeCountJoin() {
+        return computeJoin(false /*isLeftJoin*/, ALL_PARTITIONS, true /*countJoin*/);
+    }
+    std::unique_ptr<FactorizedTable> computeCountPartition(common::idx_t p) {
+        return computeJoin(false /*isLeftJoin*/, p, true /*countJoin*/);
+    }
+
     common::idx_t getNumPartitions() const { return buildParts.getNumPartitions(); }
 
 private:
@@ -129,8 +144,10 @@ private:
     // Compute the join into a fresh FactorizedTable. With onlyPartition == ALL_PARTITIONS the whole
     // join is materialized; otherwise only that partition's output is produced (and that partition
     // pair freed), bounding peak memory for the flat-stream path.
+    // countJoin: a probe row with no build match emits its single build payload as the integer 0
+    // (COUNT semantics) instead of a NULL (LEFT semantics); like a left join, every probe row survives.
     std::unique_ptr<FactorizedTable> computeJoin(bool isLeftJoin,
-        common::idx_t onlyPartition = ALL_PARTITIONS);
+        common::idx_t onlyPartition = ALL_PARTITIONS, bool countJoin = false);
     // Shared implementation behind computeMarkJoin()/computeMarkPartition(). onlyPartition ==
     // ALL_PARTITIONS materializes the whole MARK result; a real index restricts it to that partition.
     std::unique_ptr<FactorizedTable> computeMarkJoinImpl(common::idx_t onlyPartition);

@@ -169,7 +169,7 @@ std::unique_ptr<JoinHashTable> GraceHashJoinExecutor::buildHashTableForPartition
 }
 
 std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJoin,
-    idx_t onlyPartition) {
+    idx_t onlyPartition, bool countJoin) {
     auto output = std::make_unique<FactorizedTable>(mm, makeOutputSchema());
     const auto numBuildPayloads = buildPayloadTypes.size();
 
@@ -286,11 +286,19 @@ std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJ
                             break;
                         }
                     }
-                    if (isLeftJoin && rowMatches == 0) {
-                        // Null-pad: one output row, probe columns kept, build payloads null.
+                    if ((isLeftJoin || countJoin) && rowMatches == 0) {
+                        // One output row for a probe row with no build match: probe columns kept.
                         buildOutState->initOriginalAndSelectedSize(1);
-                        for (auto* buildVec : buildPayloadVecs) {
-                            buildVec->setNull(0, true);
+                        if (countJoin) {
+                            // COUNT join: the single build payload is the pre-aggregated count, which
+                            // is 0 for an absent key (not NULL).
+                            buildPayloadVecs[0]->setNull(0, false);
+                            buildPayloadVecs[0]->setValue<int64_t>(0, 0);
+                        } else {
+                            // LEFT join: null-pad the build payloads.
+                            for (auto* buildVec : buildPayloadVecs) {
+                                buildVec->setNull(0, true);
+                            }
                         }
                         output->append(outputVecs);
                     }
