@@ -26,12 +26,13 @@ KUZU_API uint64_t getGraceHashJoinMultiChunkActivationCount();
 
 // Static (plan-time) metadata that lets the HASH_JOIN operator run the out-of-core (Grace) path when
 // the `spill_hash_join` setting is on and the join shape is supported. `eligible` is the conservative
-// shape check (INNER/LEFT, no mark, non-empty build payloads, each side an appendable factorization --
-// at most one unflat group with all keys in a single group -- and no nested/NODE/REL column); when
-// false the operator always uses the in-memory path. The type lists mirror the executor's schema
-// ([keys...], build payloads, probe non-key columns) and `probeNonKeyPos` locates the probe-side
-// non-key output columns (everything the probe contributes that is not a join key) in the
-// probe/output result set.
+// shape check (INNER/LEFT with non-empty build payloads, or MARK/EXISTS with keys-only build and a
+// single-chunk output; each side an appendable factorization -- at most one unflat group with all keys
+// in a single group -- and no nested/NODE/REL column); when false the operator always uses the
+// in-memory path. The type lists mirror the executor's schema ([keys...], build payloads, probe
+// non-key columns) and `probeNonKeyPos` locates the probe-side non-key output columns (everything the
+// probe contributes that is not a join key) in the probe/output result set. For a MARK join
+// buildPayloadTypes is empty and the probe writes the bool result into its own mark output vector.
 //
 // `multiChunkOutput` selects how the probe operator emits the join: false = all output columns live in
 // one data chunk, so the join is materialized and scanned back into that chunk (vectorized); true = the

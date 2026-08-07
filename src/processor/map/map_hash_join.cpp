@@ -86,13 +86,15 @@ static bool isAppendableFactorization(const Schema& schema, const std::vector<Da
 }
 
 // Computes the static (plan-time) metadata that lets the HASH_JOIN operator run the out-of-core
-// (Grace) path when `spill_hash_join` is enabled. Eligible shapes: INNER/LEFT, no mark, non-empty
-// build payloads, no nested/NODE/REL column, and each side (build; probe) an *appendable*
-// factorization (at most one unflat chunk, keys in a single chunk -- see isAppendableFactorization).
-// This covers both the flat single-chunk join and the factorized RETURN *-style join the planner
-// actually produces (e.g. an unflat-key build with a flat build root). `multiChunkOutput` records
-// whether the output spans several chunks, which selects the probe operator's emission path
-// (materialized+scan vs flat streaming). Every other shape keeps `eligible == false` (in-memory path).
+// (Grace) path when `spill_hash_join` is enabled. Eligible shapes: (a) INNER/LEFT with non-empty
+// build payloads, or (b) MARK (EXISTS/semi) with keys-only build and a single-chunk output (all probe
+// columns + the mark in one data chunk); in both cases no nested/NODE/REL column, and each side
+// (build; probe) an *appendable* factorization (at most one unflat chunk, keys in a single chunk --
+// see isAppendableFactorization). This covers the flat single-chunk join, the factorized RETURN
+// *-style join the planner actually produces (e.g. an unflat-key build with a flat build root), and
+// the single-chunk EXISTS/anti-join. `multiChunkOutput` records whether the output spans several
+// chunks, which selects the probe operator's emission path (materialized+scan vs flat streaming; MARK
+// is single-chunk only). Every other shape keeps `eligible == false` (in-memory path).
 static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoin,
     const Schema& outSchema, const Schema& buildSchema, const expression_vector& probeKeys,
     const expression_vector& payloads, const std::vector<LogicalType>& buildKeyTypes,
@@ -101,11 +103,17 @@ static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoi
     GraceHashJoinInfo info;
     info.joinType = hashJoin.getJoinType();
     const auto jt = hashJoin.getJoinType();
-    // INNER and LEFT are supported. computeJoin(isLeftJoin) null-pads probe rows that find no build
-    // match (including NULL-key rows, which never match). Other join types (MARK/COUNT) keep the
-    // in-memory path.
-    if (!((jt == JoinType::INNER || jt == JoinType::LEFT) && !hashJoin.hasMark() &&
-            !payloads.empty())) {
+    const bool isMark = (jt == JoinType::MARK) && hashJoin.hasMark();
+    // Supported shapes: INNER/LEFT with build payloads (computeJoin null-pads a LEFT probe row that
+    // finds no build match, NULL-key rows included), or MARK (EXISTS/semi) whose build side
+    // materializes only keys (empty payloads) and which adds a single BOOL mark column per probe row.
+    // COUNT and every other shape keep the in-memory path.
+    if (isMark) {
+        if (!payloads.empty()) {
+            return info; // a MARK join carrying build payloads is not the shape we handle
+        }
+    } else if (!((jt == JoinType::INNER || jt == JoinType::LEFT) && !hashJoin.hasMark() &&
+                   !payloads.empty())) {
         return info;
     }
     auto sameChunk = [](const std::vector<DataPos>& ps) {
@@ -130,6 +138,11 @@ static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoi
     for (auto& k : probeKeys) {
         excluded.insert(k->getUniqueName());
     }
+    // The mark is produced by the join, not carried by the probe; exclude it from the probe non-key
+    // columns (it is written into its own output vector).
+    if (isMark) {
+        excluded.insert(hashJoin.getMark()->getUniqueName());
+    }
     std::vector<DataPos> outputAllPos = probeKeysDataPos;
     outputAllPos.insert(outputAllPos.end(), probePayloadsOutPos.begin(), probePayloadsOutPos.end());
     expression_vector probeNonKeyExprs;
@@ -142,6 +155,11 @@ static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoi
         outputAllPos.push_back(dp);
         probeNonKeyExprs.push_back(expr);
         probeNonKeyPos.push_back(dp);
+    }
+    // The mark column is part of the output, so it must join the single-chunk determination below (it
+    // is written alongside the probe columns), but it is not a probe input column stored in a partition.
+    if (isMark) {
+        outputAllPos.push_back(DataPos(outSchema.getExpressionPos(*hashJoin.getMark())));
     }
     if (outputAllPos.empty()) {
         return info;
@@ -180,10 +198,15 @@ static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoi
     if (!isAppendableFactorization(outSchema, probeAllPos, probeKeyGroups)) {
         return info;
     }
-    info.eligible = true;
     // Single-chunk output -> materialize + scan back into that one chunk; multi-chunk output -> stream
     // the join one flat tuple at a time (correct for any chunk structure).
     info.multiChunkOutput = !sameChunk(outputAllPos);
+    if (isMark && info.multiChunkOutput) {
+        // Only the single-chunk MARK shape (all probe columns + the mark in one data chunk) is handled;
+        // a multi-chunk MARK output falls back to the in-memory path.
+        return info; // eligible stays false
+    }
+    info.eligible = true;
     for (auto& t : buildKeyTypes) {
         info.keyTypes.push_back(t.copy());
     }

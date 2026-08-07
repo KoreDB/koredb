@@ -206,6 +206,50 @@ uint64_t HashJoinProbe::getJoinResult() {
 // VectorPtr corresponds to one unFlat build side data chunk that is appended to the resultSet).
 bool HashJoinProbe::getNextGraceTuples(ExecutionContext* context) {
     auto* exec = sharedState->getGraceExecutor();
+    if (joinType == JoinType::MARK) {
+        // MARK (EXISTS / semi-join) grace path: emit exactly one output row per probe row = [probeKeys...,
+        // probeNonKeys..., mark], where mark is whether the probe row had a build match. Only the
+        // single-chunk shape is eligible (all these columns share one data chunk), so materialize one
+        // partition at a time and scan it back vectorized -- peak memory is bounded to one partition's
+        // rows instead of the whole build side.
+        if (!graceDrained) {
+            // Phase 1: drain the probe child into the executor's (spilling) probe partitions.
+            while (children[0]->getNextTuple(context)) {
+                for (auto i = 0u; i < resultSet->multiplicity; ++i) {
+                    exec->appendProbe(keyVectors, probeNonKeyVectors);
+                }
+            }
+            // Output column order [probeKeys..., probeNonKeys..., mark] matches computeMarkPartition's
+            // output table; they all share one output data chunk (single-chunk requirement).
+            graceOutputVectors = keyVectors;
+            graceOutputVectors.insert(graceOutputVectors.end(), probeNonKeyVectors.begin(),
+                probeNonKeyVectors.end());
+            graceOutputVectors.push_back(markVector);
+            graceOutputState = graceOutputVectors[0]->state.get();
+            graceOutput = nullptr;
+            graceScanCursor = 0;
+            graceScanPartition = 0;
+            graceDrained = true;
+            resultSet->multiplicity = 1;
+        }
+        while (graceOutput == nullptr || graceScanCursor >= graceOutput->getNumTuples()) {
+            if (graceScanPartition >= exec->getNumPartitions()) {
+                return false;
+            }
+            graceOutput = exec->computeMarkPartition(graceScanPartition++);
+            graceScanCursor = 0;
+        }
+        uint64_t n = 1;
+        if (!graceOutputState->isFlat()) {
+            n = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY,
+                graceOutput->getNumTuples() - graceScanCursor);
+            graceOutputState->initOriginalAndSelectedSize(n);
+        }
+        graceOutput->scan(std::span<ValueVector*>(graceOutputVectors), graceScanCursor, n);
+        graceScanCursor += n;
+        metrics->numOutputTuple.increase(n);
+        return true;
+    }
     if (sharedState->getGraceInfo().multiChunkOutput) {
         // Multi-chunk (factorized) output: the join columns span several data chunks (e.g. an
         // unflat-key build), so the single-chunk materialize+scan below cannot reproduce the shape.

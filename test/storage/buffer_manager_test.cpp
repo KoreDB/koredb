@@ -2444,6 +2444,60 @@ TEST_F(BufferManagerTest, GraceHashJoinMultiChunkDifferential) {
         << "no query activated the multi-chunk (factorized) Grace path; the check is vacuous";
 }
 
+// Differential correctness of the live out-of-core MARK (EXISTS / anti-join) hash join: EXISTS and NOT
+// EXISTS must return the same rows with spill_hash_join off (in-memory) and on (partitioned), and the
+// Grace path must actually activate. A MARK join emits one row per probe row carrying a bool mark; the
+// grace path materializes one partition at a time (single-chunk output) instead of the whole build.
+TEST_F(BufferManagerTest, GraceHashJoinMarkDifferential) {
+    using kuzu::processor::getGraceHashJoinActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    const std::vector<std::string> queries = {
+        "MATCH (a:person) WHERE EXISTS { MATCH (a)-[:knows]->(b:person) } RETURN a.ID",
+        "MATCH (a:person) WHERE NOT EXISTS { MATCH (a)-[:studyAt]->(o:organisation) } RETURN a.ID",
+        "MATCH (a:person) WHERE EXISTS { MATCH (a)-[:knows]->(b:person) } RETURN a.fName, a.age",
+    };
+    const auto before = getGraceHashJoinActivationCount();
+    for (const auto& q : queries) {
+        ASSERT_TRUE(conn->query("CALL spill_hash_join=false;")->isSuccess());
+        const auto inMemory = collectSortedRows(conn.get(), q);
+        ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
+        const auto grace = collectSortedRows(conn.get(), q);
+        ASSERT_EQ(inMemory, grace) << "MARK Grace vs in-memory mismatch for: " << q;
+    }
+    ASSERT_GT(getGraceHashJoinActivationCount(), before)
+        << "no EXISTS query activated the Grace MARK path; the check is vacuous";
+}
+
+// Same MARK differential, but with a large build side and a tiny per-operator budget so the partitions
+// actually spill to disk and reload (the real out-of-core path). The EXISTS subquery over mb (3000
+// rows) is the build side; every probe row of ma emits exactly one row with its existence mark.
+TEST_F(BufferManagerTest, GraceHashJoinMarkSpillDifferential) {
+    using kuzu::processor::getGraceHashJoinActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE ma(id INT64, k INT64, PRIMARY KEY(id));")->isSuccess());
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE mb(id INT64, k INT64, PRIMARY KEY(id));")->isSuccess());
+    // Build side mb: 3000 rows over keys 0..999 (each key ~3x) -> exceeds a 4 KiB budget, so spills.
+    ASSERT_TRUE(
+        conn->query("UNWIND range(0, 2999) AS i CREATE (:mb {id: i, k: i % 1000});")->isSuccess());
+    // Probe side ma: keys 0..1499; 0..999 exist in mb, 1000..1499 do not.
+    ASSERT_TRUE(conn->query("UNWIND range(0, 1499) AS i CREATE (:ma {id: i, k: i});")->isSuccess());
+    const std::string q = "MATCH (a:ma) WHERE EXISTS { MATCH (b:mb) WHERE b.k = a.k } RETURN a.id";
+
+    ASSERT_TRUE(conn->query("CALL spill_hash_join=false;")->isSuccess());
+    const auto inMemory = collectSortedRows(conn.get(), q);
+    ASSERT_EQ(inMemory.size(), 1000u); // keys 0..999 have a match in mb
+
+    const auto before = getGraceHashJoinActivationCount();
+    ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
+    ASSERT_TRUE(conn->query("CALL spill_hash_join_budget=4096;")->isSuccess());
+    const auto grace = collectSortedRows(conn.get(), q);
+
+    ASSERT_GT(getGraceHashJoinActivationCount(), before) << "Grace MARK path did not activate";
+    ASSERT_EQ(inMemory, grace) << "Grace MARK (spilling) vs in-memory mismatch";
+}
+
 
 // Differential correctness of the live out-of-core (spilling) hash-aggregation operator: the same
 // GROUP BY must produce the same rows with `spill_aggregate` off (in-memory) and on (partitioned),
