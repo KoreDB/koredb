@@ -89,7 +89,16 @@ void GraceHashJoinExecutor::appendToPartitions(PartitionedFactorizedTable& parts
     allVectors.reserve(keyVectors.size() + payloadVectors.size());
     allVectors.insert(allVectors.end(), keyVectors.begin(), keyVectors.end());
     allVectors.insert(allVectors.end(), payloadVectors.begin(), payloadVectors.end());
-    parts.appendVectors(allVectors, *hashVector);
+    if (state->isFlat()) {
+        // A flat (single-row) key input -- e.g. a probe side rooted at the join key, carrying an unflat
+        // payload group -- has no batch to scatter by key; route the whole group (flat key broadcast +
+        // any unflat payload flattened) to the single partition hash(key) selects.
+        parts.appendFactorizedGroup(allVectors, hashVector->getValue<hash_t>(sel[0]));
+    } else {
+        // Unflat key: scatter each key element to its partition (flat payloads broadcast, an unflat
+        // payload sharing the key's state travels element-wise).
+        parts.appendVectors(allVectors, *hashVector);
+    }
     parts.spillToReduceResidentBytesTo(memoryBudgetBytes);
 }
 

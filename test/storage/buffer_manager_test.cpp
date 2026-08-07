@@ -1327,6 +1327,129 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorFactorizedBuildStreamSpill) {
         4096 /*forced spill*/, true /*useStream*/);
 }
 
+// The shape the Kuzu planner actually produces for a factorized hash join (see EXPLAIN evidence in
+// docs/resource-limits-and-spilling.md): the join key is on the UNFLAT (extended) side of the BUILD,
+// while the PROBE is rooted at the (flat) key and carries an unflat payload. Concretely, mirroring
+// `MATCH (a)-[:knows]->(b) MATCH (a)-[:studyAt]->(o) RETURN a.ID, b.ID, o.ID`:
+//   - build (studyAt rooted at o): a flat payload `o` + an UNFLAT key group `a` (many a per o);
+//   - probe (knows rooted at a): a flat key `a` + an UNFLAT payload group `b` (many b per a).
+// The append must co-partition by hash(a) in BOTH directions: the build scatters each unflat key
+// element to its partition (flat payload broadcast); the probe routes the whole (flat key + unflat
+// payload) group to hash(key)'s partition (payload flattened). computeInnerJoin must then reproduce
+// the fully-flattened (a, b, o) result. This is the core the (multi-chunk-output) operator will drive.
+static void runGraceUnflatKeyBuildTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
+    uint64_t budget) {
+    using namespace kuzu::processor;
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64()); // a
+    std::vector<LogicalType> buildPayloadTypes;
+    buildPayloadTypes.push_back(LogicalType::INT64()); // o
+    std::vector<LogicalType> probePayloadTypes;
+    probePayloadTypes.push_back(LogicalType::INT64()); // b
+
+    GraceHashJoinExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_ghjuk_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "kuzu_ghjuk_probe.spill").string(),
+        LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
+        LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, budget);
+
+    const uint64_t numBuildGroups = 300, numProbeGroups = 400;
+    const int64_t numKeys = 10;
+    std::unordered_map<int64_t, std::vector<int64_t>> oByKey; // a -> list of o
+
+    // Build: each group is one flat o + an unflat key group of a's (a repeats across groups so a key
+    // can map to several o -> exercises multi-match lookup).
+    {
+        auto aState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        auto oState = DataChunkState::getSingleValueDataChunkState();
+        ValueVector aVec(LogicalType::INT64(), mm);
+        ValueVector oVec(LogicalType::INT64(), mm);
+        aVec.state = aState;
+        oVec.state = oState;
+        for (uint64_t g = 0; g < numBuildGroups; g++) {
+            const int64_t o = static_cast<int64_t>(g);
+            oVec.setNull(0, false);
+            oVec.setValue<int64_t>(0, o);
+            const uint64_t len = (g % 4) + 1;
+            aState->initOriginalAndSelectedSize(len);
+            for (uint64_t k = 0; k < len; k++) {
+                const int64_t a = static_cast<int64_t>((g + k) % numKeys);
+                aVec.setNull(k, false);
+                aVec.setValue<int64_t>(k, a);
+                oByKey[a].push_back(o);
+            }
+            exec.appendBuild({&aVec}, {&oVec});
+        }
+    }
+    // Probe: each group is one flat key a + an unflat payload group of b's.
+    std::vector<std::pair<int64_t, int64_t>> probeRows; // (a, b)
+    {
+        auto aState = DataChunkState::getSingleValueDataChunkState();
+        auto bState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector aVec(LogicalType::INT64(), mm);
+        ValueVector bVec(LogicalType::INT64(), mm);
+        aVec.state = aState;
+        bVec.state = bState;
+        for (uint64_t h = 0; h < numProbeGroups; h++) {
+            const int64_t a = static_cast<int64_t>(h % numKeys);
+            aVec.setNull(0, false);
+            aVec.setValue<int64_t>(0, a);
+            const uint64_t len = (h % 3) + 1;
+            bState->initOriginalAndSelectedSize(len);
+            for (uint64_t k = 0; k < len; k++) {
+                const int64_t b = static_cast<int64_t>(h * 100 + k);
+                bVec.setNull(k, false);
+                bVec.setValue<int64_t>(k, b);
+                probeRows.emplace_back(a, b);
+            }
+            exec.appendProbe({&aVec}, {&bVec});
+        }
+    }
+
+    // Brute-force reference multiset of (a, b, o).
+    std::map<std::tuple<int64_t, int64_t, int64_t>, int64_t> expected;
+    for (const auto& [a, b] : probeRows) {
+        auto it = oByKey.find(a);
+        if (it == oByKey.end()) {
+            continue;
+        }
+        for (auto o : it->second) {
+            expected[{a, b, o}]++;
+        }
+    }
+
+    auto output = exec.computeInnerJoin();
+    // Output columns: [probeKey a, probePayload b, buildPayload o].
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (int i = 0; i < 3; i++) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(LogicalType::INT64())));
+        values.push_back(holders.back().get());
+    }
+    std::map<std::tuple<int64_t, int64_t, int64_t>, int64_t> got;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        got[{values[0]->getValue<int64_t>(), values[1]->getValue<int64_t>(),
+            values[2]->getValue<int64_t>()}]++;
+    }
+
+    ASSERT_EQ(got.size(), expected.size());
+    ASSERT_TRUE(got == expected)
+        << "Grace unflat-key-build output multiset differs from brute-force reference";
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorUnflatKeyBuildInMemory) {
+    runGraceUnflatKeyBuildTest(getMemoryManager(*database), getFileSystem(*database),
+        1u << 30 /*no spill*/);
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorUnflatKeyBuildSpill) {
+    runGraceUnflatKeyBuildTest(getMemoryManager(*database), getFileSystem(*database),
+        4096 /*forced spill*/);
+}
+
 // Composite (2-column) join key + a variable-length (STRING) build payload, under forced spilling.
 // Validates multi-key co-partitioning (the routing hash matches JoinHashTable's internal multi-key
 // hash) and that string payloads survive spill/reload/lookup/append.
