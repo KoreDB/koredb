@@ -1,0 +1,44 @@
+-DATASET CSV tinysnb
+
+--
+
+# Multi-chunk (factorized) MARK / COUNT out-of-core hash join: an EXISTS / NOT EXISTS / COUNT{} subquery
+# over a factorized outer -- here (a)-[:knows]->(b), whose output spans a's flat chunk and b's unflat
+# chunk -- streams one flat tuple at a time. Results must match the in-memory path (spill on, 1 thread).
+-CASE MarkCountMultiChunkGrace
+-STATEMENT CALL threads=1;
+---- ok
+-STATEMENT CALL spill_hash_join=true;
+---- ok
+# MARK (EXISTS) over a factorized (a, b) outer: the surviving (a.ID, b.ID) pairs.
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) WHERE EXISTS { MATCH (a)-[:studyAt]->(o:organisation) } RETURN a.ID, b.ID ORDER BY a.ID, b.ID;
+---- 6
+0|2
+0|3
+0|5
+2|0
+2|3
+2|5
+# NOT EXISTS complement (count is order/factorization independent).
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) WHERE NOT EXISTS { MATCH (a)-[:studyAt]->(o:organisation) } RETURN count(*);
+---- 1
+8
+# COUNT over the same factorized outer: sum of per-pair counts.
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) RETURN sum(COUNT { MATCH (a)-[:studyAt]->(o:organisation) });
+---- 1
+6
+
+# Same, with a tiny per-operator budget forcing the build to spill to disk and reload.
+-CASE MarkCountMultiChunkGraceSpill
+-STATEMENT CALL threads=1;
+---- ok
+-STATEMENT CALL spill_hash_join=true;
+---- ok
+-STATEMENT CALL spill_hash_join_budget=4096;
+---- ok
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) WHERE EXISTS { MATCH (a)-[:studyAt]->(o:organisation) } RETURN count(*);
+---- 1
+6
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) RETURN sum(COUNT { MATCH (a)-[:studyAt]->(o:organisation) });
+---- 1
+6
