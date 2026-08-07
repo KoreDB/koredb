@@ -1,0 +1,65 @@
+-DATASET CSV tinysnb
+
+--
+
+# Out-of-core COUNT (size / COUNT{} subquery) hash join: the build side is pre-aggregated to
+# (key, count); with spill_hash_join on (single thread) it is radix-partitioned and spilled, and each
+# probe row emits its count (0 when the key has no match), materialized one partition at a time.
+# Results must match the in-memory path.
+-CASE CountSubqueryGrace
+-STATEMENT CALL threads=1;
+---- ok
+-STATEMENT CALL spill_hash_join=true;
+---- ok
+# COUNT of outgoing knows edges per person.
+-STATEMENT MATCH (a:person) RETURN a.ID, COUNT { MATCH (a)-[:knows]->(b:person) } AS c ORDER BY a.ID;
+---- 8
+0|3
+2|3
+3|3
+5|3
+7|2
+8|0
+9|0
+10|0
+# Filter on a COUNT subquery.
+-STATEMENT MATCH (a:person) WHERE COUNT { MATCH (a)-[:knows]->(b:person) } > 2 RETURN a.ID ORDER BY a.ID;
+---- 4
+0
+2
+3
+5
+# Aggregate over the per-row counts (deterministic scalar).
+-STATEMENT MATCH (a:person) RETURN sum(COUNT { MATCH (a)-[:knows]->(b:person) });
+---- 1
+14
+# COUNT of studyAt edges (0 for most persons).
+-STATEMENT MATCH (a:person) RETURN a.ID, COUNT { MATCH (a)-[:studyAt]->(o:organisation) } AS c ORDER BY a.ID;
+---- 8
+0|1
+2|1
+3|0
+5|0
+7|0
+8|1
+9|0
+10|0
+
+# Same, with a tiny per-operator budget forcing the pre-aggregated build to spill to disk and reload.
+-CASE CountSubqueryGraceSpill
+-STATEMENT CALL threads=1;
+---- ok
+-STATEMENT CALL spill_hash_join=true;
+---- ok
+-STATEMENT CALL spill_hash_join_budget=4096;
+---- ok
+-STATEMENT MATCH (a:person) RETURN a.ID, COUNT { MATCH (a)-[:knows]->(b:person) } AS c ORDER BY a.ID;
+---- 8
+0|3
+2|3
+3|3
+5|3
+7|2
+8|0
+9|0
+10|0

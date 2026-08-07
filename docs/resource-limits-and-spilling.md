@@ -204,14 +204,16 @@ in memory and only spills to disk near the buffer-pool ceiling. The wiring (`map
   the multi-chunk (unflat-key build) case.
 
 **Eligibility (conservative; anything else silently uses the in-memory path):** (a) INNER or LEFT with
-non-empty build payloads, or (b) **MARK** (EXISTS / semi / anti-join) with a keys-only build and a
-single-chunk output; in both cases `numThreads == 1`, **no nested/NODE/REL payload or output column**,
-and each side an *appendable factorization* (at most one unflat data chunk, all keys in a single chunk).
-This covers the flat single-chunk join, the factorized multi-chunk join the planner produces for a
-`RETURN *`-style query (an unflat-key build, output across several chunks), and the single-chunk
-EXISTS/anti-join. A side with more than one unflat chunk (two crossed `MANY` dimensions), a composite
-key spanning chunks, a multi-chunk MARK output, COUNT joins, and parallel execution all fall back.
-Silent fallback is safe because the fallback is the proven in-memory join.
+non-empty build payloads, (b) **MARK** (EXISTS / semi / anti-join) with a keys-only build and a
+single-chunk output, or (c) **COUNT** (size / `COUNT{}` subquery) with a pre-aggregated `(key, count)`
+build (one count payload) and a single-chunk output; in all cases `numThreads == 1`, **no
+nested/NODE/REL payload or output column**, and each side an *appendable factorization* (at most one
+unflat data chunk, all keys in a single chunk). This covers the flat single-chunk join, the factorized
+multi-chunk join the planner produces for a `RETURN *`-style query (an unflat-key build, output across
+several chunks), the single-chunk EXISTS/anti-join, and the single-chunk COUNT subquery. A side with
+more than one unflat chunk (two crossed `MANY` dimensions), a composite key spanning chunks, a
+multi-chunk MARK/COUNT output, and parallel execution all fall back. Silent fallback is safe because the
+fallback is the proven in-memory join.
 
 **MARK joins.** An `EXISTS { … }` / `NOT EXISTS { … }` subquery compiles to a MARK join whose build
 side (the correlated pattern) can be arbitrarily large. `computeMarkJoin` emits exactly one output row
@@ -224,6 +226,20 @@ build side. Only the single-chunk shape is wired (multi-chunk MARK falls back). 
 `GraceHashJoinMarkDifferential` (EXISTS/NOT EXISTS, spill off vs on + activation assert) and
 `GraceHashJoinMarkSpillDifferential` (3000-row build, 4 KiB budget → real disk spill), plus the e2e
 `generic_hash_join/mark.test`.
+
+**COUNT joins.** A `COUNT { … }` / `size(pattern)` subquery compiles to a COUNT join whose build subtree
+is `AGGREGATE(GROUP BY key, COUNT_STAR) → HASH_JOIN_BUILD` — i.e. the build is **pre-aggregated to one
+`(key, count)` row per key**, so each probe row has at most one match. This is LEFT-join-shaped (every
+probe row emits exactly one output row, `[probeKeys…, probeNonKeys…, count]`), differing only in that a
+non-match yields **count 0** instead of a NULL build payload — handled by a `countJoin` flag on the
+shared `computeJoin` (only the no-match branch differs). Because the count is an ordinary build payload,
+the probe operator reuses the INNER single-chunk emission path verbatim, swapping in
+`computeCountPartition`. Verified by `GraceHashJoinCountDifferential` (tinysnb `COUNT{}` in `RETURN` and
+in a `WHERE` filter, spill off vs on + activation assert) and `GraceHashJoinCountSpillDifferential`
+(2000-key pre-aggregated build, 4 KiB budget → real disk spill), plus the e2e
+`generic_hash_join/count.test`. (A *node-correlated* `COUNT { MATCH (b) WHERE b.k = a.k }` asserts in the
+**in-memory** `getCountJoinResult` under runtime checks — `vectorsToReadInto.size() == 1` — a pre-existing
+shape limitation independent of the Grace path; the standard relationship/pattern COUNT is the wired shape.)
 
 **LEFT joins.** `computeJoin(isLeftJoin)` null-pads any probe row that finds no build match; a NULL join
 key (which never matches) takes the same path, so LEFT semantics are preserved for unmatched and
@@ -369,7 +385,7 @@ an eligible INNER equi-join each activate grace with no `CALL` setting. Both are
 because their audits pass and both silently fall back to the proven in-memory path for any shape they
 do not conservatively support: aggregation excludes nested group/dependent keys (section 5) and reuses
 the in-memory scan; the join takes the Grace path only for INNER/LEFT (with payloads) or single-chunk
-MARK, scalar/string, no-nested/NODE/REL shapes. The earlier NULL-keyed self-join divergence was a bug in the *in-memory*
+MARK/COUNT, scalar/string, no-nested/NODE/REL shapes. The earlier NULL-keyed self-join divergence was a bug in the *in-memory*
 join (`discardNull`, now fixed at the root — section 5), not in Grace. With the derived budget (whole
 buffer pool) an on operator partitions in memory and only spills to disk near the ceiling, trading a
 partition/materialize overhead for not-OOMing. With both defaults on the whole suite exercises the
@@ -454,13 +470,14 @@ broaden coverage and reach the hard `RETURN *` case:
 
    **Still falls back to the in-memory path** (conservative): a side with **>1 unflat chunk** (two unflat
    dimensions crossed — e.g. a probe combining two `MANY` extensions), a **composite key spanning chunks**,
-   nested/NODE/REL columns, **multi-chunk MARK** and **COUNT** joins, and multi-threaded execution.
+   nested/NODE/REL columns, **multi-chunk MARK / COUNT** joins, and multi-threaded execution.
    **Vectorizing** the row-at-a-time multi-chunk emission (keeping the unflat dimension factorized
    instead of flattening one tuple per call) is the main follow-on.
 
-3. **Remaining join types & keys** — **single-chunk MARK (EXISTS / semi / anti-join) is done**
-   (`computeMarkJoin`, section 5 "MARK joins"); still open: **multi-chunk MARK**, **COUNT** joins, and
-   multi-column / unflat probe keys in the executor (inner + left + single/composite flat key are done).
+3. **Remaining join types & keys** — **single-chunk MARK (EXISTS / semi / anti-join) and COUNT (size /
+   `COUNT{}` subquery) are done** (`computeMarkJoin` / `computeCountJoin`, section 5 "MARK joins" /
+   "COUNT joins"); still open: **multi-chunk MARK / COUNT** and multi-column / unflat probe keys in the
+   executor (inner + left + single/composite flat key are done).
 
 5. **`ORDER BY` external merge sort — implemented (v1, opt-in).** `ExternalMergeSort`
    (`src/processor/operator/order_by/external_merge_sort.{h,cpp}`) gives a plain `ORDER BY` (no
