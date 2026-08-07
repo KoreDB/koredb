@@ -32,8 +32,8 @@ namespace processor {
 //
 // Keys are compared on the memcmp-comparable encoded prefix; STRING keys, whose encoding only holds a
 // 12-byte prefix, are resolved column-by-column against the full string captured in the payload (see
-// compareRecords), byte-for-byte matching the in-memory KeyBlockMerger so the spilled order is
-// identical to the in-memory sort. Nested keys are still excluded (the live operator gates on this).
+// compareRecords), producing the strict total order over all key columns -- matching the in-memory
+// RadixSort's full-key ordering. Nested keys are still excluded (the live operator gates on this).
 //
 // Multi-threaded ORDER BY: each thread owns its own ExternalMergeSort as a *run generator* (append +
 // finalize -> sorted runs in its own spill file, lock-free during generation). After the barrier, one
@@ -113,7 +113,7 @@ private:
     void advanceCursor(MergeCursor& cursor);
     // 3-way compare (<0 / 0 / >0) of two records by the ORDER BY key. Plain memcmp of the encoded key
     // when there are no STRING keys; otherwise column-by-column with full-string tie resolution,
-    // mirroring the in-memory KeyBlockMerger exactly.
+    // continuing past each string column so the order is strict over all key columns.
     int compareRecords(const uint8_t* keyA,
         const std::vector<std::shared_ptr<common::Value>>& payloadA, const uint8_t* keyB,
         const std::vector<std::shared_ptr<common::Value>>& payloadB) const;
@@ -148,6 +148,10 @@ private:
     bool mergeInitialized = false;
     std::vector<std::unique_ptr<MergeCursor>> cursors;
     std::vector<uint32_t> heap; // min-heap of cursor indices, ordered by head key
+
+    // Output emission shape, computed once on the first scanNext from the output vectors' states.
+    bool outputModeComputed = false;
+    bool outputBatchMode = false; // true: one shared unflat output state -> emit a full vector at once
 };
 
 // Test-only: number of times an ORDER BY has activated the external merge sort path this process.

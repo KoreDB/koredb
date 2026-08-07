@@ -2225,6 +2225,10 @@ TEST_F(BufferManagerTest, SpillOrderByDifferential) {
         "MATCH (n:ob) RETURN n.id, n.us ORDER BY n.us DESC",
         // STRING as a secondary key after a tie-heavy INT64 key.
         "MATCH (n:ob) RETURN n.a, n.us, n.id ORDER BY n.a ASC, n.us DESC",
+        // STRING as the FIRST key with trailing key columns after it (tie-heavy short string `s`
+        // resolved by the unique id): exercises strict full-key ordering past the string column.
+        "MATCH (n:ob) RETURN n.s, n.id ORDER BY n.s DESC, n.id ASC",
+        "MATCH (n:ob) RETURN n.s, n.a, n.id ORDER BY n.s ASC, n.a DESC, n.id ASC",
     };
     const auto before = getExternalMergeSortActivationCount();
     for (const auto& q : queries) {
@@ -2276,6 +2280,41 @@ TEST_F(BufferManagerTest, SpillOrderByMultiThreadedDifferential) {
     ASSERT_GT(getExternalMergeSortActivationCount(), before)
         << "external merge sort path did not activate";
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+}
+
+// Multi-(flat-)group input: a comma cross-product puts `a` and `b` in different factorization groups,
+// so ORDER BY keys/payloads span multiple data chunks (all flattened to flat). The external sort must
+// capture each payload at its own group's position and emit tuple-at-a-time, matching the in-memory
+// sort. Every query uses a total order so the two paths cannot legitimately differ.
+TEST_F(BufferManagerTest, SpillOrderByMultiGroupDifferential) {
+    using kuzu::processor::getExternalMergeSortActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    ASSERT_TRUE(conn->query("CREATE NODE TABLE ta(id INT64, PRIMARY KEY(id));")->isSuccess());
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE tb(id INT64, s STRING, PRIMARY KEY(id));")->isSuccess());
+    ASSERT_TRUE(conn->query("UNWIND range(0, 99) AS i CREATE (:ta {id: i});")->isSuccess());
+    ASSERT_TRUE(conn->query("UNWIND range(0, 49) AS i CREATE (:tb {id: i, "
+                            "s: 'v' + cast(i % 10 AS STRING)});")
+                    ->isSuccess());
+    const std::vector<std::string> queries = {
+        // INT64 keys drawn from two different groups (a in one chunk, b in another).
+        "MATCH (a:ta), (b:tb) RETURN a.id, b.id ORDER BY a.id ASC, b.id DESC",
+        // STRING key (with ties) from group b, resolved by unique ids across both groups.
+        "MATCH (a:ta), (b:tb) RETURN a.id, b.id, b.s ORDER BY b.s DESC, a.id ASC, b.id ASC",
+        // Key from group a, extra payloads from both groups.
+        "MATCH (a:ta), (b:tb) RETURN a.id, b.s, b.id ORDER BY a.id DESC, b.id DESC",
+    };
+    const auto before = getExternalMergeSortActivationCount();
+    for (const auto& q : queries) {
+        ASSERT_TRUE(conn->query("CALL spill_order_by=false;")->isSuccess());
+        const auto inMemory = collectOrderedRows(conn.get(), q);
+        ASSERT_TRUE(conn->query("CALL spill_order_by=true;")->isSuccess());
+        ASSERT_TRUE(conn->query("CALL spill_order_by_budget=4096;")->isSuccess());
+        const auto external = collectOrderedRows(conn.get(), q);
+        ASSERT_EQ(inMemory, external) << "multi-group external sort vs in-memory mismatch for: " << q;
+    }
+    ASSERT_GT(getExternalMergeSortActivationCount(), before)
+        << "external merge sort path did not activate";
 }
 
 } // namespace testing

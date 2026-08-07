@@ -53,28 +53,33 @@ int ExternalMergeSort::compareRecords(const uint8_t* keyA,
     if (strKeyCols.empty()) {
         return std::memcmp(keyA, keyB, numKeyBytes);
     }
-    // Column-by-column, resolving each STRING column's prefix tie against the full payload string
-    // before moving on. This mirrors KeyBlockMerger::compareTuplePtrWithStringCol exactly (including
-    // that trailing non-string columns after the last string column are treated as a tie), so the
-    // spilled order is identical to the in-memory sort.
+    // Column-by-column, resolving each STRING column's 12-byte-prefix tie against the full payload
+    // string, then continuing to the remaining columns. This produces the STRICT total order over all
+    // key columns -- matching the in-memory RadixSort, which sorts by the full encoded key (the
+    // KeyBlockMerger's habit of ignoring columns after the last string is only valid on top of that
+    // full-key pre-sort, so it must NOT be replicated for a standalone comparator). String prefix ties
+    // for short strings are exact; for long strings they are resolved against the full payload string.
     const uint32_t strEncSize =
         OrderByKeyEncoder::getEncodingSize(LogicalType(LogicalTypeID::STRING));
     uint32_t lastComparedBytes = 0;
     for (auto& sc : strKeyCols) {
+        // Compare the encoded bytes from the last resolved column up to and including this string's
+        // prefix (covers any fixed-width key columns sitting between the two string columns).
         const auto cmpLen = sc.offsetInEncodedKey - lastComparedBytes + strEncSize;
         int result = std::memcmp(keyA + lastComparedBytes, keyB + lastComparedBytes, cmpLen);
         const auto* leftStrPtr = keyA + sc.offsetInEncodedKey;
         const auto* rightStrPtr = keyB + sc.offsetInEncodedKey;
+        // Advance past this string column; a `continue` means it tied and we move to later columns.
+        lastComparedBytes = sc.offsetInEncodedKey + strEncSize;
         if (OrderByKeyEncoder::isNullVal(leftStrPtr, sc.isAsc) &&
             OrderByKeyEncoder::isNullVal(rightStrPtr, sc.isAsc)) {
-            lastComparedBytes = sc.offsetInEncodedKey + strEncSize;
             continue;
         }
         if (result == 0) {
             const bool leftLong = OrderByKeyEncoder::isLongStr(leftStrPtr, sc.isAsc);
             const bool rightLong = OrderByKeyEncoder::isLongStr(rightStrPtr, sc.isAsc);
             if (!leftLong && !rightLong) {
-                continue; // both fit in the prefix -> equal on this column
+                continue; // both fit in the prefix -> equal on this column, compare later columns
             } else if (leftLong && !rightLong) {
                 return sc.isAsc ? 1 : -1;
             } else if (!leftLong && rightLong) {
@@ -83,12 +88,16 @@ int ExternalMergeSort::compareRecords(const uint8_t* keyA,
             const std::string sA = payloadA[sc.payloadColIdx]->getValue<std::string>();
             const std::string sB = payloadB[sc.payloadColIdx]->getValue<std::string>();
             if (sA == sB) {
-                lastComparedBytes = sc.offsetInEncodedKey + strEncSize;
-                continue;
+                continue; // equal full strings -> compare later columns
             }
             return (sc.isAsc == (sA > sB)) ? 1 : -1;
         }
         return result;
+    }
+    // Compare any remaining fixed-width key columns after the last string column.
+    if (lastComparedBytes < numKeyBytes) {
+        return std::memcmp(keyA + lastComparedBytes, keyB + lastComparedBytes,
+            numKeyBytes - lastComparedBytes);
     }
     return 0;
 }
@@ -141,11 +150,15 @@ void ExternalMergeSort::append(const std::vector<ValueVector*>& keyVectors,
     }
     KU_ASSERT(batchKeys.size() == numTuplesInBatch);
     for (auto t = 0u; t < numTuplesInBatch; t++) {
-        const auto pos = keyState.getSelVector()[t];
         InMemRecord rec;
         rec.key = std::move(batchKeys[t]);
         rec.payload.reserve(numPayloadCols);
         for (auto c = 0u; c < numPayloadCols; c++) {
+            // Read each payload at its own position so keys and payloads may live in different (flat)
+            // factorization groups: a flat vector holds one value broadcast to every tuple in the
+            // batch, while an unflat vector is indexed per tuple (mirroring OrderByKeyEncoder).
+            auto& st = *payloadVectors[c]->state;
+            const auto pos = st.isFlat() ? st.getSelVector()[0] : st.getSelVector()[t];
             rec.payload.push_back(payloadVectors[c]->getAsValue(pos));
         }
         buffer.push_back(std::move(rec));
@@ -275,9 +288,29 @@ void ExternalMergeSort::initMerge() {
 
 uint64_t ExternalMergeSort::scanNext(const std::vector<ValueVector*>& payloadVectors) {
     initMerge();
+    if (!outputModeComputed) {
+        outputModeComputed = true;
+        // Batch mode (emit up to a full vector per call) only when every output column shares one
+        // unflat state -- the common single factorization group case. Otherwise emit one tuple at a
+        // time: flat outputs, possibly spanning multiple flat groups, must stay flat (one tuple per
+        // vector), mirroring PayloadScanner's single-tuple path.
+        outputBatchMode = !payloadVectors.empty() && !payloadVectors[0]->state->isFlat();
+        if (outputBatchMode) {
+            auto* sharedState = payloadVectors[0]->state.get();
+            for (auto* vector : payloadVectors) {
+                if (vector->state.get() != sharedState) {
+                    outputBatchMode = false;
+                    break;
+                }
+            }
+        }
+    }
     auto cmp = [this](uint32_t a, uint32_t b) { return keyGreater(a, b); };
+    // In tuple-at-a-time mode `count` never exceeds 1, so writing each value at index `count` lands at
+    // position 0 of every (flat) output vector -- consistent with the setToUnfiltered(count) below.
+    const uint64_t cap = outputBatchMode ? DEFAULT_VECTOR_CAPACITY : 1;
     uint64_t count = 0;
-    while (count < DEFAULT_VECTOR_CAPACITY && !heap.empty()) {
+    while (count < cap && !heap.empty()) {
         std::pop_heap(heap.begin(), heap.end(), cmp);
         const auto cursorIdx = heap.back();
         heap.pop_back();
@@ -292,8 +325,10 @@ uint64_t ExternalMergeSort::scanNext(const std::vector<ValueVector*>& payloadVec
             std::push_heap(heap.begin(), heap.end(), cmp);
         }
     }
-    if (!payloadVectors.empty()) {
-        payloadVectors[0]->state->getSelVectorUnsafe().setToUnfiltered(count);
+    // Set every output state's selection to the emitted count. Batch mode has one shared unflat state;
+    // tuple mode has one flat state per group (setting a shared state twice is idempotent).
+    for (auto* vector : payloadVectors) {
+        vector->state->getSelVectorUnsafe().setToUnfiltered(count);
     }
     return count;
 }

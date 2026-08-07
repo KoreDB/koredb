@@ -387,8 +387,12 @@ broaden coverage and reach the hard `RETURN *` case:
    Gated by `spill_order_by` (+`spill_order_by_budget`), plumbed exactly like `spill_aggregate` (section
    7), **off by default**. `OrderBy::initLocalStateInternal` activates the path at runtime when
    `spill_order_by` is on and the sort is eligible; otherwise the in-memory sort runs byte-for-byte
-   unchanged. **Eligibility:** fixed-width or `STRING` keys, non-nested payloads, and a single input data
-   chunk. **Multi-threaded** (`threads > 1`) is supported — see run generation below.
+   unchanged. **Eligibility:** fixed-width or `STRING` keys and non-nested payloads. Keys and payloads
+   may span **multiple (flat) factorization groups** — different data chunks. The one shape not yet
+   supported is an *unflat overflow* payload column (a payload whose group stays unflat across multiple
+   groups, stored factorized as one list entry per key tuple); `isExternalSortEligible` detects it via
+   `payloadTableSchema` and falls back. **Multi-threaded** (`threads > 1`) is supported — see run
+   generation below.
    - **Run generation** (`append`, per thread): each `OrderBy` thread owns its own `ExternalMergeSort`
      generator and spill file, so run generation is embarrassingly parallel and lock-free on the hot
      path (only registration into the shared state takes the mutex, mirroring `getLocalPayloadTable`).
@@ -398,32 +402,40 @@ broaden coverage and reach the hard `RETURN *` case:
      budget is split evenly across `threads` so the aggregate resident footprint stays bounded.
      Decoupling the payload as per-row `Value` bytes (rather than a spilled `FactorizedTable`) means runs
      carry no back-pointers and need no re-basing — which is also what lets runs from *different* threads
-     (different spill files) merge together with no fix-up.
+     (different spill files) merge together with no fix-up. Each payload is captured at *its own* vector
+     position (a flat vector broadcasts one value; an unflat vector is indexed per tuple), so keys and
+     payloads may live in different flat data chunks.
    - **Comparison** (`compareRecords`): plain `memcmp` of the encoded key for fixed-width keys;
      otherwise column-by-column, resolving a `STRING` column's 12-byte-prefix tie against the full
-     string captured in the payload before moving to the next column — byte-for-byte matching the
-     in-memory `KeyBlockMerger::compareTuplePtrWithStringCol` (down to treating trailing non-string
-     columns after the last string column as a tie), so the spilled order is identical to the in-memory
-     sort. Used for both the in-run sort and the merge heap.
+     string captured in the payload, then **continuing to the remaining key columns** — the strict total
+     order over all keys. This matches the in-memory `RadixSort`, which sorts by the full encoded key;
+     the `KeyBlockMerger` habit of ignoring columns after the last string is only valid layered on top of
+     that full-key pre-sort, so it is deliberately *not* replicated here (doing so mis-ordered a string
+     key followed by further key columns). Used for both the in-run sort and the merge heap.
    - **Merge / scan** (`scanNext`, driven by `OrderByScan`): after the pipeline barrier, the single scan
      thread calls `SortSharedState::prepareExternalMerge`, which gathers every generator's runs into
      one coordinator as file-scoped `RunSource`s and streams a **k-way merge across all threads' runs** —
      one `BufferedFileReader` per run (each addressing its originating spill file), a min-heap on
      `compareRecords` — emitting sorted tuples straight into the output vectors (`Value::deserialize` →
      `copyFromValue`). Reads are positioned (`FileInfo::readFromFile` takes an explicit offset), so many
-     cursors over the same or different files never interfere. Because each run head's full payload is
-     already resident, the string tie-break needs no extra disk reads. Memory is bounded to ~the budget
-     during generation and ~one buffered page per open run during the merge; disk reads are sequential
-     per run. `OrderByScan` is `isParallel() == false`, so the merge always runs single-threaded.
+     cursors over the same or different files never interfere. The output is emitted in one of two shapes,
+     chosen from the output vectors' states: a full vector at a time when every output column shares one
+     unflat state (the common single-group case), otherwise one tuple at a time (flat outputs, possibly
+     across multiple flat groups), mirroring `PayloadScanner`'s single-tuple path. Because each run head's
+     full payload is already resident, the string tie-break needs no extra disk reads. Memory is bounded
+     to ~the budget during generation and ~one buffered page per open run during the merge; disk reads are
+     sequential per run. `OrderByScan` is `isParallel() == false`, so the merge always runs single-threaded.
 
    `OrderByMerge` naturally no-ops (the executor merges internally, so `sortedKeyBlocks` stays empty).
    Verified by `buffer_manager_test`: `ExternalMergeSortDifferential` (library — 3000 rows, 4 KiB
    budget forcing 6 spilled runs, multiset + key-order checks over multi-column ASC/DESC/NULL keys),
    `SpillOrderByDifferential` (operator — 5000 rows, total-order queries including long `STRING` keys
-   that share a 12-char prefix, spill on vs off must match, activation asserted), and
-   `SpillOrderByMultiThreadedDifferential` (operator — 8000 rows, `threads=4` external vs `threads=1`
-   in-memory must match, tiny per-generator budget forcing many cross-file runs), plus e2e
-   `order_by/spill_order_by.test` (which includes a `threads=4` case).
+   that share a 12-char prefix and a `STRING` key *followed by* further key columns, spill on vs off must
+   match, activation asserted), `SpillOrderByMultiThreadedDifferential` (operator — 8000 rows, `threads=4`
+   external vs `threads=1` in-memory must match, tiny per-generator budget forcing many cross-file runs),
+   and `SpillOrderByMultiGroupDifferential` (operator — a comma cross-product whose keys/payloads span two
+   factorization groups), plus e2e `order_by/spill_order_by.test` (which includes `threads=4` and
+   multi-group cases).
 
    *Out of scope — nested keys.* Ordering by a nested value (`LIST`/`ARRAY`/`STRUCT`/`MAP`/`UNION`) is
    rejected engine-wide at bind time (`isOrderByKeyTypeSupported` in `bind_projection_clause.cpp`), so no
@@ -434,8 +446,10 @@ broaden coverage and reach the hard `RETURN *` case:
    *payloads* (a scalar key carrying a nested return column, e.g. `RETURN p.scores ORDER BY p.id`) are a
    real fallback the external path could add later — `Value::serialize` already handles nested values.
 
-   *Remaining sub-pieces:* **factorized / multi-chunk** inputs, and — smaller — **nested-payload**
-   support (above). Multi-threaded run generation is now implemented (above).
+   *Remaining sub-pieces:* **unflat overflow payload columns** (the one factorized shape still excluded —
+   an unflat list carried alongside a flat key must be captured and re-expanded factorized), which is
+   also the general form of the — smaller — **nested-payload** case (above). Multi-threaded run
+   generation and multiple *flat* factorization groups are now implemented (above).
 
 6. **Partitioned aggregation — broadening.** The library executor and the gated live operator now
    exist (sections 6–7). What remains: distinct aggregates, multi-state / multi-chunk inputs,

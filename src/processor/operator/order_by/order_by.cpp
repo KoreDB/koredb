@@ -2,7 +2,6 @@
 
 #include <atomic>
 #include <filesystem>
-#include <optional>
 
 #include "binder/expression/expression_util.h"
 #include "common/types/types.h"
@@ -27,11 +26,13 @@ uint64_t getExternalMergeSortActivationCount() {
 }
 
 // The external merge sort supports fixed-width and STRING keys (STRING prefix ties are resolved
-// against the full payload string) and flat payloads read one value per tuple via getAsValue, all in
-// a single input data chunk (so key and payload positions line up). Nested payloads and multi-chunk
-// (factorized) inputs fall back to the in-memory sort. A nested *key* never reaches here at all -- the
-// binder rejects ORDER BY on nested types engine-wide (isOrderByKeyTypeSupported), so the nested-key
-// check below is purely defensive.
+// against the full payload string) and flat payloads read one value per tuple via getAsValue. Keys and
+// payloads may live in different (flat) factorization groups -- multiple data chunks. What it does NOT
+// yet support is an unflat *overflow* payload column: when a payload's group stays unflat across
+// multiple groups (e.g. an unflat list carried alongside a flat key), the factorized table stores it as
+// one overflow entry that must be re-expanded on scan; those queries fall back to the in-memory sort.
+// A nested *key* never reaches here at all -- the binder rejects ORDER BY on nested types engine-wide
+// (isOrderByKeyTypeSupported), so the nested-key check below is purely defensive.
 static bool isExternalSortEligible(const OrderByDataInfo& info) {
     for (auto& keyType : info.keyTypes) {
         if (LogicalTypeUtils::isNested(keyType)) {
@@ -43,18 +44,14 @@ static bool isExternalSortEligible(const OrderByDataInfo& info) {
             return false;
         }
     }
-    std::optional<data_chunk_pos_t> chunk;
-    auto sameChunk = [&chunk](const std::vector<DataPos>& positions) {
-        for (auto& p : positions) {
-            if (!chunk.has_value()) {
-                chunk = p.dataChunkPos;
-            } else if (*chunk != p.dataChunkPos) {
-                return false;
-            }
+    // Every payload column must be flat-storage; an unflat (overflow) column is not yet handled.
+    const auto& schema = info.payloadTableSchema;
+    for (auto i = 0u; i < schema.getNumColumns(); i++) {
+        if (!schema.getColumn(i)->isFlat()) {
+            return false;
         }
-        return true;
-    };
-    return sameChunk(info.keysPos) && sameChunk(info.payloadsPos);
+    }
+    return true;
 }
 
 static std::unique_ptr<ExternalMergeSort> makeExternalSorter(ExecutionContext* context,
