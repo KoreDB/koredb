@@ -385,13 +385,39 @@ broaden coverage and reach the hard `RETURN *` case:
    has any unflat column (`FactorizedTablePreserveFactorizationRoundTrip`,
    `PartitionedFactorizedTablePreserveFactorizationSpillReload`).
 
-   **Operator integration — remaining, and the largest sub-piece.** Wiring this into the live Grace
-   join still needs: (a) a factorized **append** path (the scatter `appendVectors` asserts an unflat
-   batch, but a factorized build is one *flat key* + an *unflat list payload* per call), (b) the Grace
-   executor's `buildHashTableForPartition` / `computeJoin` to carry the unflat build payload through the
-   `JoinHashTable`, and (c) **multi-chunk output** emission (a factorized result is probe-flat +
-   build-unflat across separate output chunks) — i.e. this is intertwined with item 1(c), which the
-   single-chunk operator emission cannot yet produce.
+   **Executor append primitive — done.** `PartitionedFactorizedTable::appendFactorizedGroup` routes a
+   whole factorized group (one *flat key* broadcast + one *unflat list payload*) to the single partition
+   `hash(key)` selects and flattens it into that partition's flat storage (reusing
+   `FactorizedTable::append`'s flatten-on-append); `GraceHashJoinExecutor::appendBuildFactorized` wraps
+   it. So the build storage stays flat and the unflat OUTPUT is reconstructed at probe time (one probe
+   row × its N matched build rows) via the streaming `getNextChunk` — no factorization-preserving spill
+   is even needed on the build side. Verified materialized + streamed, no-spill and forced-spill
+   (`GraceHashJoinExecutorFactorizedBuild{InMemory,Spill,StreamSpill}`).
+
+   **Operator integration — investigated and shelved (the shape the planner does not produce).** A full
+   live-operator wiring was built on top of the primitive above (a second "factorized" eligible shape in
+   `computeGraceHashJoinInfo`: flat key + one unflat build-payload group + all-flat probe output + a
+   separate unflat build-payload output chunk; `HashJoinBuild` routing through `appendBuildFactorized`;
+   `HashJoinProbe` streaming via `getNextChunk`). It **never activated on any real query.** `EXPLAIN`
+   across ~12 diverse shapes (two-pattern joins, comma self-joins, a knows-triangle, a `WITH`-boundary
+   join, a disconnected equi-join) shows the planner never emits the *flat-key + unflat-build-payload*
+   hash join this path targets. Instead it does one of:
+   - build a **flat node scan** and push the extension to the **probe** side, so the factorized OUTPUT
+     comes from the probe (`MATCH (a) MATCH (a)-[:knows]->(b) RETURN a.ID, b.ID` builds the `person`
+     scan). The build is tiny, so spilling it buys nothing, and the in-memory path already streams that
+     output; or
+   - root the build so the join key lands on the **unflat (extended)** node — an *unflat key* build
+     (`MATCH (a)-[:knows]->(b) MATCH (a)-[:studyAt]->(o)` builds `studyAt` rooted at `organisation`,
+     keyed on the unflat `a`); or
+   - insert a `FLATTEN` before `HASH_JOIN_BUILD`, giving the already-handled flat single-chunk shape.
+
+   The genuinely valuable out-of-core case is therefore a **large factorized build whose join key is on
+   the unflat side** (or an unflat probe), which the executor's flat-key / flat-probe design cannot
+   co-partition without a substantial rewrite (hashing an unflat key batch; co-partitioning an unflat
+   probe). That is the real remaining work; the flat-key operator wiring was reverted rather than shipped
+   as default-on dead code (it mirrors the earlier finding that a factorized *streaming output* is
+   unreachable without exactly this multi-chunk build — item 1(c)). The append primitive above is kept as
+   a tested building block for that future unflat-key design.
 
 3. **Remaining join types & keys** — mark / count joins and multi-column / unflat probe keys in the
    executor (inner + left + single/composite flat key are done).
