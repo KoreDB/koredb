@@ -203,14 +203,27 @@ in memory and only spills to disk near the buffer-pool ceiling. The wiring (`map
   (each column set to a single value). See "Operator integration — done" under remaining-work item 2 for
   the multi-chunk (unflat-key build) case.
 
-**Eligibility (conservative; anything else silently uses the in-memory path):** INNER or LEFT, no mark,
-non-empty build payloads, `numThreads == 1`, **no nested/NODE/REL payload or output column**, and each
-side an *appendable factorization* (at most one unflat data chunk, all keys in a single chunk). This
-covers the flat single-chunk join **and** the factorized multi-chunk join the planner produces for a
-`RETURN *`-style query (an unflat-key build, output across several chunks). A side with more than one
-unflat chunk (two crossed `MANY` dimensions), a composite key spanning chunks, MARK/COUNT joins, and
-parallel execution all fall back. Silent fallback is safe because the fallback is the proven in-memory
-join.
+**Eligibility (conservative; anything else silently uses the in-memory path):** (a) INNER or LEFT with
+non-empty build payloads, or (b) **MARK** (EXISTS / semi / anti-join) with a keys-only build and a
+single-chunk output; in both cases `numThreads == 1`, **no nested/NODE/REL payload or output column**,
+and each side an *appendable factorization* (at most one unflat data chunk, all keys in a single chunk).
+This covers the flat single-chunk join, the factorized multi-chunk join the planner produces for a
+`RETURN *`-style query (an unflat-key build, output across several chunks), and the single-chunk
+EXISTS/anti-join. A side with more than one unflat chunk (two crossed `MANY` dimensions), a composite
+key spanning chunks, a multi-chunk MARK output, COUNT joins, and parallel execution all fall back.
+Silent fallback is safe because the fallback is the proven in-memory join.
+
+**MARK joins.** An `EXISTS { … }` / `NOT EXISTS { … }` subquery compiles to a MARK join whose build
+side (the correlated pattern) can be arbitrarily large. `computeMarkJoin` emits exactly one output row
+per probe row — `[probeKeys…, probeNonKeys…, mark(BOOL)]` — where `mark` is whether the probe row had
+≥1 build match (a NULL join key or an empty build partition ⇒ `false`; Cypher `EXISTS` is two-valued,
+so no NULL mark). No build payloads are read. The probe operator drains its child into the (spilling)
+probe partitions, then materializes one partition at a time (`computeMarkPartition`) and scans it back
+into the single output chunk, so peak memory is bounded to one partition's rows instead of the whole
+build side. Only the single-chunk shape is wired (multi-chunk MARK falls back). Verified by
+`GraceHashJoinMarkDifferential` (EXISTS/NOT EXISTS, spill off vs on + activation assert) and
+`GraceHashJoinMarkSpillDifferential` (3000-row build, 4 KiB budget → real disk spill), plus the e2e
+`generic_hash_join/mark.test`.
 
 **LEFT joins.** `computeJoin(isLeftJoin)` null-pads any probe row that finds no build match; a NULL join
 key (which never matches) takes the same path, so LEFT semantics are preserved for unmatched and
@@ -259,7 +272,14 @@ the join executor: an out-of-core hash `GROUP BY` over an input that may not fit
 - `append(keyVectors, aggInputVectors)` scatters the **raw input rows** (`[groupKeys…,
   aggInputCols…]`) into a `PartitionedFactorizedTable` by `hash(group keys)`, spilling under a memory
   budget. Because rows sharing a group key hash to the same partition, every group lives entirely
-  within one partition.
+  within one partition. It branches on the group-by state exactly as the join executor does: an
+  **unflat** group-by input scatters each row by hash; a **flat** group-by input (one group per batch —
+  e.g. a correlated subquery aggregate like `RETURN a, COUNT { MATCH (a)-->() }`, or a single-group
+  aggregate) routes the whole group to `hash(key)`'s partition via `appendFactorizedGroup` (flat key +
+  multiplicity broadcast over any unflat aggregate-input column). Missing that branch was a crash:
+  `appendVectors` asserts an unflat chunk, so a flat group-by input hit the assertion under the
+  default-on `spill_aggregate` (regression-covered by `PartitionedAggregateExecutorFlatKey{Spill,NoSpill}`
+  and e2e `subquery/count.test`).
 - `computeAggregates()` processes one partition at a time: reload it, run a **fresh**
   `AggregateHashTable` over its rows (groups are disjoint across partitions), `finalizeAggregateStates`,
   emit `[keys…, aggResults…]`, and free it. Results are simply concatenated — **no cross-partition
@@ -348,8 +368,8 @@ process-wide counter) so the check is never vacuous.
 an eligible INNER equi-join each activate grace with no `CALL` setting. Both are on
 because their audits pass and both silently fall back to the proven in-memory path for any shape they
 do not conservatively support: aggregation excludes nested group/dependent keys (section 5) and reuses
-the in-memory scan; the join takes the Grace path only for INNER/LEFT, single-chunk, scalar/string,
-no-nested/NODE/REL shapes. The earlier NULL-keyed self-join divergence was a bug in the *in-memory*
+the in-memory scan; the join takes the Grace path only for INNER/LEFT (with payloads) or single-chunk
+MARK, scalar/string, no-nested/NODE/REL shapes. The earlier NULL-keyed self-join divergence was a bug in the *in-memory*
 join (`discardNull`, now fixed at the root — section 5), not in Grace. With the derived budget (whole
 buffer pool) an on operator partitions in memory and only spills to disk near the ceiling, trading a
 partition/materialize overhead for not-OOMing. With both defaults on the whole suite exercises the
@@ -420,8 +440,9 @@ broaden coverage and reach the hard `RETURN *` case:
      single-chunk materialize+scan and the probe-flat/build-unflat `getNextChunk` cannot both be. It is
      row-at-a-time (correctness-first, memory-bounded, not vectorized); `HashJoinProbe` uses it when
      `multiChunkOutput`, else keeps the vectorized single-chunk scan.
-   - **Eligibility (`computeGraceHashJoinInfo`, relaxed).** INNER/LEFT, no mark, non-empty payloads, no
-     nested/NODE/REL column, and **each side an appendable factorization** — at most one unflat data chunk
+   - **Eligibility (`computeGraceHashJoinInfo`, relaxed).** INNER/LEFT with non-empty payloads (or, added
+     later, single-chunk MARK — see section 5), no nested/NODE/REL column, and **each side an appendable
+     factorization** — at most one unflat data chunk
      with all keys in a single chunk (`isAppendableFactorization`); more than one unflat chunk per side is
      a cross-product the single-scatter append cannot represent. `multiChunkOutput = !sameChunk(output)`
      selects the emission path.
@@ -433,12 +454,13 @@ broaden coverage and reach the hard `RETURN *` case:
 
    **Still falls back to the in-memory path** (conservative): a side with **>1 unflat chunk** (two unflat
    dimensions crossed — e.g. a probe combining two `MANY` extensions), a **composite key spanning chunks**,
-   nested/NODE/REL columns, mark/count joins, and multi-threaded execution. **Vectorizing** the
-   row-at-a-time multi-chunk emission (keeping the unflat dimension factorized instead of flattening one
-   tuple per call) is the main follow-on.
+   nested/NODE/REL columns, **multi-chunk MARK** and **COUNT** joins, and multi-threaded execution.
+   **Vectorizing** the row-at-a-time multi-chunk emission (keeping the unflat dimension factorized
+   instead of flattening one tuple per call) is the main follow-on.
 
-3. **Remaining join types & keys** — mark / count joins and multi-column / unflat probe keys in the
-   executor (inner + left + single/composite flat key are done).
+3. **Remaining join types & keys** — **single-chunk MARK (EXISTS / semi / anti-join) is done**
+   (`computeMarkJoin`, section 5 "MARK joins"); still open: **multi-chunk MARK**, **COUNT** joins, and
+   multi-column / unflat probe keys in the executor (inner + left + single/composite flat key are done).
 
 5. **`ORDER BY` external merge sort — implemented (v1, opt-in).** `ExternalMergeSort`
    (`src/processor/operator/order_by/external_merge_sort.{h,cpp}`) gives a plain `ORDER BY` (no

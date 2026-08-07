@@ -1,0 +1,59 @@
+-DATASET CSV tinysnb
+
+--
+
+# Out-of-core MARK (EXISTS / anti-join) hash join: an EXISTS / NOT EXISTS subquery compiles to a MARK
+# join; with spill_hash_join on (single thread) the build side is radix-partitioned and spilled, and
+# the operator emits one row per probe row carrying its existence mark, materialized one partition at a
+# time. Results must match the in-memory path.
+-CASE MarkExistsGrace
+-STATEMENT CALL threads=1;
+---- ok
+-STATEMENT CALL spill_hash_join=true;
+---- ok
+# EXISTS: persons with an outgoing knows edge.
+-STATEMENT MATCH (a:person) WHERE EXISTS { MATCH (a)-[:knows]->(b:person) } RETURN a.ID ORDER BY a.ID;
+---- 5
+0
+2
+3
+5
+7
+# NOT EXISTS: the complement.
+-STATEMENT MATCH (a:person) WHERE NOT EXISTS { MATCH (a)-[:knows]->(b:person) } RETURN a.ID ORDER BY a.ID;
+---- 3
+8
+9
+10
+# EXISTS studyAt / its complement (deterministic aggregates, order/factorization independent).
+-STATEMENT MATCH (a:person) WHERE EXISTS { MATCH (a)-[:studyAt]->(o:organisation) } RETURN count(*);
+---- 1
+3
+-STATEMENT MATCH (a:person) WHERE NOT EXISTS { MATCH (a)-[:studyAt]->(o:organisation) } RETURN count(*);
+---- 1
+5
+-STATEMENT MATCH (a:person) WHERE EXISTS { MATCH (a)-[:workAt]->(o:organisation) } RETURN count(a.ID), sum(a.ID);
+---- 1
+3|15
+-STATEMENT MATCH (a:person) WHERE EXISTS { MATCH (a)-[:knows]->(b:person) } RETURN sum(a.age);
+---- 1
+150
+
+# Same shapes, but a tiny per-operator budget forces the build partitions to spill to disk and reload.
+-CASE MarkExistsGraceSpill
+-STATEMENT CALL threads=1;
+---- ok
+-STATEMENT CALL spill_hash_join=true;
+---- ok
+-STATEMENT CALL spill_hash_join_budget=4096;
+---- ok
+-STATEMENT MATCH (a:person) WHERE EXISTS { MATCH (a)-[:knows]->(b:person) } RETURN a.ID ORDER BY a.ID;
+---- 5
+0
+2
+3
+5
+7
+-STATEMENT MATCH (a:person) WHERE NOT EXISTS { MATCH (a)-[:studyAt]->(o:organisation) } RETURN count(*);
+---- 1
+5
