@@ -66,6 +66,16 @@ public:
     void appendVectors(const std::vector<common::ValueVector*>& vectors,
         const common::ValueVector& hashVector);
 
+    // Append one factorized group -- flat key column(s) broadcast plus exactly one unflat payload
+    // group (N values sharing one state) -- as N flattened flat rows into the single partition
+    // `keyHash` selects. Reuses FactorizedTable::append's flatten-on-append (flat vectors broadcast,
+    // the unflat payload expands to N rows). The partition schema stays flat; a factorized (e.g.
+    // RETURN *) build side is thus stored denormalized and its unflat OUTPUT is reconstructed at
+    // probe time (one probe row x its N matched build rows). Unlike appendVectors, the whole group
+    // goes to ONE partition (all its rows share the single flat key's hash), so no per-row scatter.
+    void appendFactorizedGroup(const std::vector<common::ValueVector*>& vectors,
+        common::hash_t keyHash);
+
     // Number of (flat) tuples in a partition, whether resident or spilled.
     uint64_t getPartitionNumTuples(common::idx_t partitionIdx) const;
     uint64_t getNumTuples() const;

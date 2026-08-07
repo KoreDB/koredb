@@ -129,6 +129,17 @@ void PartitionedFactorizedTable::appendVectors(const std::vector<ValueVector*>& 
     }
 }
 
+void PartitionedFactorizedTable::appendFactorizedGroup(const std::vector<ValueVector*>& vectors,
+    hash_t keyHash) {
+    KU_ASSERT(!vectors.empty());
+    const auto p = getPartitionIdxForHash(keyHash);
+    // The partition must be resident before appending to it.
+    reloadPartition(p);
+    // FactorizedTable::append computes the row count from the unflat payload's selection size and
+    // broadcasts the flat key column(s) across those rows -- the whole group lands in partition p.
+    partitions[p]->append(vectors);
+}
+
 uint64_t PartitionedFactorizedTable::getPartitionNumTuples(idx_t partitionIdx) const {
     return spillStates[partitionIdx].spilled ? spillStates[partitionIdx].numTuples :
                                                partitions[partitionIdx]->getNumTuples();

@@ -1189,6 +1189,144 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorStreamLeftJoin) {
     runGraceStreamTest(getMemoryManager(*database), getFileSystem(*database), true /*isLeftJoin*/);
 }
 
+// Factorized (RETURN *-style) build side: each build "group" is one flat join key plus an UNFLAT
+// payload list (that key's rows). appendBuildFactorized routes the whole group to a single partition
+// and flattens it into the (flat) build storage; the join must still reconstruct exactly the same
+// result as a fully-flattened build. Verified both materialized (computeInnerJoin) and streamed
+// (getNextChunk -- the operator-facing path that rebuilds the unflat output), no-spill and forced-
+// spill, against a brute-force reference over the flattened (key -> payload list) build.
+static void runGraceFactorizedBuildTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
+    uint64_t budget, bool useStream) {
+    using namespace kuzu::processor;
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> buildPayloadTypes;
+    buildPayloadTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> probePayloadTypes;
+    probePayloadTypes.push_back(LogicalType::INT64());
+
+    GraceHashJoinExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_ghjfb_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "kuzu_ghjfb_probe.spill").string(),
+        LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
+        LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, budget);
+
+    const uint64_t numGroups = 1500, numProbe = 1200;
+    const int64_t numBuildKeys = 10, numProbeKeys = 12;
+    std::unordered_map<int64_t, std::vector<int64_t>> buildByKey;
+
+    // Feed the factorized build: one flat key + an unflat payload list (length 1..4) per group.
+    {
+        auto keyState = DataChunkState::getSingleValueDataChunkState();
+        auto payState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm);
+        ValueVector payVec(LogicalType::INT64(), mm);
+        keyVec.state = keyState;
+        payVec.state = payState;
+        for (uint64_t g = 0; g < numGroups; g++) {
+            const int64_t key = static_cast<int64_t>(g % numBuildKeys);
+            const uint64_t len = (g % 4) + 1;
+            keyVec.setNull(0, false);
+            keyVec.setValue<int64_t>(0, key);
+            payState->initOriginalAndSelectedSize(len);
+            for (uint64_t r = 0; r < len; r++) {
+                const int64_t v = static_cast<int64_t>(g * 100 + r);
+                payVec.setNull(r, false);
+                payVec.setValue<int64_t>(r, v);
+                buildByKey[key].push_back(v);
+            }
+            exec.appendBuildFactorized({&keyVec}, {&payVec});
+        }
+    }
+    // Probe side: plain flat rows.
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm);
+        ValueVector payVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        payVec.state = state;
+        for (uint64_t b = 0; b < numProbe; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numProbe - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                keyVec.setNull(r, false);
+                keyVec.setValue<int64_t>(r, static_cast<int64_t>((b + r) % numProbeKeys));
+                payVec.setNull(r, false);
+                payVec.setValue<int64_t>(r, static_cast<int64_t>(b + r));
+            }
+            exec.appendProbe({&keyVec}, {&payVec});
+        }
+    }
+
+    // Brute-force reference multiset of (probeKey, buildPayload) over the flattened build.
+    std::map<std::pair<int64_t, int64_t>, int64_t> expected;
+    for (uint64_t j = 0; j < numProbe; j++) {
+        const int64_t pk = static_cast<int64_t>(j % numProbeKeys);
+        auto it = buildByKey.find(pk);
+        if (it == buildByKey.end()) {
+            continue;
+        }
+        for (auto bp : it->second) {
+            expected[{pk, bp}]++;
+        }
+    }
+
+    std::map<std::pair<int64_t, int64_t>, int64_t> got;
+    if (useStream) {
+        auto flatState = DataChunkState::getSingleValueDataChunkState();
+        auto buildState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector probeKeyOut(LogicalType::INT64(), mm);
+        ValueVector probePayOut(LogicalType::INT64(), mm);
+        ValueVector buildPayOut(LogicalType::INT64(), mm);
+        probeKeyOut.state = flatState;
+        probePayOut.state = flatState;
+        buildPayOut.state = buildState;
+        exec.initProbeStream({&probeKeyOut, &probePayOut}, {&buildPayOut}, false /*isLeftJoin*/);
+        while (exec.getNextChunk()) {
+            const int64_t pk = probeKeyOut.getValue<int64_t>(probeKeyOut.state->getSelVector()[0]);
+            const auto& bsel = buildState->getSelVector();
+            for (auto k = 0u; k < bsel.getSelSize(); k++) {
+                got[{pk, buildPayOut.getValue<int64_t>(bsel[k])}]++;
+            }
+        }
+    } else {
+        auto output = exec.computeInnerJoin();
+        // Output columns: [probeKey, probePayload, buildPayload]; compare (probeKey, buildPayload).
+        std::vector<std::unique_ptr<Value>> holders;
+        std::vector<Value*> values;
+        for (int i = 0; i < 3; i++) {
+            holders.push_back(
+                std::make_unique<Value>(Value::createDefaultValue(LogicalType::INT64())));
+            values.push_back(holders.back().get());
+        }
+        FlatTupleIterator it(*output, values);
+        while (it.hasNextFlatTuple()) {
+            it.getNextFlatTuple();
+            got[{values[0]->getValue<int64_t>(), values[2]->getValue<int64_t>()}]++;
+        }
+    }
+
+    ASSERT_EQ(got.size(), expected.size());
+    ASSERT_TRUE(got == expected)
+        << "Grace factorized-build output multiset differs from brute-force reference";
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorFactorizedBuildInMemory) {
+    runGraceFactorizedBuildTest(getMemoryManager(*database), getFileSystem(*database),
+        1u << 30 /*no spill*/, false /*useStream*/);
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorFactorizedBuildSpill) {
+    runGraceFactorizedBuildTest(getMemoryManager(*database), getFileSystem(*database),
+        4096 /*forced spill*/, false /*useStream*/);
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorFactorizedBuildStreamSpill) {
+    runGraceFactorizedBuildTest(getMemoryManager(*database), getFileSystem(*database),
+        4096 /*forced spill*/, true /*useStream*/);
+}
+
 // Composite (2-column) join key + a variable-length (STRING) build payload, under forced spilling.
 // Validates multi-key co-partitioning (the routing hash matches JoinHashTable's internal multi-key
 // hash) and that string payloads survive spill/reload/lookup/append.

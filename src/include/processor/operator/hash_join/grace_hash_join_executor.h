@@ -55,6 +55,15 @@ public:
     void appendProbe(const std::vector<common::ValueVector*>& keyVectors,
         const std::vector<common::ValueVector*>& payloadVectors);
 
+    // Factorized build variant (the RETURN *-style factorized build shape): the build side delivers a
+    // flat join key (or composite flat keys) plus one unflat payload group (N values sharing one
+    // state) per call. The whole group is routed to the single partition hash(keys) selects and
+    // flattened into N flat build rows -- the partition storage stays flat and the unflat OUTPUT is
+    // reconstructed at probe time. keyVectors must be flat; payloadVectors (at least one) must share
+    // one unflat state. Co-partitioned with appendProbe (same key hash).
+    void appendBuildFactorized(const std::vector<common::ValueVector*>& keyVectors,
+        const std::vector<common::ValueVector*>& payloadVectors);
+
     // Materialize the full join result. Columns: [probeKeys..., probePayloads...,
     // buildPayloads...]. For a LEFT join, a probe row with no match emits one row with null build
     // payloads. Consumes both sides (partitions are freed as they are processed).

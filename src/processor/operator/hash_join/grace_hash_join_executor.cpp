@@ -103,6 +103,29 @@ void GraceHashJoinExecutor::appendProbe(const std::vector<ValueVector*>& keyVect
     appendToPartitions(probeParts, keyVectors, payloadVectors);
 }
 
+void GraceHashJoinExecutor::appendBuildFactorized(const std::vector<ValueVector*>& keyVectors,
+    const std::vector<ValueVector*>& payloadVectors) {
+    auto* keyState = keyVectors[0]->state.get();
+    auto& keySel = keyState->getSelVector();
+    // The factorized build shape is one flat key (broadcast) + one unflat payload group per call.
+    KU_ASSERT(keyState->isFlat() && !payloadVectors.empty());
+    // Routing hash over the flat key(s): same hash the JoinHashTable computes internally, so the
+    // build and probe sides stay co-partitioned.
+    VectorHashFunction::computeHash(*keyVectors[0], keySel, *hashVector, keySel);
+    for (auto i = 1u; i < keyVectors.size(); i++) {
+        VectorHashFunction::computeHash(*keyVectors[i], keySel, *tmpHashVector, keySel);
+        VectorHashFunction::combineHash(*hashVector, keySel, *tmpHashVector, keySel, *hashVector,
+            keySel);
+    }
+    const auto keyHash = hashVector->getValue<hash_t>(keySel[0]);
+    std::vector<ValueVector*> allVectors;
+    allVectors.reserve(keyVectors.size() + payloadVectors.size());
+    allVectors.insert(allVectors.end(), keyVectors.begin(), keyVectors.end());
+    allVectors.insert(allVectors.end(), payloadVectors.begin(), payloadVectors.end());
+    buildParts.appendFactorizedGroup(allVectors, keyHash);
+    buildParts.spillToReduceResidentBytesTo(memoryBudgetBytes);
+}
+
 std::unique_ptr<JoinHashTable> GraceHashJoinExecutor::buildHashTableForPartition(idx_t p) {
     auto jht = std::make_unique<JoinHashTable>(*mm, copyTypes(keyTypes), makeJoinHashTableSchema());
     auto& buildPart = buildParts.getResidentPartition(p);
