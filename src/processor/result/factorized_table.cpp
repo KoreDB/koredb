@@ -702,6 +702,111 @@ std::unique_ptr<FactorizedTable> FactorizedTable::deserialize(Deserializer& dese
     return table;
 }
 
+void FactorizedTable::serializePreservingFactorization(Serializer& serializer,
+    const std::vector<LogicalType>& columnTypes) const {
+    const auto numColumns = tableSchema.getNumColumns();
+    KU_ASSERT(columnTypes.size() == numColumns);
+    // Column-shape header: numColumns, then (isUnflat, groupID) per column, so deserialize can rebuild
+    // the exact schema (which columns are factorized) from the stream alone.
+    serializer.serializeValue<uint64_t>(numColumns);
+    for (auto c = 0u; c < numColumns; c++) {
+        const auto* col = tableSchema.getColumn(c);
+        serializer.serializeValue<uint8_t>(col->isFlat() ? 0 : 1);
+        serializer.serializeValue<uint64_t>(col->getGroupID());
+    }
+    const auto numTuples = getNumTuples();
+    serializer.serializeValue<uint64_t>(numTuples);
+    if (numTuples == 0) {
+        return;
+    }
+    // One read vector per column. Flat columns read a single value (shared flat state); unflat columns
+    // read their whole element list into their own unflat state.
+    auto flatState = DataChunkState::getSingleValueDataChunkState();
+    std::vector<std::unique_ptr<ValueVector>> holders;
+    std::vector<ValueVector*> colVecs(numColumns);
+    for (auto c = 0u; c < numColumns; c++) {
+        auto vector = std::make_unique<ValueVector>(columnTypes[c].copy(), memoryManager);
+        vector->state = tableSchema.getColumn(c)->isFlat() ?
+                            flatState :
+                            std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        colVecs[c] = vector.get();
+        holders.push_back(std::move(vector));
+    }
+    for (uint64_t t = 0; t < numTuples; t++) {
+        uint8_t* tuplePtr = getTuple(t);
+        for (auto c = 0u; c < numColumns; c++) {
+            if (tableSchema.getColumn(c)->isFlat()) {
+                readFlatCol(&tuplePtr, c, *colVecs[c], 1);
+                colVecs[c]
+                    ->getAsValue(colVecs[c]->state->getSelVector()[0])
+                    ->serialize(serializer);
+            } else {
+                colVecs[c]->state->getSelVectorUnsafe().setToUnfiltered();
+                readUnflatCol(&tuplePtr, c, *colVecs[c]);
+                const auto numElements = colVecs[c]->state->getSelVector().getSelSize();
+                serializer.serializeValue<uint64_t>(numElements);
+                for (auto e = 0u; e < numElements; e++) {
+                    colVecs[c]->getAsValue(e)->serialize(serializer);
+                }
+            }
+        }
+    }
+}
+
+std::unique_ptr<FactorizedTable> FactorizedTable::deserializePreservingFactorization(
+    Deserializer& deserializer, storage::MemoryManager* memoryManager,
+    const std::vector<LogicalType>& columnTypes) {
+    uint64_t numColumns = 0;
+    deserializer.deserializeValue<uint64_t>(numColumns);
+    KU_ASSERT(numColumns == columnTypes.size());
+    FactorizedTableSchema schema;
+    std::vector<uint8_t> isUnflat(numColumns);
+    for (auto c = 0u; c < numColumns; c++) {
+        uint8_t unflat = 0;
+        uint64_t groupID = 0;
+        deserializer.deserializeValue<uint8_t>(unflat);
+        deserializer.deserializeValue<uint64_t>(groupID);
+        isUnflat[c] = unflat;
+        const auto numBytes = unflat ? static_cast<uint32_t>(sizeof(overflow_value_t)) :
+                                       LogicalTypeUtils::getRowLayoutSize(columnTypes[c]);
+        schema.appendColumn(ColumnSchema(unflat != 0, groupID, numBytes));
+    }
+    auto table = std::make_unique<FactorizedTable>(memoryManager, schema.copy());
+    uint64_t numTuples = 0;
+    deserializer.deserializeValue<uint64_t>(numTuples);
+    if (numTuples == 0) {
+        return table;
+    }
+    auto flatState = DataChunkState::getSingleValueDataChunkState();
+    std::vector<std::unique_ptr<ValueVector>> holders;
+    std::vector<ValueVector*> colVecs(numColumns);
+    for (auto c = 0u; c < numColumns; c++) {
+        auto vector = std::make_unique<ValueVector>(columnTypes[c].copy(), memoryManager);
+        vector->state = isUnflat[c] ? std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY) :
+                                      flatState;
+        colVecs[c] = vector.get();
+        holders.push_back(std::move(vector));
+    }
+    for (uint64_t t = 0; t < numTuples; t++) {
+        for (auto c = 0u; c < numColumns; c++) {
+            if (!isUnflat[c]) {
+                auto value = Value::deserialize(deserializer);
+                colVecs[c]->copyFromValue(colVecs[c]->state->getSelVector()[0], *value);
+            } else {
+                uint64_t numElements = 0;
+                deserializer.deserializeValue<uint64_t>(numElements);
+                colVecs[c]->state->getSelVectorUnsafe().setToUnfiltered(numElements);
+                for (auto e = 0u; e < numElements; e++) {
+                    auto value = Value::deserialize(deserializer);
+                    colVecs[c]->copyFromValue(e, *value);
+                }
+            }
+        }
+        table->append(colVecs);
+    }
+    return table;
+}
+
 FlatTupleIterator::FlatTupleIterator(FactorizedTable& factorizedTable, std::vector<Value*> values)
     : factorizedTable{factorizedTable}, currentTupleBuffer{nullptr}, numFlatTuples{0},
       nextFlatTupleIdx{0}, nextTupleIdx{1}, values{std::move(values)} {

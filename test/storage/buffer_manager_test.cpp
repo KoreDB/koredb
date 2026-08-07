@@ -132,6 +132,81 @@ TEST_F(BufferManagerTest, FactorizedTableSerializeRoundTrip) {
     ASSERT_EQ(row, numRows);
 }
 
+// Verifies the factorization-preserving spill format: a factorized table with an UNFLAT (overflow)
+// column round-trips through serializePreservingFactorization/deserializePreservingFactorization with
+// the exact same raw-tuple count and flat-tuple expansion -- i.e. the factorized list payload is NOT
+// flattened into the cross-product (which the plain serialize() would do). This is the basis for
+// spilling `RETURN *`-style factorized build payloads.
+TEST_F(BufferManagerTest, FactorizedTablePreserveFactorizationRoundTrip) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    std::vector<LogicalType> columnTypes;
+    columnTypes.push_back(LogicalType::INT64()); // flat key column (group 0)
+    columnTypes.push_back(LogicalType::INT64()); // unflat payload column (group 1)
+
+    // Schema: column 0 flat, column 1 unflat (stored as an overflow_value_t list per raw tuple).
+    FactorizedTableSchema schema;
+    schema.appendColumn(ColumnSchema(false /*isUnFlat*/, 0 /*groupID*/,
+        LogicalTypeUtils::getRowLayoutSize(LogicalType::INT64())));
+    schema.appendColumn(
+        ColumnSchema(true /*isUnFlat*/, 1 /*groupID*/, sizeof(common::overflow_value_t)));
+    FactorizedTable table(mm, std::move(schema));
+
+    auto flatState = DataChunkState::getSingleValueDataChunkState();
+    auto unflatState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+    ValueVector keyVector(LogicalType::INT64(), mm);
+    ValueVector payloadVector(LogicalType::INT64(), mm);
+    keyVector.state = flatState;
+    payloadVector.state = unflatState;
+
+    const uint64_t numRawTuples = 5;
+    uint64_t expectedFlatTuples = 0;
+    for (auto i = 0u; i < numRawTuples; i++) {
+        keyVector.setNull(0, false);
+        keyVector.setValue<int64_t>(0, static_cast<int64_t>(i) * 100);
+        const auto listLen = i + 1; // raw tuple i carries a list of length i+1
+        unflatState->getSelVectorUnsafe().setToUnfiltered(listLen);
+        for (auto e = 0u; e < listLen; e++) {
+            payloadVector.setNull(e, false);
+            payloadVector.setValue<int64_t>(e, static_cast<int64_t>(i) * 10 + e);
+        }
+        std::vector<ValueVector*> vectors{&keyVector, &payloadVector};
+        table.append(vectors);
+        expectedFlatTuples += listLen;
+    }
+    ASSERT_EQ(table.getNumTuples(), numRawTuples); // raw (factorized) tuples, not flattened
+    ASSERT_EQ(table.getTotalNumFlatTuples(), expectedFlatTuples);
+
+    auto writer = std::make_shared<BufferWriter>();
+    Serializer serializer(writer);
+    table.serializePreservingFactorization(serializer, columnTypes);
+    auto blob = writer->getData();
+    Deserializer deserializer(std::make_unique<BufferReader>(blob.data.get(), blob.size));
+    auto restored = FactorizedTable::deserializePreservingFactorization(deserializer, mm, columnTypes);
+
+    // Factorization preserved: same raw-tuple count and same total flat expansion.
+    ASSERT_EQ(restored->getNumTuples(), numRawTuples);
+    ASSERT_EQ(restored->getTotalNumFlatTuples(), expectedFlatTuples);
+
+    // The flat-tuple expansion must match value-for-value: key i*100 repeated for each list element.
+    std::vector<std::unique_ptr<Value>> valueHolders;
+    std::vector<Value*> values;
+    for (auto& type : columnTypes) {
+        valueHolders.push_back(std::make_unique<Value>(Value::createDefaultValue(type.copy())));
+        values.push_back(valueHolders.back().get());
+    }
+    FlatTupleIterator iterator(*restored, values);
+    for (auto i = 0u; i < numRawTuples; i++) {
+        for (auto e = 0u; e < i + 1; e++) {
+            ASSERT_TRUE(iterator.hasNextFlatTuple());
+            iterator.getNextFlatTuple();
+            ASSERT_EQ(values[0]->getValue<int64_t>(), static_cast<int64_t>(i) * 100);
+            ASSERT_EQ(values[1]->getValue<int64_t>(), static_cast<int64_t>(i) * 10 + e);
+        }
+    }
+    ASSERT_FALSE(iterator.hasNextFlatTuple());
+}
+
 // Verifies the core of out-of-core (Grace) hash join / partitioned aggregation: build-side tuples
 // are radix-scattered into partitions by the high bits of their hash, each partition can be spilled
 // to disk (position-independent) and reloaded, and appending to a spilled partition transparently

@@ -191,6 +191,18 @@ public:
         storage::MemoryManager* memoryManager,
         const std::vector<common::LogicalType>& columnTypes);
 
+    // Factorization-preserving spill format. Unlike serialize()/deserialize(), which flatten factorized
+    // (unflat/overflow) columns into the flat cross-product, these iterate the *raw* tuples and write
+    // each unflat column as [numElements, elem-Values...]. Values serialize position-independently, so
+    // no pointer swizzling is needed, and the round-trip reproduces the exact factorized structure
+    // (same raw tuple count and the same flat-tuple expansion). The column shape (which columns are
+    // unflat, and their group ids) is written into the stream, so deserialize needs only the types.
+    void serializePreservingFactorization(common::Serializer& serializer,
+        const std::vector<common::LogicalType>& columnTypes) const;
+    static std::unique_ptr<FactorizedTable> deserializePreservingFactorization(
+        common::Deserializer& deserializer, storage::MemoryManager* memoryManager,
+        const std::vector<common::LogicalType>& columnTypes);
+
     void resize(uint64_t numTuples);
 
     template<typename Func>
