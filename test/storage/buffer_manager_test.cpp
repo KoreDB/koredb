@@ -2917,6 +2917,65 @@ TEST_F(BufferManagerTest, GraceHashJoinMarkCountMultiChunkDifferential) {
         << "no MARK/COUNT query activated the multi-chunk Grace path; the check is vacuous";
 }
 
+// Differential correctness of the out-of-core join under MULTI-THREADED execution (threads=4): the
+// build runs in parallel (per-thread executors merged at the finalize barrier) while the probe is
+// forced single-threaded (HashJoinProbe::isParallel() == false). Every supported join type must return
+// the same rows with spill_hash_join off (in-memory) and on (partitioned), and the Grace path must
+// activate -- proving spilling works by default (multi-thread), not only at threads=1.
+TEST_F(BufferManagerTest, GraceHashJoinMultiThreadDifferential) {
+    using kuzu::processor::getGraceHashJoinActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=4;")->isSuccess());
+    // Under multi-threading the Grace path activates only when a memory bound is set (see
+    // willActivateGrace); a tiny budget both enables it and forces the per-thread build to spill.
+    ASSERT_TRUE(conn->query("CALL spill_hash_join_budget=4096;")->isSuccess());
+    const std::vector<std::string> queries = {
+        "MATCH (a:person), (b:person) WHERE a.age = b.age RETURN a.ID, b.ID, b.fName", // INNER
+        "MATCH (a:person) WHERE EXISTS { MATCH (a)-[:knows]->(b:person) } RETURN a.ID", // MARK
+        "MATCH (a:person) RETURN a.ID, COUNT { MATCH (a)-[:knows]->(b:person) }",       // COUNT
+        // Multi-chunk MARK over a factorized outer.
+        "MATCH (a:person)-[:knows]->(b:person) WHERE EXISTS { MATCH (a)-[:studyAt]->(o:organisation) } "
+        "RETURN a.ID, b.ID",
+    };
+    const auto before = getGraceHashJoinActivationCount();
+    for (const auto& q : queries) {
+        ASSERT_TRUE(conn->query("CALL spill_hash_join=false;")->isSuccess());
+        const auto inMemory = collectSortedRows(conn.get(), q);
+        ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
+        const auto grace = collectSortedRows(conn.get(), q);
+        ASSERT_EQ(inMemory, grace) << "multi-thread Grace vs in-memory mismatch for: " << q;
+    }
+    ASSERT_GT(getGraceHashJoinActivationCount(), before)
+        << "no query activated the Grace path under multi-threading; the check is vacuous";
+}
+
+// Same, but a large build over a tiny budget so the parallel per-thread build executors actually spill
+// to disk, then merge, then the serial probe reloads and joins -- the real multi-threaded out-of-core
+// path end to end.
+TEST_F(BufferManagerTest, GraceHashJoinMultiThreadSpillDifferential) {
+    using kuzu::processor::getGraceHashJoinActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=4;")->isSuccess());
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE mtb(id INT64, k INT64, v STRING, PRIMARY KEY(id));")
+            ->isSuccess());
+    // 3000 rows, each key shared by two rows -> a many-to-many self-join with a large build side.
+    ASSERT_TRUE(conn->query("UNWIND range(0, 2999) AS i CREATE (:mtb {id: i, k: i % 1500, v: "
+                            "cast(i AS STRING)});")
+                    ->isSuccess());
+    const std::string q = "MATCH (a:mtb), (b:mtb) WHERE a.k = b.k RETURN a.id, b.v";
+
+    ASSERT_TRUE(conn->query("CALL spill_hash_join=false;")->isSuccess());
+    const auto inMemory = collectSortedRows(conn.get(), q);
+    ASSERT_FALSE(inMemory.empty());
+
+    const auto before = getGraceHashJoinActivationCount();
+    ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
+    ASSERT_TRUE(conn->query("CALL spill_hash_join_budget=4096;")->isSuccess());
+    const auto grace = collectSortedRows(conn.get(), q);
+
+    ASSERT_GT(getGraceHashJoinActivationCount(), before) << "Grace path did not activate";
+    ASSERT_EQ(inMemory, grace) << "multi-thread Grace (spilling) vs in-memory mismatch";
+}
+
 
 // Differential correctness of the live out-of-core (spilling) hash-aggregation operator: the same
 // GROUP BY must produce the same rows with `spill_aggregate` off (in-memory) and on (partitioned),

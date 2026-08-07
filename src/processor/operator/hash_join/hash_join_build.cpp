@@ -70,8 +70,53 @@ HashJoinSharedState::HashJoinSharedState(std::unique_ptr<JoinHashTable> hashTabl
 
 HashJoinSharedState::~HashJoinSharedState() = default;
 
-void HashJoinSharedState::setGraceExecutor(std::unique_ptr<GraceHashJoinExecutor> executor) {
-    graceExecutor = std::move(executor);
+HashJoinBuild::HashJoinBuild(PhysicalOperatorType operatorType,
+    std::shared_ptr<HashJoinSharedState> sharedState, HashJoinBuildInfo info,
+    std::unique_ptr<PhysicalOperator> child, uint32_t id, std::unique_ptr<OPPrintInfo> printInfo)
+    : Sink{operatorType, std::move(child), id, std::move(printInfo)},
+      sharedState{std::move(sharedState)}, info{std::move(info)} {}
+
+HashJoinBuild::~HashJoinBuild() = default;
+
+bool HashJoinSharedState::willActivateGrace() const {
+    if (clientContext == nullptr) {
+        return false;
+    }
+    const auto* config = clientContext->getClientConfig();
+    if (!config->spillHashJoin || !graceInfo.eligible) {
+        return false;
+    }
+    if (config->numThreads == 1) {
+        // Single-threaded: the probe has no parallelism to lose, so activate whenever spilling is on
+        // (bounded by the default budget, which only spills to disk near the buffer-pool ceiling).
+        return true;
+    }
+    // Multi-threaded: the out-of-core probe is forced single-threaded (no mid-pipeline barrier for a
+    // parallel probe yet), so activating it trades away probe parallelism. Only do so when the user has
+    // signalled a memory bound -- an explicit spill_hash_join_budget or a per-query memory limit --
+    // rather than on the default (whole-buffer-pool) budget, so the fast in-memory parallel join stays
+    // the default for queries that fit. (A parallel out-of-core probe would lift this restriction.)
+    return config->spillHashJoinBudget > 0 || config->queryMemoryLimit > 0;
+}
+
+void HashJoinSharedState::registerLocalGraceExecutor(
+    std::unique_ptr<GraceHashJoinExecutor> executor) {
+    std::unique_lock lck(mtx);
+    localGraceExecutors.push_back(std::move(executor));
+}
+
+void HashJoinSharedState::mergeGraceExecutors() {
+    // Runs once at the build finalize barrier. Merge every per-thread build executor into one; a key's
+    // rows co-locate by hash, so each key still lands in a single merged partition.
+    if (localGraceExecutors.empty()) {
+        return;
+    }
+    auto merged = std::move(localGraceExecutors[0]);
+    for (size_t i = 1; i < localGraceExecutors.size(); i++) {
+        merged->merge(*localGraceExecutors[i]);
+    }
+    localGraceExecutors.clear();
+    graceExecutor = std::move(merged);
 }
 
 std::string HashJoinBuildPrintInfo::toString() const {
@@ -105,17 +150,14 @@ void HashJoinBuild::initLocalStateInternal(ResultSet* resultSet, ExecutionContex
     for (auto& pos : info.payloadsPos) {
         payloadVectors.push_back(resultSet->getValueVector(pos).get());
     }
-    // Decide the out-of-core (Grace) path. Single-threaded only (the probe side has no cross-thread
-    // barrier), gated by `spill_hash_join`, and only for shapes the mapper marked eligible. Otherwise
-    // build the in-memory hash table exactly as before.
+    // Decide the out-of-core (Grace) path, gated by `spill_hash_join` and only for shapes the mapper
+    // marked eligible. The build may run multi-threaded: each thread builds its OWN executor (spilling
+    // under its own budget), and they are merged at the finalize barrier; the probe is forced
+    // single-threaded (HashJoinProbe::isParallel() == false), so no cross-thread coordination is needed
+    // between build and probe. Otherwise build the in-memory hash table exactly as before.
     auto* cc = context->clientContext;
-    if (cc->getClientConfig()->spillHashJoin && sharedState->getGraceInfo().eligible &&
-        cc->getClientConfig()->numThreads == 1) {
-        if (sharedState->getGraceExecutor() == nullptr) {
-            sharedState->setGraceExecutor(makeGraceExecutor(context, sharedState->getGraceInfo(),
-                id));
-        }
-        sharedState->setGraceActive();
+    if (sharedState->willActivateGrace()) {
+        localGraceExecutor = makeGraceExecutor(context, sharedState->getGraceInfo(), id);
         graceActivationCount.fetch_add(1);
         if (sharedState->getGraceInfo().multiChunkOutput) {
             graceMultiChunkActivationCount.fetch_add(1);
@@ -136,7 +178,9 @@ void HashJoinBuild::setKeyState(common::DataChunkState* state) {
 
 void HashJoinBuild::finalizeInternal(ExecutionContext* /*context*/) {
     if (sharedState->isGraceActive()) {
-        // The Grace path partitions on append; there is no global hash table to finalize here.
+        // Merge the per-thread build executors into one before the (single-threaded) probe runs; the
+        // Grace path has no global hash table to finalize.
+        sharedState->mergeGraceExecutors();
         return;
     }
     auto numTuples = sharedState->getHashTable()->getNumEntries();
@@ -146,9 +190,9 @@ void HashJoinBuild::finalizeInternal(ExecutionContext* /*context*/) {
 
 void HashJoinBuild::executeInternal(ExecutionContext* context) {
     if (sharedState->isGraceActive()) {
-        // Out-of-core path: scatter every build row into the shared executor's partitions (which
-        // spill under the memory budget). No local hash table, no merge.
-        auto* exec = sharedState->getGraceExecutor();
+        // Out-of-core path: scatter every build row into THIS thread's own executor (which spills under
+        // its own budget), then hand it off to the shared state for merging. No cross-thread sync.
+        auto* exec = localGraceExecutor.get();
         while (children[0]->getNextTuple(context)) {
             uint64_t numAppended = 0u;
             for (auto i = 0u; i < resultSet->multiplicity; ++i) {
@@ -157,6 +201,7 @@ void HashJoinBuild::executeInternal(ExecutionContext* context) {
             }
             metrics->numOutputTuple.increase(numAppended);
         }
+        sharedState->registerLocalGraceExecutor(std::move(localGraceExecutor));
         return;
     }
     // Append thread-local tuples

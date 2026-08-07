@@ -255,6 +255,9 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapHashJoin(const LogicalOperator*
     auto globalHashTable = std::make_unique<JoinHashTable>(*clientContext->getMemoryManager(),
         LogicalType::copy(buildKeyTypes), buildInfo.tableSchema.copy());
     auto sharedState = std::make_shared<HashJoinSharedState>(std::move(globalHashTable));
+    // Store the ClientContext so the shared state can read the live spill_hash_join setting from
+    // HashJoinProbe::isParallel() (evaluated before execution), keeping build and probe consistent.
+    sharedState->setClientContext(clientContext);
     auto buildPrintInfo = std::make_unique<HashJoinBuildPrintInfo>(buildKeys, payloads);
     auto hashJoinBuild = std::make_unique<HashJoinBuild>(PhysicalOperatorType::HASH_JOIN_BUILD,
         sharedState, std::move(buildInfo), std::move(buildSidePrevOperator), getOperatorID(),

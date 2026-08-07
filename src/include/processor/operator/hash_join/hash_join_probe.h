@@ -76,6 +76,12 @@ public:
 
     void initLocalStateInternal(ResultSet* resultSet, ExecutionContext* context) override;
 
+    // The out-of-core (Grace) probe runs single-threaded: it drains the whole probe input into the
+    // shared executor's partitions and emits partition by partition, with no cross-thread coordination.
+    // The build side stays multi-threaded (per-thread executors merged at finalize). Forcing this false
+    // when Grace will activate makes initTask mark the probe pipeline single-threaded.
+    bool isParallel() const override { return !sharedState->willActivateGrace(); }
+
     bool getNextTuplesInternal(ExecutionContext* context) override;
 
     std::unique_ptr<PhysicalOperator> copy() override {

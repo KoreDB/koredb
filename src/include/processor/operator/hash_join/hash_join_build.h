@@ -12,6 +12,9 @@
 #include "processor/result/result_set.h"
 
 namespace kuzu {
+namespace main {
+class ClientContext;
+} // namespace main
 namespace processor {
 
 class GraceHashJoinExecutor;
@@ -96,18 +99,35 @@ public:
     // --- Grace (out-of-core) join state ---
     void setGraceInfo(GraceHashJoinInfo info) { graceInfo = std::move(info); }
     const GraceHashJoinInfo& getGraceInfo() const { return graceInfo; }
-    bool isGraceActive() const { return graceActive; }
-    void setGraceActive() { graceActive = true; }
+    // The mapper stores the ClientContext so willActivateGrace() can read the *live* spill_hash_join
+    // setting from HashJoinProbe::isParallel() (evaluated before execution, when a per-thread runtime
+    // flag would not yet be set) -- so build and probe agree on whether the out-of-core path runs.
+    void setClientContext(main::ClientContext* context) { clientContext = context; }
+    // True iff the out-of-core (Grace) path will run: spill_hash_join is on and the shape is eligible.
+    // Decided purely from the (live) config + plan-time eligibility, so it is stable across the build and
+    // probe pipelines of one execution and needs no runtime barrier. When true the build runs
+    // multi-threaded (per-thread executors merged at finalize) and the probe is forced single-threaded
+    // (HashJoinProbe::isParallel() == false), so no cross-thread coordination is needed on the probe.
+    bool willActivateGrace() const;
+    bool isGraceActive() const { return willActivateGrace(); }
     GraceHashJoinExecutor* getGraceExecutor() const { return graceExecutor.get(); }
-    // Out of line: assigning the unique_ptr destroys the old target, which needs the complete type.
-    void setGraceExecutor(std::unique_ptr<GraceHashJoinExecutor> executor);
+    // Register a build thread's local executor (its accumulated build partitions), to be merged in
+    // finalize. Thread-safe.
+    void registerLocalGraceExecutor(std::unique_ptr<GraceHashJoinExecutor> executor);
+    // Merge all registered per-thread build executors into a single one (getGraceExecutor()). Called
+    // once at the build finalize barrier, before the (single-threaded) probe runs. Out of line: needs
+    // the complete GraceHashJoinExecutor type.
+    void mergeGraceExecutors();
 
 protected:
     std::mutex mtx;
     std::unique_ptr<JoinHashTable> hashTable;
     // Populated by the mapper; consumed at runtime when spilling is enabled and the shape is eligible.
     GraceHashJoinInfo graceInfo;
-    bool graceActive = false;
+    main::ClientContext* clientContext = nullptr;
+    // Per-thread build executors registered during the (parallel) build; merged into graceExecutor at
+    // the finalize barrier.
+    std::vector<std::unique_ptr<GraceHashJoinExecutor>> localGraceExecutors;
     std::unique_ptr<GraceHashJoinExecutor> graceExecutor;
 };
 
@@ -133,12 +153,14 @@ private:
 
 class HashJoinBuild : public Sink {
 public:
+    // Constructor and destructor are out of line: localGraceExecutor is a unique_ptr to the
+    // forward-declared executor, so the inline constructor's exception-cleanup path (and the
+    // destructor) would otherwise need the complete type in every including TU.
     HashJoinBuild(PhysicalOperatorType operatorType,
         std::shared_ptr<HashJoinSharedState> sharedState, HashJoinBuildInfo info,
         std::unique_ptr<PhysicalOperator> child, uint32_t id,
-        std::unique_ptr<OPPrintInfo> printInfo)
-        : Sink{operatorType, std::move(child), id, std::move(printInfo)},
-          sharedState{std::move(sharedState)}, info{std::move(info)} {}
+        std::unique_ptr<OPPrintInfo> printInfo);
+    ~HashJoinBuild() override;
 
     std::shared_ptr<HashJoinSharedState> getSharedState() const { return sharedState; }
 
@@ -170,7 +192,10 @@ protected:
     common::DataChunkState* keyState = nullptr;
     std::vector<common::ValueVector*> payloadVectors;
 
-    std::unique_ptr<JoinHashTable> hashTable; // local state
+    std::unique_ptr<JoinHashTable> hashTable; // local state (in-memory path)
+    // This build thread's out-of-core executor (Grace path); registered into the shared state and
+    // merged at finalize. Null on the in-memory path.
+    std::unique_ptr<GraceHashJoinExecutor> localGraceExecutor;
 };
 
 } // namespace processor
