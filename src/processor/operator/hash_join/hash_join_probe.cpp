@@ -230,6 +230,9 @@ bool HashJoinProbe::getNextGraceTuples(ExecutionContext* context) {
         metrics->numOutputTuple.increase(1);
         return true;
     }
+    // Single-chunk output: all output columns share one data chunk, so the join is scanned back into
+    // that one chunk (vectorized). It is materialized one partition at a time and streamed out, so peak
+    // memory is bounded to a single partition's result rather than the whole join.
     if (!graceDrained) {
         // Phase 1: drain the probe child into the executor's (spilling) probe partitions.
         while (children[0]->getNextTuple(context)) {
@@ -237,28 +240,33 @@ bool HashJoinProbe::getNextGraceTuples(ExecutionContext* context) {
                 exec->appendProbe(keyVectors, probeNonKeyVectors);
             }
         }
-        // Phase 2: materialize the whole join. Output column order is
-        // [probeKeys..., probeNonKeys..., buildPayloads...]; the operator scans it back into the
-        // matching output vectors, which all share one flattened (unflat) chunk.
-        graceOutput = joinType == JoinType::LEFT ? exec->computeLeftJoin() : exec->computeInnerJoin();
+        // Output column order [probeKeys..., probeNonKeys..., buildPayloads...] matches the executor's
+        // per-partition output table; they all share one (flattened/unflat) chunk.
         graceOutputVectors = keyVectors;
         graceOutputVectors.insert(graceOutputVectors.end(), probeNonKeyVectors.begin(),
             probeNonKeyVectors.end());
         graceOutputVectors.insert(graceOutputVectors.end(), vectorsToReadInto.begin(),
             vectorsToReadInto.end());
         graceOutputState = graceOutputVectors[0]->state.get();
+        graceOutput = nullptr;
         graceScanCursor = 0;
+        graceScanPartition = 0;
         graceDrained = true;
         resultSet->multiplicity = 1; // rows are fully expanded into the materialized output
     }
-    const auto total = graceOutput->getNumTuples();
-    if (graceScanCursor >= total) {
-        return false;
+    // Advance to a partition whose materialized output still has unemitted tuples.
+    while (graceOutput == nullptr || graceScanCursor >= graceOutput->getNumTuples()) {
+        if (graceScanPartition >= exec->getNumPartitions()) {
+            return false;
+        }
+        graceOutput =
+            exec->computePartitionJoin(graceScanPartition++, joinType == JoinType::LEFT);
+        graceScanCursor = 0;
     }
     // A flat output chunk carries one row per call; an unflat one carries a vector of rows.
     uint64_t n = 1;
     if (!graceOutputState->isFlat()) {
-        n = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, total - graceScanCursor);
+        n = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, graceOutput->getNumTuples() - graceScanCursor);
         graceOutputState->initOriginalAndSelectedSize(n);
     }
     graceOutput->scan(std::span<ValueVector*>(graceOutputVectors), graceScanCursor, n);

@@ -127,10 +127,11 @@ private:
     // the join is materialized once, then scanned out in DEFAULT_VECTOR_CAPACITY-sized chunks.
     std::vector<common::ValueVector*> probeNonKeyVectors; // probe-side non-key output columns
     std::vector<common::ValueVector*> graceOutputVectors; // [keys..., nonKeys..., buildPayloads...]
-    std::unique_ptr<FactorizedTable> graceOutput;         // materialized join result
+    std::unique_ptr<FactorizedTable> graceOutput;         // current partition's materialized output
     common::DataChunkState* graceOutputState = nullptr;   // shared state of all output columns
-    uint64_t graceScanCursor = 0;
-    bool graceDrained = false; // probe child fully drained + join materialized
+    uint64_t graceScanCursor = 0;                         // next tuple within graceOutput to emit
+    common::idx_t graceScanPartition = 0;                 // next partition to materialize (single-chunk)
+    bool graceDrained = false; // probe child fully drained + streaming initialized
 };
 
 } // namespace processor

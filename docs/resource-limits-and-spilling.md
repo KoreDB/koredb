@@ -195,12 +195,13 @@ in memory and only spills to disk near the buffer-pool ceiling. The wiring (`map
   every build row into a shared `GraceHashJoinExecutor` (`appendBuild`, spilling under the budget)
   instead of building an in-memory hash table.
 - `HashJoinProbe` then drains its probe child into `appendProbe` and emits the join in one of two ways
-  by output shape: **single-chunk output** — `computeInnerJoin`/`computeLeftJoin` materialize the result
-  and scan it back into the one output chunk across `getNextTuplesInternal` calls (`FactorizedTable::scan`,
-  one row or a vector per call); **multi-chunk (factorized) output** — `initFlatStream` / `getNextFlatTuple`
-  stream the join one flat tuple at a time into the several output chunks (each column set to a single
-  value), materializing only one partition's output at a time. See "Operator integration — done" under
-  remaining-work item 2 for the multi-chunk (unflat-key build) case.
+  by output shape, **both bounded to one partition's output at a time** (`computePartitionJoin(p)`
+  materializes just partition `p` and frees that partition pair, so the whole join is never resident):
+  **single-chunk output** — scan each partition's result back into the one output chunk (`FactorizedTable::scan`,
+  a vector of rows per `getNextTuplesInternal` call — vectorized); **multi-chunk (factorized) output** —
+  `initFlatStream` / `getNextFlatTuple` stream one flat tuple at a time into the several output chunks
+  (each column set to a single value). See "Operator integration — done" under remaining-work item 2 for
+  the multi-chunk (unflat-key build) case.
 
 **Eligibility (conservative; anything else silently uses the in-memory path):** INNER or LEFT, no mark,
 non-empty build payloads, `numThreads == 1`, **no nested/NODE/REL payload or output column**, and each

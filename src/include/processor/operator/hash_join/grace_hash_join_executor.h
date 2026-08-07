@@ -100,6 +100,14 @@ public:
     void initFlatStream(std::vector<common::ValueVector*> outVecs, bool isLeftJoin);
     bool getNextFlatTuple();
 
+    // Materialize just partition p's join output (columns [probeKeys..., probePayloads...,
+    // buildPayloads...], flat) and free that partition pair. The single-chunk operator path calls this
+    // per partition and scans each result into its one output chunk, so peak memory is bounded to one
+    // partition's output instead of the whole join (which computeInnerJoin/computeLeftJoin materialize).
+    std::unique_ptr<FactorizedTable> computePartitionJoin(common::idx_t p, bool isLeftJoin) {
+        return computeJoin(isLeftJoin, p);
+    }
+
     common::idx_t getNumPartitions() const { return buildParts.getNumPartitions(); }
 
 private:
