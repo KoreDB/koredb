@@ -168,7 +168,8 @@ std::unique_ptr<JoinHashTable> GraceHashJoinExecutor::buildHashTableForPartition
     return jht;
 }
 
-std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJoin) {
+std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJoin,
+    idx_t onlyPartition) {
     auto output = std::make_unique<FactorizedTable>(mm, makeOutputSchema());
     const auto numBuildPayloads = buildPayloadTypes.size();
 
@@ -215,7 +216,10 @@ std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJ
     auto probedTuples = std::make_unique<uint8_t*[]>(DEFAULT_VECTOR_CAPACITY);
     auto matchedTuples = std::make_unique<uint8_t*[]>(DEFAULT_VECTOR_CAPACITY);
 
-    for (idx_t p = 0; p < buildParts.getNumPartitions(); p++) {
+    const idx_t pBegin = (onlyPartition == ALL_PARTITIONS) ? 0 : onlyPartition;
+    const idx_t pEnd =
+        (onlyPartition == ALL_PARTITIONS) ? buildParts.getNumPartitions() : onlyPartition + 1;
+    for (idx_t p = pBegin; p < pEnd; p++) {
         // Build a JoinHashTable from the (reloaded) build partition p.
         auto jht = buildHashTableForPartition(p);
 
@@ -297,6 +301,35 @@ std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeJoin(bool isLeftJ
         probeParts.freePartition(p);
     }
     return output;
+}
+
+void GraceHashJoinExecutor::initFlatStream(std::vector<ValueVector*> outVecs, bool isLeftJoin) {
+    KU_ASSERT(outVecs.size() == numKeys + probePayloadTypes.size() + buildPayloadTypes.size());
+    streamFlatOutVecs = std::move(outVecs);
+    streamFlatLeftJoin = isLeftJoin;
+    streamFlatPartition = 0;
+    streamFlatTable = nullptr;
+    streamFlatCursor = 0;
+}
+
+bool GraceHashJoinExecutor::getNextFlatTuple() {
+    // Advance to a partition whose materialized output still has unemitted tuples.
+    while (streamFlatTable == nullptr || streamFlatCursor >= streamFlatTable->getNumTuples()) {
+        if (streamFlatPartition >= buildParts.getNumPartitions()) {
+            return false;
+        }
+        // Materialize just this partition's join output (and free the partition pair), bounding peak
+        // memory to one partition's result instead of the whole join.
+        streamFlatTable = computeJoin(streamFlatLeftJoin, streamFlatPartition++);
+        streamFlatCursor = 0;
+    }
+    // Emit one flat tuple: every output column gets a single value, whatever chunk it lives in.
+    for (auto* v : streamFlatOutVecs) {
+        v->state->getSelVectorUnsafe().setToUnfiltered(1);
+    }
+    streamFlatTable->scan(std::span<ValueVector*>(streamFlatOutVecs), streamFlatCursor, 1);
+    streamFlatCursor++;
+    return true;
 }
 
 void GraceHashJoinExecutor::initProbeStream(std::vector<ValueVector*> probeOutVecs,

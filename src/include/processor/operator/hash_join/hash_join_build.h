@@ -20,16 +20,27 @@ class GraceHashJoinExecutor;
 // process. Lets a differential test confirm the spilling path actually ran (rather than silently
 // falling back to the in-memory path and proving nothing).
 KUZU_API uint64_t getGraceHashJoinActivationCount();
+// Test-only: activations of specifically the multi-chunk (factorized, flat-streaming output) Grace
+// path -- a subset of getGraceHashJoinActivationCount.
+KUZU_API uint64_t getGraceHashJoinMultiChunkActivationCount();
 
 // Static (plan-time) metadata that lets the HASH_JOIN operator run the out-of-core (Grace) path when
 // the `spill_hash_join` setting is on and the join shape is supported. `eligible` is the conservative
-// shape check (INNER, no mark, non-empty build payloads, single-chunk build side, all output columns
-// in one data chunk); when false the operator always uses the in-memory path. The type lists mirror
-// the executor's schema ([keys...], build payloads, probe non-key columns) and `probeNonKeyPos`
-// locates the probe-side non-key output columns (everything the probe contributes that is not a join
-// key) in the probe/output result set.
+// shape check (INNER/LEFT, no mark, non-empty build payloads, each side an appendable factorization --
+// at most one unflat group with all keys in a single group -- and no nested/NODE/REL column); when
+// false the operator always uses the in-memory path. The type lists mirror the executor's schema
+// ([keys...], build payloads, probe non-key columns) and `probeNonKeyPos` locates the probe-side
+// non-key output columns (everything the probe contributes that is not a join key) in the
+// probe/output result set.
+//
+// `multiChunkOutput` selects how the probe operator emits the join: false = all output columns live in
+// one data chunk, so the join is materialized and scanned back into that chunk (vectorized); true = the
+// output spans several chunks (the factorized RETURN *-style case the planner actually produces, e.g.
+// an unflat-key build), so the operator streams the join one flat tuple at a time
+// (GraceHashJoinExecutor::getNextFlatTuple), which is correct for any chunk structure.
 struct GraceHashJoinInfo {
     bool eligible = false;
+    bool multiChunkOutput = false;
     common::JoinType joinType = common::JoinType::INNER;
     std::vector<common::LogicalType> keyTypes;
     std::vector<common::LogicalType> buildPayloadTypes;

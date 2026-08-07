@@ -206,6 +206,30 @@ uint64_t HashJoinProbe::getJoinResult() {
 // VectorPtr corresponds to one unFlat build side data chunk that is appended to the resultSet).
 bool HashJoinProbe::getNextGraceTuples(ExecutionContext* context) {
     auto* exec = sharedState->getGraceExecutor();
+    if (sharedState->getGraceInfo().multiChunkOutput) {
+        // Multi-chunk (factorized) output: the join columns span several data chunks (e.g. an
+        // unflat-key build), so the single-chunk materialize+scan below cannot reproduce the shape.
+        // Drain the probe child, then stream the join one FLAT tuple at a time -- each output column
+        // gets one value per call, so the downstream cross-product over chunks yields exactly one row.
+        if (!graceDrained) {
+            while (children[0]->getNextTuple(context)) {
+                for (auto i = 0u; i < resultSet->multiplicity; ++i) {
+                    exec->appendProbe(keyVectors, probeNonKeyVectors);
+                }
+            }
+            std::vector<ValueVector*> outVecs = keyVectors;
+            outVecs.insert(outVecs.end(), probeNonKeyVectors.begin(), probeNonKeyVectors.end());
+            outVecs.insert(outVecs.end(), vectorsToReadInto.begin(), vectorsToReadInto.end());
+            exec->initFlatStream(std::move(outVecs), joinType == JoinType::LEFT);
+            graceDrained = true;
+            resultSet->multiplicity = 1;
+        }
+        if (!exec->getNextFlatTuple()) {
+            return false;
+        }
+        metrics->numOutputTuple.increase(1);
+        return true;
+    }
     if (!graceDrained) {
         // Phase 1: drain the probe child into the executor's (spilling) probe partitions.
         while (children[0]->getNextTuple(context)) {

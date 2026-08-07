@@ -21,9 +21,16 @@ static std::atomic<uint64_t> graceSpillFileCounter{0};
 
 // Test-only activation counter (see getGraceHashJoinActivationCount).
 static std::atomic<uint64_t> graceActivationCount{0};
+// Test-only: activations of specifically the multi-chunk (factorized, flat-streaming output) Grace
+// path -- a subset of graceActivationCount. Lets the differential test assert that shape actually ran.
+static std::atomic<uint64_t> graceMultiChunkActivationCount{0};
 
 uint64_t getGraceHashJoinActivationCount() {
     return graceActivationCount.load();
+}
+
+uint64_t getGraceHashJoinMultiChunkActivationCount() {
+    return graceMultiChunkActivationCount.load();
 }
 
 static std::unique_ptr<GraceHashJoinExecutor> makeGraceExecutor(ExecutionContext* context,
@@ -110,6 +117,9 @@ void HashJoinBuild::initLocalStateInternal(ResultSet* resultSet, ExecutionContex
         }
         sharedState->setGraceActive();
         graceActivationCount.fetch_add(1);
+        if (sharedState->getGraceInfo().multiChunkOutput) {
+            graceMultiChunkActivationCount.fetch_add(1);
+        }
     } else {
         hashTable = std::make_unique<JoinHashTable>(*cc->getMemoryManager(), std::move(keyTypes),
             info.tableSchema.copy());

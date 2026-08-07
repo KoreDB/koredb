@@ -1338,7 +1338,7 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorFactorizedBuildStreamSpill) {
 // payload) group to hash(key)'s partition (payload flattened). computeInnerJoin must then reproduce
 // the fully-flattened (a, b, o) result. This is the core the (multi-chunk-output) operator will drive.
 static void runGraceUnflatKeyBuildTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
-    uint64_t budget) {
+    uint64_t budget, bool useFlatStream) {
     using namespace kuzu::processor;
 
     std::vector<LogicalType> keyTypes;
@@ -1419,20 +1419,42 @@ static void runGraceUnflatKeyBuildTest(storage::MemoryManager* mm, common::Virtu
         }
     }
 
-    auto output = exec.computeInnerJoin();
-    // Output columns: [probeKey a, probePayload b, buildPayload o].
-    std::vector<std::unique_ptr<Value>> holders;
-    std::vector<Value*> values;
-    for (int i = 0; i < 3; i++) {
-        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(LogicalType::INT64())));
-        values.push_back(holders.back().get());
-    }
     std::map<std::tuple<int64_t, int64_t, int64_t>, int64_t> got;
-    FlatTupleIterator it(*output, values);
-    while (it.hasNextFlatTuple()) {
-        it.getNextFlatTuple();
-        got[{values[0]->getValue<int64_t>(), values[1]->getValue<int64_t>(),
-            values[2]->getValue<int64_t>()}]++;
+    if (useFlatStream) {
+        // Drive the row-at-a-time multi-chunk emission the operator uses: each output column lives in
+        // its OWN single-value chunk, filled one flat tuple per getNextFlatTuple() call. Output vector
+        // order is [probeKey a, probePayload b, buildPayload o].
+        auto sA = DataChunkState::getSingleValueDataChunkState();
+        auto sB = DataChunkState::getSingleValueDataChunkState();
+        auto sO = DataChunkState::getSingleValueDataChunkState();
+        ValueVector aOut(LogicalType::INT64(), mm);
+        ValueVector bOut(LogicalType::INT64(), mm);
+        ValueVector oOut(LogicalType::INT64(), mm);
+        aOut.state = sA;
+        bOut.state = sB;
+        oOut.state = sO;
+        exec.initFlatStream({&aOut, &bOut, &oOut}, false /*isLeftJoin*/);
+        while (exec.getNextFlatTuple()) {
+            got[{aOut.getValue<int64_t>(sA->getSelVector()[0]),
+                bOut.getValue<int64_t>(sB->getSelVector()[0]),
+                oOut.getValue<int64_t>(sO->getSelVector()[0])}]++;
+        }
+    } else {
+        auto output = exec.computeInnerJoin();
+        // Output columns: [probeKey a, probePayload b, buildPayload o].
+        std::vector<std::unique_ptr<Value>> holders;
+        std::vector<Value*> values;
+        for (int i = 0; i < 3; i++) {
+            holders.push_back(
+                std::make_unique<Value>(Value::createDefaultValue(LogicalType::INT64())));
+            values.push_back(holders.back().get());
+        }
+        FlatTupleIterator it(*output, values);
+        while (it.hasNextFlatTuple()) {
+            it.getNextFlatTuple();
+            got[{values[0]->getValue<int64_t>(), values[1]->getValue<int64_t>(),
+                values[2]->getValue<int64_t>()}]++;
+        }
     }
 
     ASSERT_EQ(got.size(), expected.size());
@@ -1442,12 +1464,20 @@ static void runGraceUnflatKeyBuildTest(storage::MemoryManager* mm, common::Virtu
 
 TEST_F(BufferManagerTest, GraceHashJoinExecutorUnflatKeyBuildInMemory) {
     runGraceUnflatKeyBuildTest(getMemoryManager(*database), getFileSystem(*database),
-        1u << 30 /*no spill*/);
+        1u << 30 /*no spill*/, false /*useFlatStream*/);
 }
 
 TEST_F(BufferManagerTest, GraceHashJoinExecutorUnflatKeyBuildSpill) {
     runGraceUnflatKeyBuildTest(getMemoryManager(*database), getFileSystem(*database),
-        4096 /*forced spill*/);
+        4096 /*forced spill*/, false /*useFlatStream*/);
+}
+
+// Drive the operator-facing row-at-a-time multi-chunk emission (initFlatStream / getNextFlatTuple)
+// directly, under forced spilling -- exercising the per-partition materialize + reload path the live
+// operator uses for a multi-chunk (unflat-key build) join, independent of any planner choice.
+TEST_F(BufferManagerTest, GraceHashJoinExecutorUnflatKeyBuildFlatStreamSpill) {
+    runGraceUnflatKeyBuildTest(getMemoryManager(*database), getFileSystem(*database),
+        4096 /*forced spill*/, true /*useFlatStream*/);
 }
 
 // Composite (2-column) join key + a variable-length (STRING) build payload, under forced spilling.
@@ -2267,6 +2297,38 @@ TEST_F(BufferManagerTest, GraceHashJoinLeftDifferential) {
     ASSERT_GT(getGraceHashJoinActivationCount(), before) << "Grace LEFT path did not activate";
     ASSERT_EQ(inMemory, grace) << "Grace LEFT (spilling) vs in-memory result mismatch";
 }
+
+// Differential correctness of the MULTI-CHUNK (factorized) out-of-core hash join -- the shape the
+// planner actually produces for a factorized join: the join key is on the unflat (extended) side of
+// the build, the output spans several data chunks, and the operator streams it one flat tuple at a
+// time. Each query must return the same rows with spill_hash_join off (in-memory) and on, and the
+// multi-chunk Grace path must actually activate (else the check is vacuous).
+TEST_F(BufferManagerTest, GraceHashJoinMultiChunkDifferential) {
+    using kuzu::processor::getGraceHashJoinMultiChunkActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    const std::vector<std::string> queries = {
+        "MATCH (a:person)-[:knows]->(b:person) MATCH (a)-[:studyAt]->(o:organisation) "
+        "RETURN a.ID, b.ID, o.ID",
+        "MATCH (a:person)-[:knows]->(b:person) MATCH (a)-[:workAt]->(c:organisation) "
+        "RETURN a.fName, b.fName, c.name",
+        "MATCH (a:person)-[:studyAt]->(o:organisation) MATCH (a)-[:knows]->(b:person) "
+        "RETURN o.name, a.ID, b.age",
+        // LEFT (OPTIONAL MATCH) variant.
+        "MATCH (a:person)-[:knows]->(b:person) OPTIONAL MATCH (a)-[:studyAt]->(o:organisation) "
+        "RETURN a.ID, b.ID, o.ID",
+    };
+    const auto before = getGraceHashJoinMultiChunkActivationCount();
+    for (const auto& q : queries) {
+        ASSERT_TRUE(conn->query("CALL spill_hash_join=false;")->isSuccess());
+        const auto inMemory = collectSortedRows(conn.get(), q);
+        ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
+        const auto grace = collectSortedRows(conn.get(), q);
+        ASSERT_EQ(inMemory, grace) << "multi-chunk Grace vs in-memory mismatch for: " << q;
+    }
+    ASSERT_GT(getGraceHashJoinMultiChunkActivationCount(), before)
+        << "no query activated the multi-chunk (factorized) Grace path; the check is vacuous";
+}
+
 
 // Differential correctness of the live out-of-core (spilling) hash-aggregation operator: the same
 // GROUP BY must produce the same rows with `spill_aggregate` off (in-memory) and on (partitioned),

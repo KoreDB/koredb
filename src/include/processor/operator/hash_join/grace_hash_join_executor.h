@@ -87,10 +87,30 @@ public:
         std::vector<common::ValueVector*> buildOutVecs, bool isLeftJoin);
     bool getNextChunk();
 
+    // --- Flat (row-at-a-time) streaming for arbitrary multi-chunk output -------------------------
+    // Emit the join one FLAT tuple at a time into `outVecs` (order [probeKeys..., probePayloads...,
+    // buildPayloads...]), setting each vector's state to a single value per call. Unlike the factorized
+    // getNextChunk (probe-flat / build-unflat, which assumes those two live in separate chunks), this
+    // is correct for ANY output chunk structure: every output column gets exactly one value, so a
+    // downstream cross-product over the output chunks yields exactly one row. It is what the live
+    // operator uses when the join output spans several data chunks (the RETURN *-style factorized
+    // case the planner actually produces, e.g. an unflat-key build). Memory is bounded to one
+    // partition's materialized join output plus one partition pair (the join is computed one partition
+    // at a time and scanned out row by row); slower than a vectorized emission but never OOMs.
+    void initFlatStream(std::vector<common::ValueVector*> outVecs, bool isLeftJoin);
+    bool getNextFlatTuple();
+
     common::idx_t getNumPartitions() const { return buildParts.getNumPartitions(); }
 
 private:
-    std::unique_ptr<FactorizedTable> computeJoin(bool isLeftJoin);
+    // Sentinel for computeJoin's onlyPartition: process every partition (the materialized whole-join
+    // path); any real partition index restricts it to that single partition (the flat-stream path).
+    static constexpr common::idx_t ALL_PARTITIONS = ~static_cast<common::idx_t>(0);
+    // Compute the join into a fresh FactorizedTable. With onlyPartition == ALL_PARTITIONS the whole
+    // join is materialized; otherwise only that partition's output is produced (and that partition
+    // pair freed), bounding peak memory for the flat-stream path.
+    std::unique_ptr<FactorizedTable> computeJoin(bool isLeftJoin,
+        common::idx_t onlyPartition = ALL_PARTITIONS);
     // Build a JoinHashTable from the (reloaded) build partition p. Empty partition -> empty table.
     std::unique_ptr<JoinHashTable> buildHashTableForPartition(common::idx_t p);
     // Streaming helpers.
@@ -148,6 +168,13 @@ private:
     std::unique_ptr<common::SelectionVector> streamHashSelVec;
     std::unique_ptr<uint8_t*[]> streamProbedTuples;
     std::unique_ptr<uint8_t*[]> streamMatchedTuples;
+
+    // --- Flat (row-at-a-time) streaming state (valid between initFlatStream and the final call). ---
+    std::vector<common::ValueVector*> streamFlatOutVecs; // [keys..., probePayloads..., buildPayloads...]
+    bool streamFlatLeftJoin = false;
+    common::idx_t streamFlatPartition = 0;           // next partition to materialize
+    std::unique_ptr<FactorizedTable> streamFlatTable; // current partition's materialized output
+    uint64_t streamFlatCursor = 0;                    // next tuple within streamFlatTable to emit
 };
 
 } // namespace processor

@@ -61,23 +61,53 @@ HashJoinBuildInfo PlanMapper::createHashBuildInfo(const Schema& buildSideSchema,
         std::move(tableSchema));
 }
 
+// True iff `all` (columns located by dataChunkPos in `schema`) is an *appendable* factorization for
+// the Grace executor's scatter: at most ONE unflat data chunk among them, and every key in a SINGLE
+// data chunk. The executor routes a side by hash(key): an unflat key scatters element-wise while flat
+// columns broadcast and unflat columns sharing the key's chunk travel with it; a flat key routes the
+// whole group to one partition. More than one unflat chunk would be a cross-product the flatten-on-
+// append cannot represent, and keys spread across chunks cannot be scattered by one selection state.
+static bool isAppendableFactorization(const Schema& schema, const std::vector<DataPos>& all,
+    const std::unordered_set<common::idx_t>& keyGroups) {
+    if (keyGroups.size() != 1) {
+        return false;
+    }
+    common::idx_t unflatGroup = INVALID_DATA_CHUNK_POS;
+    for (auto& p : all) {
+        if (schema.getGroup(p.dataChunkPos)->isFlat()) {
+            continue;
+        }
+        if (unflatGroup != INVALID_DATA_CHUNK_POS && p.dataChunkPos != unflatGroup) {
+            return false; // more than one unflat chunk
+        }
+        unflatGroup = p.dataChunkPos;
+    }
+    return true;
+}
+
 // Computes the static (plan-time) metadata that lets the HASH_JOIN operator run the out-of-core
-// (Grace) path when `spill_hash_join` is enabled. Conservative: only INNER joins with no mark,
-// non-empty build payloads, a single-chunk build side, and all output columns in one data chunk are
-// marked eligible; every other shape keeps `eligible == false` and uses the in-memory path.
+// (Grace) path when `spill_hash_join` is enabled. Eligible shapes: INNER/LEFT, no mark, non-empty
+// build payloads, no nested/NODE/REL column, and each side (build; probe) an *appendable*
+// factorization (at most one unflat chunk, keys in a single chunk -- see isAppendableFactorization).
+// This covers both the flat single-chunk join and the factorized RETURN *-style join the planner
+// actually produces (e.g. an unflat-key build with a flat build root). `multiChunkOutput` records
+// whether the output spans several chunks, which selects the probe operator's emission path
+// (materialized+scan vs flat streaming). Every other shape keeps `eligible == false` (in-memory path).
 static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoin,
-    const Schema& outSchema, const expression_vector& probeKeys, const expression_vector& payloads,
-    const std::vector<LogicalType>& buildKeyTypes, const std::vector<DataPos>& buildAllPos,
-    const std::vector<DataPos>& probeKeysDataPos, const std::vector<DataPos>& probePayloadsOutPos) {
+    const Schema& outSchema, const Schema& buildSchema, const expression_vector& probeKeys,
+    const expression_vector& payloads, const std::vector<LogicalType>& buildKeyTypes,
+    const std::vector<DataPos>& buildAllPos, const std::vector<DataPos>& probeKeysDataPos,
+    const std::vector<DataPos>& probePayloadsOutPos) {
     GraceHashJoinInfo info;
     info.joinType = hashJoin.getJoinType();
     const auto jt = hashJoin.getJoinType();
-    // INNER and LEFT are supported. The executor's computeJoin(isLeftJoin) null-pads probe rows that
-    // find no build match (including NULL-key rows, which never match), and the probe operator drives
-    // it via computeLeftJoin(); a differential test (SpillHashJoinLeftDifferential) verifies the
-    // emission end-to-end. Other join types (MARK/COUNT) keep the in-memory path.
-    bool eligible =
-        (jt == JoinType::INNER || jt == JoinType::LEFT) && !hashJoin.hasMark() && !payloads.empty();
+    // INNER and LEFT are supported. computeJoin(isLeftJoin) null-pads probe rows that find no build
+    // match (including NULL-key rows, which never match). Other join types (MARK/COUNT) keep the
+    // in-memory path.
+    if (!((jt == JoinType::INNER || jt == JoinType::LEFT) && !hashJoin.hasMark() &&
+            !payloads.empty())) {
+        return info;
+    }
     auto sameChunk = [](const std::vector<DataPos>& ps) {
         if (ps.empty()) {
             return true;
@@ -90,13 +120,9 @@ static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoi
         }
         return true;
     };
-    // Build side must be one data chunk (all columns stored flat, one append state).
-    if (eligible && !sameChunk(buildAllPos)) {
-        eligible = false;
-    }
-    // Probe output columns = everything in scope that is neither a build payload nor a probe key
-    // (the mark is excluded by the no-mark requirement above). These are the probe non-key columns
-    // that must be captured and re-emitted; the probe keys are captured separately.
+    // Probe non-key output columns = everything in scope that is neither a build payload nor a probe
+    // key (the mark is excluded by the no-mark requirement above), captured/re-emitted alongside the
+    // probe keys.
     std::unordered_set<std::string> excluded;
     for (auto& p : payloads) {
         excluded.insert(p->getUniqueName());
@@ -107,26 +133,22 @@ static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoi
     std::vector<DataPos> outputAllPos = probeKeysDataPos;
     outputAllPos.insert(outputAllPos.end(), probePayloadsOutPos.begin(), probePayloadsOutPos.end());
     expression_vector probeNonKeyExprs;
-    if (eligible) {
-        for (auto& expr : outSchema.getExpressionsInScope()) {
-            if (excluded.contains(expr->getUniqueName())) {
-                continue;
-            }
-            outputAllPos.push_back(DataPos(outSchema.getExpressionPos(*expr)));
-            probeNonKeyExprs.push_back(expr);
+    std::vector<DataPos> probeNonKeyPos;
+    for (auto& expr : outSchema.getExpressionsInScope()) {
+        if (excluded.contains(expr->getUniqueName())) {
+            continue;
         }
+        const auto dp = DataPos(outSchema.getExpressionPos(*expr));
+        outputAllPos.push_back(dp);
+        probeNonKeyExprs.push_back(expr);
+        probeNonKeyPos.push_back(dp);
     }
-    // The operator materializes the join and scans it back into one output chunk, so every output
-    // column must live in a single data chunk. The chunk may be flat (one row emitted per call) or
-    // unflat (a vector of rows per call); the operator adapts at runtime.
-    if (eligible && (outputAllPos.empty() || !sameChunk(outputAllPos))) {
-        eligible = false;
+    if (outputAllPos.empty()) {
+        return info;
     }
-    // Exclude nested/NODE/REL payloads and outputs. Such a value occupies a single schema position
-    // (so the single-chunk check above passes) but expands to multiple runtime vectors, possibly
-    // across chunks, which the single-chunk flat emission cannot reproduce -- e.g. a `RETURN` of full
-    // nodes otherwise silently drops rows. Scalar/string columns are the verified surface; anything
-    // nested falls back to the proven in-memory path.
+    // Exclude nested/NODE/REL columns (build payloads, probe keys, probe non-keys). Such a value
+    // occupies a single schema position but expands to multiple runtime vectors, breaking the
+    // executor's one-column-per-expression model; those fall back to the proven in-memory path.
     auto anyNested = [](const expression_vector& exprs) {
         for (auto& e : exprs) {
             if (LogicalTypeUtils::isNested(e->getDataType())) {
@@ -135,22 +157,42 @@ static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoi
         }
         return false;
     };
-    if (eligible && (anyNested(payloads) || anyNested(probeKeys) || anyNested(probeNonKeyExprs))) {
-        eligible = false;
+    if (anyNested(payloads) || anyNested(probeKeys) || anyNested(probeNonKeyExprs)) {
+        return info;
     }
-    if (!eligible) {
-        return info; // eligible stays false -> operator uses the in-memory path
+    // Each side must be an appendable factorization (see isAppendableFactorization). Build columns
+    // (keys + payloads) are located in the build schema; probe columns (keys + non-keys) are located
+    // in the output schema (the probe writes them into the join's output result set).
+    const auto numKeys = probeKeys.size();
+    std::unordered_set<common::idx_t> buildKeyGroups;
+    for (auto i = 0u; i < numKeys; i++) {
+        buildKeyGroups.insert(buildAllPos[i].dataChunkPos);
+    }
+    if (!isAppendableFactorization(buildSchema, buildAllPos, buildKeyGroups)) {
+        return info;
+    }
+    std::unordered_set<common::idx_t> probeKeyGroups;
+    for (auto& p : probeKeysDataPos) {
+        probeKeyGroups.insert(p.dataChunkPos);
+    }
+    std::vector<DataPos> probeAllPos = probeKeysDataPos;
+    probeAllPos.insert(probeAllPos.end(), probeNonKeyPos.begin(), probeNonKeyPos.end());
+    if (!isAppendableFactorization(outSchema, probeAllPos, probeKeyGroups)) {
+        return info;
     }
     info.eligible = true;
+    // Single-chunk output -> materialize + scan back into that one chunk; multi-chunk output -> stream
+    // the join one flat tuple at a time (correct for any chunk structure).
+    info.multiChunkOutput = !sameChunk(outputAllPos);
     for (auto& t : buildKeyTypes) {
         info.keyTypes.push_back(t.copy());
     }
     for (auto& p : payloads) {
         info.buildPayloadTypes.push_back(p->getDataType().copy());
     }
-    for (auto& e : probeNonKeyExprs) {
-        info.probeNonKeyTypes.push_back(e->getDataType().copy());
-        info.probeNonKeyPos.push_back(DataPos(outSchema.getExpressionPos(*e)));
+    for (auto i = 0u; i < probeNonKeyExprs.size(); i++) {
+        info.probeNonKeyTypes.push_back(probeNonKeyExprs[i]->getDataType().copy());
+        info.probeNonKeyPos.push_back(probeNonKeyPos[i]);
     }
     return info;
 }
@@ -210,8 +252,8 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapHashJoin(const LogicalOperator*
     } else {
         probeDataInfo.markDataPos = DataPos::getInvalidPos();
     }
-    sharedState->setGraceInfo(computeGraceHashJoinInfo(*hashJoin, *outSchema, probeKeys, payloads,
-        buildKeyTypes, graceBuildAllPos, probeKeysDataPos, probePayloadsOutPos));
+    sharedState->setGraceInfo(computeGraceHashJoinInfo(*hashJoin, *outSchema, *buildSchema, probeKeys,
+        payloads, buildKeyTypes, graceBuildAllPos, probeKeysDataPos, probePayloadsOutPos));
     auto probePrintInfo = std::make_unique<HashJoinProbePrintInfo>(probeKeys);
     auto hashJoinProbe = make_unique<HashJoinProbe>(sharedState, hashJoin->getJoinType(),
         hashJoin->requireFlatProbeKeys(), probeDataInfo, std::move(probeSidePrevOperator),
