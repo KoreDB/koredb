@@ -205,11 +205,19 @@ the natural emission is to scan a fully-materialized (row-per-tuple) table back 
 chunk. The factorized streaming primitive assumes probe-flat / build-unflat live in *separate* chunks
 — true for other plans but not this one — so it is kept as a library primitive (above) for later.
 
-**Eligibility (conservative; anything else silently uses the in-memory path):** INNER only, no mark,
+**Eligibility (conservative; anything else silently uses the in-memory path):** INNER or LEFT, no mark,
 non-empty build payloads, `numThreads == 1`, the build side is a single data chunk, **all** output
 columns live in a single data chunk, and **no nested/NODE/REL payload or output column**. Multi-chunk
-(factorized) outputs, `RETURN *`-style unflat build payloads, LEFT/MARK/COUNT joins, and parallel
-execution all fall back. Silent fallback is safe because the fallback is the proven in-memory join.
+(factorized) outputs, `RETURN *`-style unflat build payloads, MARK/COUNT joins, and parallel execution
+all fall back. Silent fallback is safe because the fallback is the proven in-memory join.
+
+**LEFT joins.** `computeJoin(isLeftJoin)` null-pads any probe row that finds no build match; a NULL join
+key (which never matches) takes the same path, so LEFT semantics are preserved for unmatched and
+NULL-key probe rows alike. The probe operator drives it via `computeLeftJoin()`, and probe rows are
+partitioned/spilled *without* discarding NULL keys (`appendToPartitions` keeps the full selection), so
+nothing is lost on the way to disk. `GraceHashJoinLeftDifferential` (a `OPTIONAL MATCH` with a unique
+build key over matched / unmatched / NULL-key probe rows, build side spilling at a 4 KiB budget) and e2e
+`generic_hash_join/left_spill.test` verify the emission end-to-end.
 
 The nested-type exclusion closes a real bug: a NODE/REL/LIST value occupies a single schema position
 (so the single-chunk check passes) but expands to multiple runtime vectors, which the single-chunk
@@ -339,7 +347,7 @@ process-wide counter) so the check is never vacuous.
 an eligible INNER equi-join each activate grace with no `CALL` setting. Both are on
 because their audits pass and both silently fall back to the proven in-memory path for any shape they
 do not conservatively support: aggregation excludes nested group/dependent keys (section 5) and reuses
-the in-memory scan; the join takes the Grace path only for INNER, single-chunk, scalar/string,
+the in-memory scan; the join takes the Grace path only for INNER/LEFT, single-chunk, scalar/string,
 no-nested/NODE/REL shapes. The earlier NULL-keyed self-join divergence was a bug in the *in-memory*
 join (`discardNull`, now fixed at the root — section 5), not in Grace. With the derived budget (whole
 buffer pool) an on operator partitions in memory and only spills to disk near the ceiling, trading a
@@ -352,17 +360,17 @@ those comparisons.
 ## Remaining work (the large, careful pieces)
 
 The reusable core (`PartitionedFactorizedTable`), a working out-of-core join (`GraceHashJoinExecutor`,
-inner+left, flat payloads, materialized + streaming), a **gated live join operator** (section 5, INNER
-+ single-chunk output), an out-of-core **aggregation executor** (section 6), and a **gated live
-aggregation operator** (section 7) now exist and are proven correct under spilling. What remains to
+inner+left, flat payloads, materialized + streaming), a **gated live join operator** (section 5,
+INNER/LEFT + single-chunk output), an out-of-core **aggregation executor** (section 6), and a **gated
+live aggregation operator** (section 7) now exist and are proven correct under spilling. What remains to
 broaden coverage and reach the hard `RETURN *` case:
 
-1. **Broaden operator eligibility.** The live operator (section 5) is deliberately narrow: INNER,
-   single-thread, single-chunk output. Extending it means (a) the **LEFT** null-padding path
-   end-to-end (the executor already does it; only the operator emission is unverified), (b)
-   **multi-threaded** build/probe — the hard part, since the probe side has no cross-thread barrier
-   today, so a barrier or per-thread partition merge is needed, and (c) **factorized / multi-chunk
-   output** — emit probe-flat / build-unflat across separate output chunks using the executor's
+1. **Broaden operator eligibility.** The live operator (section 5) is single-thread, single-chunk
+   output. **LEFT** null-padding is now enabled and verified end-to-end
+   (`GraceHashJoinLeftDifferential`). Extending it further means (a) **multi-threaded** build/probe — the
+   hard part, since the probe side has no cross-thread barrier today, so a barrier or per-thread
+   partition merge is needed, and (b) **factorized / multi-chunk output** — emit probe-flat /
+   build-unflat across separate output chunks using the executor's
    streaming `getNextChunk` instead of the single-chunk materialize+scan.
 
 2. **Factorized (unflat) payloads — the `RETURN *` case.** `PlanMapper::createHashBuildInfo` stores a

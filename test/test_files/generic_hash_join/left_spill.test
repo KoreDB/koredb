@@ -1,0 +1,43 @@
+-DATASET CSV empty
+
+--
+
+# LEFT (OPTIONAL MATCH) join through the out-of-core Grace path (spill_hash_join on, single
+# thread). Probe rows with no build match, and rows with a NULL join key, must be null-padded.
+-CASE LeftJoinSpillGrace
+-STATEMENT CALL threads=1;
+---- ok
+-STATEMENT CALL spill_hash_join=true;
+---- ok
+-STATEMENT CALL spill_hash_join_budget=4096;
+---- ok
+-STATEMENT CREATE NODE TABLE la(id INT64, k INT64, PRIMARY KEY(id));
+---- ok
+-STATEMENT CREATE NODE TABLE lb(k INT64, v STRING, PRIMARY KEY(k));
+---- ok
+-STATEMENT UNWIND range(0, 2999) AS i CREATE (:lb {k: i, v: 'val' + cast(i AS STRING)});
+---- ok
+-STATEMENT UNWIND range(0, 199) AS i CREATE (:la {id: i, k: i});
+---- ok
+-STATEMENT UNWIND range(200, 229) AS i CREATE (:la {id: i, k: 5000 + i});
+---- ok
+-STATEMENT UNWIND range(230, 249) AS i CREATE (:la {id: i});
+---- ok
+# All 250 probe rows survive the LEFT join.
+-STATEMENT MATCH (a:la) OPTIONAL MATCH (b:lb) WHERE b.k = a.k RETURN count(*);
+---- 1
+250
+# count(b.v) ignores nulls -> only the 200 matched rows.
+-STATEMENT MATCH (a:la) OPTIONAL MATCH (b:lb) WHERE b.k = a.k RETURN count(b.v);
+---- 1
+200
+# Spot-check a matched, an unmatched, and a NULL-key probe row.
+-STATEMENT MATCH (a:la) OPTIONAL MATCH (b:lb) WHERE b.k = a.k WITH a, b WHERE a.id = 5 RETURN a.id, b.v;
+---- 1
+5|val5
+-STATEMENT MATCH (a:la) OPTIONAL MATCH (b:lb) WHERE b.k = a.k WITH a, b WHERE a.id = 210 RETURN a.id, b.v;
+---- 1
+210|
+-STATEMENT MATCH (a:la) OPTIONAL MATCH (b:lb) WHERE b.k = a.k WITH a, b WHERE a.id = 240 RETURN a.id, b.v;
+---- 1
+240|

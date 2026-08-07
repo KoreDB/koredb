@@ -1819,6 +1819,43 @@ TEST_F(BufferManagerTest, GraceHashJoinSpillDifferential) {
     ASSERT_EQ(inMemory, grace) << "Grace (spilling) vs in-memory result mismatch";
 }
 
+// Differential correctness of the live out-of-core hash join for a LEFT (OPTIONAL MATCH) join: probe
+// rows that find no build match -- including probe rows with a NULL join key, which never match -- must
+// be null-padded, exactly as the in-memory path does. Uses a unique build key so each probe row matches
+// at most one build row (keeping the join single-chunk / Grace-eligible), with three probe populations:
+// matched, unmatched (no build key), and NULL key. The build side (3000 rows) far exceeds the tiny
+// budget, so the partitions actually spill to disk and reload -- exercising the real out-of-core path.
+TEST_F(BufferManagerTest, GraceHashJoinLeftDifferential) {
+    using kuzu::processor::getGraceHashJoinActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    ASSERT_TRUE(conn->query("CREATE NODE TABLE la(id INT64, k INT64, PRIMARY KEY(id));")->isSuccess());
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE lb(k INT64, v STRING, PRIMARY KEY(k));")->isSuccess());
+    // Build side lb: 3000 unique keys 0..2999 (large enough to spill at a 4 KiB budget).
+    ASSERT_TRUE(conn->query("UNWIND range(0, 2999) AS i CREATE (:lb {k: i, v: 'val' + "
+                            "cast(i AS STRING)});")
+                    ->isSuccess());
+    // Probe side la: matched (k 0..199), unmatched (k 5000+, no build key), and NULL-key rows.
+    ASSERT_TRUE(conn->query("UNWIND range(0, 199) AS i CREATE (:la {id: i, k: i});")->isSuccess());
+    ASSERT_TRUE(
+        conn->query("UNWIND range(200, 229) AS i CREATE (:la {id: i, k: 5000 + i});")->isSuccess());
+    ASSERT_TRUE(conn->query("UNWIND range(230, 249) AS i CREATE (:la {id: i});")->isSuccess());
+    const std::string q =
+        "MATCH (a:la) OPTIONAL MATCH (b:lb) WHERE b.k = a.k RETURN a.id, b.v";
+
+    ASSERT_TRUE(conn->query("CALL spill_hash_join=false;")->isSuccess());
+    const auto inMemory = collectSortedRows(conn.get(), q);
+    ASSERT_EQ(inMemory.size(), 250u); // every probe row survives a LEFT join (200 matched + 50 padded)
+
+    const auto before = getGraceHashJoinActivationCount();
+    ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
+    ASSERT_TRUE(conn->query("CALL spill_hash_join_budget=4096;")->isSuccess());
+    const auto grace = collectSortedRows(conn.get(), q);
+
+    ASSERT_GT(getGraceHashJoinActivationCount(), before) << "Grace LEFT path did not activate";
+    ASSERT_EQ(inMemory, grace) << "Grace LEFT (spilling) vs in-memory result mismatch";
+}
+
 // Differential correctness of the live out-of-core (spilling) hash-aggregation operator: the same
 // GROUP BY must produce the same rows with `spill_aggregate` off (in-memory) and on (partitioned),
 // across a range of aggregates including a stateful LIST aggregate (collect). Asserts the spilling

@@ -72,9 +72,12 @@ static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoi
     GraceHashJoinInfo info;
     info.joinType = hashJoin.getJoinType();
     const auto jt = hashJoin.getJoinType();
-    // v1 supports INNER only. The executor also implements LEFT, but the operator's null-padding
-    // path is not yet end-to-end verified, so LEFT joins keep the in-memory path for now.
-    bool eligible = jt == JoinType::INNER && !hashJoin.hasMark() && !payloads.empty();
+    // INNER and LEFT are supported. The executor's computeJoin(isLeftJoin) null-pads probe rows that
+    // find no build match (including NULL-key rows, which never match), and the probe operator drives
+    // it via computeLeftJoin(); a differential test (SpillHashJoinLeftDifferential) verifies the
+    // emission end-to-end. Other join types (MARK/COUNT) keep the in-memory path.
+    bool eligible =
+        (jt == JoinType::INNER || jt == JoinType::LEFT) && !hashJoin.hasMark() && !payloads.empty();
     auto sameChunk = [](const std::vector<DataPos>& ps) {
         if (ps.empty()) {
             return true;
