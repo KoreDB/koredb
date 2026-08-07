@@ -191,9 +191,10 @@ in memory and only spills to disk near the buffer-pool ceiling. The wiring (`map
 - `PlanMapper::mapHashJoin` computes plan-time `GraceHashJoinInfo` (join key/payload types and the
   probe-side non-key output columns to capture) and marks the join *eligible* only for a conservative
   shape (see below). It is stored on the shared `HashJoinSharedState`.
-- `HashJoinBuild`, when `spill_hash_join` is on, `numThreads == 1`, and the join is eligible, scatters
-  every build row into a shared `GraceHashJoinExecutor` (`appendBuild`, spilling under the budget)
-  instead of building an in-memory hash table.
+- `HashJoinBuild`, when the Grace path will run (`willActivateGrace()`: `spill_hash_join` on, eligible
+  shape, and the multi-thread activation policy in "Multi-threaded build" below), scatters every build
+  row into a `GraceHashJoinExecutor` (`appendBuild`, spilling under the budget) instead of building an
+  in-memory hash table — one executor per build thread, merged at finalize.
 - `HashJoinProbe` then drains its probe child into `appendProbe` and emits the join in one of two ways
   by output shape, **both bounded to one partition's output at a time** (`computePartitionJoin(p)`
   materializes just partition `p` and frees that partition pair, so the whole join is never resident):
@@ -206,13 +207,13 @@ in memory and only spills to disk near the buffer-pool ceiling. The wiring (`map
 **Eligibility (conservative; anything else silently uses the in-memory path):** (a) INNER or LEFT with
 non-empty build payloads, (b) **MARK** (EXISTS / semi / anti-join) with a keys-only build, or (c)
 **COUNT** (size / `COUNT{}` subquery) with a pre-aggregated `(key, count)` build (one count payload); in
-all cases `numThreads == 1`, **no nested/NODE/REL payload or output column**, and each side an
-*appendable factorization* (at most one unflat data chunk, all keys in a single chunk). All four join
-types support **both** single-chunk output (materialize + vectorized scan) and multi-chunk output (the
-factorized case — e.g. an unflat-key build, or an EXISTS/COUNT over a factorized `(a)-[]->(b)` outer —
-streamed one flat tuple at a time). A side with more than one unflat chunk (two crossed `MANY`
-dimensions), a composite key spanning chunks, and parallel execution all fall back. Silent fallback is
-safe because the fallback is the proven in-memory join.
+all cases **no nested/NODE/REL payload or output column**, and each side an *appendable factorization*
+(at most one unflat data chunk, all keys in a single chunk). All four join types support **both**
+single-chunk output (materialize + vectorized scan) and multi-chunk output (the factorized case — e.g.
+an unflat-key build, or an EXISTS/COUNT over a factorized `(a)-[]->(b)` outer — streamed one flat tuple
+at a time), and run **single- or multi-threaded** (see "Multi-threaded build" below). A side with more
+than one unflat chunk (two crossed `MANY` dimensions) or a composite key spanning chunks falls back.
+Silent fallback is safe because the fallback is the proven in-memory join.
 
 **MARK joins.** An `EXISTS { … }` / `NOT EXISTS { … }` subquery compiles to a MARK join whose build
 side (the correlated pattern) can be arbitrarily large. `computeMarkJoin` emits exactly one output row
@@ -243,6 +244,31 @@ and in a `WHERE` filter, spill off vs on + activation assert), `GraceHashJoinCou
 `generic_hash_join/count.test` and `mark_count_multichunk.test`. (A *node-correlated* `COUNT { MATCH (b) WHERE b.k = a.k }` asserts in the
 **in-memory** `getCountJoinResult` under runtime checks — `vectorsToReadInto.size() == 1` — a pre-existing
 shape limitation independent of the Grace path; the standard relationship/pattern COUNT is the wired shape.)
+
+**Multi-threaded build.** The build runs in parallel and the probe is forced single-threaded, so the
+out-of-core path activates under multi-threaded queries (not only `threads == 1`). Each `HashJoinBuild`
+thread builds its **own** executor (its own budget, its own spill files) and hands it to the shared state
+(`registerLocalGraceExecutor`); the once-per-pipeline finalize barrier merges them into one
+(`mergeGraceExecutors` → `GraceHashJoinExecutor::merge`, partition-by-partition so a key still lands in
+one merged partition). The probe declares `isParallel() == false` when the Grace path will run, which
+makes `initTask` mark the **probe pipeline** single-threaded while the (separate child-task) build
+pipeline stays parallel — so a serial probe drains + emits partition by partition with no mid-pipeline
+barrier. This mirrors the aggregate's per-thread-executor + merge pattern. `willActivateGrace()` decides
+purely from the *live* config (a `ClientContext*` the mapper stores on the shared state) plus plan-time
+eligibility, so build and probe agree even though `isParallel()` is evaluated before execution (when a
+runtime activation flag would not yet be set).
+
+*Activation policy (deliberately conservative under multi-threading).* Forcing the probe serial costs
+probe parallelism, so on `threads > 1` the Grace path activates **only when the user signals a memory
+bound** — an explicit `spill_hash_join_budget` or `query_memory_limit` — keeping the fast in-memory
+parallel join as the default for queries that fit; on `threads == 1` (no probe parallelism to lose) it
+activates whenever `spill_hash_join` is on. A truly parallel out-of-core probe (a sink that drains +
+partitions the probe input, then a parallel offset-addressed scan that emits, like the aggregate scan)
+would lift the serial-probe restriction and let multi-threaded spilling be the unconditional default;
+that two-pipeline restructure is the main follow-on. Verified by `GraceHashJoinMultiThreadDifferential`
+(threads=4, INNER/MARK/COUNT/multi-chunk, spill off vs on + activation assert) and
+`GraceHashJoinMultiThreadSpillDifferential` (3000-row build, 4 KiB budget → parallel build spills, merges,
+serial probe reloads).
 
 **LEFT joins.** `computeJoin(isLeftJoin)` null-pads any probe row that finds no build match; a NULL join
 key (which never matches) takes the same path, so LEFT semantics are preserved for unmatched and
@@ -387,8 +413,8 @@ process-wide counter) so the check is never vacuous.
 an eligible INNER equi-join each activate grace with no `CALL` setting. Both are on
 because their audits pass and both silently fall back to the proven in-memory path for any shape they
 do not conservatively support: aggregation excludes nested group/dependent keys (section 5) and reuses
-the in-memory scan; the join takes the Grace path only for INNER/LEFT (with payloads) or single-chunk
-MARK/COUNT, scalar/string, no-nested/NODE/REL shapes. The earlier NULL-keyed self-join divergence was a bug in the *in-memory*
+the in-memory scan; the join takes the Grace path only for INNER/LEFT (with payloads), MARK, or COUNT
+(single- or multi-chunk), scalar/string, no-nested/NODE/REL shapes. The earlier NULL-keyed self-join divergence was a bug in the *in-memory*
 join (`discardNull`, now fixed at the root — section 5), not in Grace. With the derived budget (whole
 buffer pool) an on operator partitions in memory and only spills to disk near the ceiling, trading a
 partition/materialize overhead for not-OOMing. With both defaults on the whole suite exercises the
@@ -405,12 +431,15 @@ INNER/LEFT + single-chunk output), an out-of-core **aggregation executor** (sect
 live aggregation operator** (section 7) now exist and are proven correct under spilling. What remains to
 broaden coverage and reach the hard `RETURN *` case:
 
-1. **Broaden operator eligibility.** **LEFT** null-padding (`GraceHashJoinLeftDifferential`) and
+1. **Broaden operator eligibility.** **LEFT** null-padding (`GraceHashJoinLeftDifferential`),
    **factorized / multi-chunk output** — including the *unflat-key build* the planner actually produces —
-   are now enabled and verified end-to-end (item 2 below; `GraceHashJoinMultiChunkDifferential`). What
-   remains is (a) **multi-threaded** build/probe — the hard part, since the probe side has no cross-thread
-   barrier today, so a barrier or per-thread partition merge is needed; and (b) **vectorizing** the
-   multi-chunk emission (today it is correct but row-at-a-time — see item 2).
+   (item 2 below; `GraceHashJoinMultiChunkDifferential`), **MARK/COUNT** subquery joins (section 5), and
+   **multi-threaded build** (parallel build + serial probe; `GraceHashJoinMultiThreadDifferential`) are
+   now enabled and verified end-to-end. What remains is (a) a **parallel out-of-core probe** — the probe
+   is forced single-threaded today because there is no mid-pipeline barrier, so a sink-drains-+-partitions
+   / parallel-scan-emits restructure (like the aggregate) is needed to lift the multi-thread activation
+   policy's memory-bound requirement; and (b) **vectorizing** the multi-chunk emission (today correct but
+   row-at-a-time — see item 2).
 
 2. **Factorized (unflat) payloads — the `RETURN *` case.** `PlanMapper::createHashBuildInfo` stores a
    payload from a different chunk than the keys as an `overflow_value_t` **factorized** column, which
@@ -473,9 +502,11 @@ broaden coverage and reach the hard `RETURN *` case:
 
    **Still falls back to the in-memory path** (conservative): a side with **>1 unflat chunk** (two unflat
    dimensions crossed — e.g. a probe combining two `MANY` extensions), a **composite key spanning chunks**,
-   nested/NODE/REL columns, and multi-threaded execution. **Vectorizing** the row-at-a-time multi-chunk
-   emission (keeping the unflat dimension factorized instead of flattening one tuple per call) is the main
-   follow-on.
+   and nested/NODE/REL columns. **Multi-threaded** execution is supported (parallel build + serial probe;
+   see section 5 "Multi-threaded build"), though under multi-threading it activates only when a memory
+   bound is set. **Vectorizing** the row-at-a-time multi-chunk emission (keeping the unflat dimension
+   factorized instead of flattening one tuple per call) and a **parallel out-of-core probe** are the main
+   follow-ons.
 
 3. **Remaining join types & keys** — **MARK (EXISTS / semi / anti-join) and COUNT (size / `COUNT{}`
    subquery) are done for both single- and multi-chunk output** (`computeMarkJoin` / `computeCountJoin` +
