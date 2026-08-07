@@ -194,22 +194,22 @@ in memory and only spills to disk near the buffer-pool ceiling. The wiring (`map
 - `HashJoinBuild`, when `spill_hash_join` is on, `numThreads == 1`, and the join is eligible, scatters
   every build row into a shared `GraceHashJoinExecutor` (`appendBuild`, spilling under the budget)
   instead of building an in-memory hash table.
-- `HashJoinProbe` then drains its probe child into `appendProbe`, calls `computeInnerJoin` once to
-  **materialize** the result, and scans it back into the output vectors across `getNextTuplesInternal`
-  calls (`FactorizedTable::scan`), one row per call for a flat output chunk or a vector of rows for an
-  unflat one.
-
-**Why materialize, not stream, in v1.** The probe operator is not a pipeline breaker: its result set
-*is* the output result set. For the eligible shape all output columns live in **one** data chunk, so
-the natural emission is to scan a fully-materialized (row-per-tuple) table back into that single
-chunk. The factorized streaming primitive assumes probe-flat / build-unflat live in *separate* chunks
-— true for other plans but not this one — so it is kept as a library primitive (above) for later.
+- `HashJoinProbe` then drains its probe child into `appendProbe` and emits the join in one of two ways
+  by output shape: **single-chunk output** — `computeInnerJoin`/`computeLeftJoin` materialize the result
+  and scan it back into the one output chunk across `getNextTuplesInternal` calls (`FactorizedTable::scan`,
+  one row or a vector per call); **multi-chunk (factorized) output** — `initFlatStream` / `getNextFlatTuple`
+  stream the join one flat tuple at a time into the several output chunks (each column set to a single
+  value), materializing only one partition's output at a time. See "Operator integration — done" under
+  remaining-work item 2 for the multi-chunk (unflat-key build) case.
 
 **Eligibility (conservative; anything else silently uses the in-memory path):** INNER or LEFT, no mark,
-non-empty build payloads, `numThreads == 1`, the build side is a single data chunk, **all** output
-columns live in a single data chunk, and **no nested/NODE/REL payload or output column**. Multi-chunk
-(factorized) outputs, `RETURN *`-style unflat build payloads, MARK/COUNT joins, and parallel execution
-all fall back. Silent fallback is safe because the fallback is the proven in-memory join.
+non-empty build payloads, `numThreads == 1`, **no nested/NODE/REL payload or output column**, and each
+side an *appendable factorization* (at most one unflat data chunk, all keys in a single chunk). This
+covers the flat single-chunk join **and** the factorized multi-chunk join the planner produces for a
+`RETURN *`-style query (an unflat-key build, output across several chunks). A side with more than one
+unflat chunk (two crossed `MANY` dimensions), a composite key spanning chunks, MARK/COUNT joins, and
+parallel execution all fall back. Silent fallback is safe because the fallback is the proven in-memory
+join.
 
 **LEFT joins.** `computeJoin(isLeftJoin)` null-pads any probe row that finds no build match; a NULL join
 key (which never matches) takes the same path, so LEFT semantics are preserved for unmatched and
@@ -365,13 +365,12 @@ INNER/LEFT + single-chunk output), an out-of-core **aggregation executor** (sect
 live aggregation operator** (section 7) now exist and are proven correct under spilling. What remains to
 broaden coverage and reach the hard `RETURN *` case:
 
-1. **Broaden operator eligibility.** The live operator (section 5) is single-thread, single-chunk
-   output. **LEFT** null-padding is now enabled and verified end-to-end
-   (`GraceHashJoinLeftDifferential`). Extending it further means (a) **multi-threaded** build/probe — the
-   hard part, since the probe side has no cross-thread barrier today, so a barrier or per-thread
-   partition merge is needed, and (b) **factorized / multi-chunk output** — emit probe-flat /
-   build-unflat across separate output chunks using the executor's
-   streaming `getNextChunk` instead of the single-chunk materialize+scan.
+1. **Broaden operator eligibility.** **LEFT** null-padding (`GraceHashJoinLeftDifferential`) and
+   **factorized / multi-chunk output** — including the *unflat-key build* the planner actually produces —
+   are now enabled and verified end-to-end (item 2 below; `GraceHashJoinMultiChunkDifferential`). What
+   remains is (a) **multi-threaded** build/probe — the hard part, since the probe side has no cross-thread
+   barrier today, so a barrier or per-thread partition merge is needed; and (b) **vectorizing** the
+   multi-chunk emission (today it is correct but row-at-a-time — see item 2).
 
 2. **Factorized (unflat) payloads — the `RETURN *` case.** `PlanMapper::createHashBuildInfo` stores a
    payload from a different chunk than the keys as an `overflow_value_t` **factorized** column, which
@@ -394,30 +393,48 @@ broaden coverage and reach the hard `RETURN *` case:
    is even needed on the build side. Verified materialized + streamed, no-spill and forced-spill
    (`GraceHashJoinExecutorFactorizedBuild{InMemory,Spill,StreamSpill}`).
 
-   **Operator integration — investigated and shelved (the shape the planner does not produce).** A full
-   live-operator wiring was built on top of the primitive above (a second "factorized" eligible shape in
-   `computeGraceHashJoinInfo`: flat key + one unflat build-payload group + all-flat probe output + a
-   separate unflat build-payload output chunk; `HashJoinBuild` routing through `appendBuildFactorized`;
-   `HashJoinProbe` streaming via `getNextChunk`). It **never activated on any real query.** `EXPLAIN`
-   across ~12 diverse shapes (two-pattern joins, comma self-joins, a knows-triangle, a `WITH`-boundary
-   join, a disconnected equi-join) shows the planner never emits the *flat-key + unflat-build-payload*
-   hash join this path targets. Instead it does one of:
-   - build a **flat node scan** and push the extension to the **probe** side, so the factorized OUTPUT
-     comes from the probe (`MATCH (a) MATCH (a)-[:knows]->(b) RETURN a.ID, b.ID` builds the `person`
-     scan). The build is tiny, so spilling it buys nothing, and the in-memory path already streams that
-     output; or
-   - root the build so the join key lands on the **unflat (extended)** node — an *unflat key* build
-     (`MATCH (a)-[:knows]->(b) MATCH (a)-[:studyAt]->(o)` builds `studyAt` rooted at `organisation`,
-     keyed on the unflat `a`); or
-   - insert a `FLATTEN` before `HASH_JOIN_BUILD`, giving the already-handled flat single-chunk shape.
+   **A shelved detour worth recording.** A first live-operator wiring targeted a *flat-key +
+   unflat-build-payload* shape (build a flat key, carry an unflat build payload, stream probe-flat /
+   build-unflat via `getNextChunk`). It **never activated on any real query**: `EXPLAIN` across ~12
+   diverse shapes showed the planner never emits that shape — it either builds a **flat node scan** and
+   pushes the extension to the probe (tiny build, spilling buys nothing), roots the build so the join key
+   lands on the **unflat (extended)** node (an *unflat-key* build), or inserts a `FLATTEN` before the
+   build. That wiring was reverted rather than shipped as default-on dead code.
 
-   The genuinely valuable out-of-core case is therefore a **large factorized build whose join key is on
-   the unflat side** (or an unflat probe), which the executor's flat-key / flat-probe design cannot
-   co-partition without a substantial rewrite (hashing an unflat key batch; co-partitioning an unflat
-   probe). That is the real remaining work; the flat-key operator wiring was reverted rather than shipped
-   as default-on dead code (it mirrors the earlier finding that a factorized *streaming output* is
-   unreachable without exactly this multi-chunk build — item 1(c)). The append primitive above is kept as
-   a tested building block for that future unflat-key design.
+   **Operator integration — done (the unflat-key multi-chunk join, the shape the planner produces).**
+   `MATCH (a)-[:knows]->(b) MATCH (a)-[:studyAt]->(o) RETURN a.ID, b.ID, o.ID` builds `studyAt` rooted at
+   `organisation` (flat root `o`, **unflat key** `a`) and probes with `knows` (flat key `a`, unflat `b`);
+   the output spans several chunks (`a`/`o` flat, `b` unflat). This now runs out-of-core end-to-end:
+   - **Append auto-detects factorization at runtime.** `appendToPartitions` branches on the key's vector
+     state: an **unflat key** scatters each element to `hash(key)`'s partition (flat payloads broadcast,
+     unflat payloads sharing the key's chunk travel with it — the existing batch scatter); a **flat key**
+     routes the whole group to one partition and flattens any unflat payload
+     (`appendFactorizedGroup`). Either way the partition storage ends up flat, so `HashJoinBuild` needs no
+     change and the internal hash-table build/probe stay flat.
+   - **Multi-chunk output emission.** `computeJoin` gained an `onlyPartition` parameter (materialize just
+     one partition's output, freeing that partition pair — peak memory ≈ one partition's result), and
+     `initFlatStream` / `getNextFlatTuple` stream the join **one flat tuple at a time** into arbitrary
+     output vectors (each column's state set to a single value, so a downstream cross-product over the
+     chunks yields exactly one row). This is correct for *any* output chunk structure, which the
+     single-chunk materialize+scan and the probe-flat/build-unflat `getNextChunk` cannot both be. It is
+     row-at-a-time (correctness-first, memory-bounded, not vectorized); `HashJoinProbe` uses it when
+     `multiChunkOutput`, else keeps the vectorized single-chunk scan.
+   - **Eligibility (`computeGraceHashJoinInfo`, relaxed).** INNER/LEFT, no mark, non-empty payloads, no
+     nested/NODE/REL column, and **each side an appendable factorization** — at most one unflat data chunk
+     with all keys in a single chunk (`isAppendableFactorization`); more than one unflat chunk per side is
+     a cross-product the single-scatter append cannot represent. `multiChunkOutput = !sameChunk(output)`
+     selects the emission path.
+   - **Verified.** `GraceHashJoinMultiChunkDifferential` (tinysnb, INNER + `OPTIONAL MATCH`, spill off vs
+     on identical + the multi-chunk path asserted to activate); `GraceHashJoinExecutorUnflatKeyBuild{InMemory,Spill}`
+     and `…FlatStreamSpill` (library, unflat-key build + flat-stream emission under a 4 KiB forced spill,
+     against a brute-force reference). No regression: `buffer_manager_test` 49/49, `api_test` 97/97, e2e
+     `match`/`subquery`/`projection`/`filter`/`order_by`/`agg`/`generic_hash_join`/`optional_match`.
+
+   **Still falls back to the in-memory path** (conservative): a side with **>1 unflat chunk** (two unflat
+   dimensions crossed — e.g. a probe combining two `MANY` extensions), a **composite key spanning chunks**,
+   nested/NODE/REL columns, mark/count joins, and multi-threaded execution. **Vectorizing** the
+   row-at-a-time multi-chunk emission (keeping the unflat dimension factorized instead of flattening one
+   tuple per call) is the main follow-on.
 
 3. **Remaining join types & keys** — mark / count joins and multi-column / unflat probe keys in the
    executor (inner + left + single/composite flat key are done).

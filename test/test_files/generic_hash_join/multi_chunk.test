@@ -1,0 +1,27 @@
+-DATASET CSV tinysnb
+
+--
+
+# Factorized (multi-chunk) out-of-core hash join: the join key is on the unflat (extended) side of the
+# build and the output spans several data chunks, so the operator streams it one flat tuple at a time
+# (spill_hash_join on, single thread). Results must match the in-memory path; deterministic aggregates
+# are used so the checks are order/factorization independent.
+-CASE MultiChunkFactorizedGrace
+-STATEMENT CALL threads=1;
+---- ok
+-STATEMENT CALL spill_hash_join=true;
+---- ok
+# INNER: a shared between a knows-extension (unflat b) and a studyAt-extension (unflat-key build on a).
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) MATCH (a)-[:studyAt]->(o:organisation) RETURN count(*);
+---- 1
+6
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) MATCH (a)-[:studyAt]->(o:organisation) RETURN count(o.ID), sum(o.ID);
+---- 1
+6|6
+# LEFT (OPTIONAL MATCH): every knows-pair survives; count(o.ID) ignores the null-padded rows.
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) OPTIONAL MATCH (a)-[:studyAt]->(o:organisation) RETURN count(*);
+---- 1
+14
+-STATEMENT MATCH (a:person)-[:knows]->(b:person) OPTIONAL MATCH (a)-[:studyAt]->(o:organisation) RETURN count(o.ID);
+---- 1
+6
