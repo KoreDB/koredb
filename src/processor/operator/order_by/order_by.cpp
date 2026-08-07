@@ -28,8 +28,10 @@ uint64_t getExternalMergeSortActivationCount() {
 
 // The external merge sort supports fixed-width and STRING keys (STRING prefix ties are resolved
 // against the full payload string) and flat payloads read one value per tuple via getAsValue, all in
-// a single input data chunk (so key and payload positions line up). Nested keys, nested payloads, and
-// multi-chunk (factorized) inputs fall back to the in-memory sort.
+// a single input data chunk (so key and payload positions line up). Nested payloads and multi-chunk
+// (factorized) inputs fall back to the in-memory sort. A nested *key* never reaches here at all -- the
+// binder rejects ORDER BY on nested types engine-wide (isOrderByKeyTypeSupported), so the nested-key
+// check below is purely defensive.
 static bool isExternalSortEligible(const OrderByDataInfo& info) {
     for (auto& keyType : info.keyTypes) {
         if (LogicalTypeUtils::isNested(keyType)) {

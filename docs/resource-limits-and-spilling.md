@@ -415,8 +415,17 @@ broaden coverage and reach the hard `RETURN *` case:
    that share a 12-char prefix, spill on vs off must match, activation asserted), plus e2e
    `order_by/spill_order_by.test`.
 
-   *Remaining sub-pieces:* **nested keys** (the encoder does not encode nested types), **multi-threaded**
-   run generation (per-thread executors merged at a barrier), and **factorized / multi-chunk** inputs.
+   *Out of scope — nested keys.* Ordering by a nested value (`LIST`/`ARRAY`/`STRUCT`/`MAP`/`UNION`) is
+   rejected engine-wide at bind time (`isOrderByKeyTypeSupported` in `bind_projection_clause.cpp`), so no
+   sort path — in-memory or external — ever sees a nested key. The whole encode/radix machinery is
+   byte-comparable-only (`OrderByKeyEncoder::getEncodingFunction` is `KU_UNREACHABLE` for nested physical
+   types), and lifting that is an engine-level feature (binder + encoder + `KeyBlockMerger`), not an
+   external-sort gap. `isExternalSortEligible`'s nested-*key* check is therefore defensive only. Nested
+   *payloads* (a scalar key carrying a nested return column, e.g. `RETURN p.scores ORDER BY p.id`) are a
+   real fallback the external path could add later — `Value::serialize` already handles nested values.
+
+   *Remaining sub-pieces:* **multi-threaded** run generation (per-thread executors merged at a barrier),
+   **factorized / multi-chunk** inputs, and — smaller — **nested-payload** support (above).
 
 6. **Partitioned aggregation — broadening.** The library executor and the gated live operator now
    exist (sections 6–7). What remains: distinct aggregates, multi-state / multi-chunk inputs,
