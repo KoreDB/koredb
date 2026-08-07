@@ -64,6 +64,13 @@ public:
     void appendBuildFactorized(const std::vector<common::ValueVector*>& keyVectors,
         const std::vector<common::ValueVector*>& payloadVectors);
 
+    // Merge another executor's accumulated partitions into this one, partition by partition (both must
+    // have the same schema and partition count). `other` is left empty. This combines a set of
+    // per-thread build executors into one before the (single-threaded) probe, mirroring how per-thread
+    // aggregate executors merge (PartitionedAggregateExecutor::merge). Same-hash rows co-locate, so a
+    // key still lands in a single merged partition on both sides. Not called concurrently with append.
+    void merge(GraceHashJoinExecutor& other);
+
     // Materialize the full join result. Columns: [probeKeys..., probePayloads...,
     // buildPayloads...]. For a LEFT join, a probe row with no match emits one row with null build
     // payloads. Consumes both sides (partitions are freed as they are processed).

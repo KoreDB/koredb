@@ -135,6 +135,14 @@ void GraceHashJoinExecutor::appendBuildFactorized(const std::vector<ValueVector*
     buildParts.spillToReduceResidentBytesTo(memoryBudgetBytes);
 }
 
+void GraceHashJoinExecutor::merge(GraceHashJoinExecutor& other) {
+    // Both sides are radix-partitioned by the same key hash into the same number of partitions, so a
+    // partition-by-partition merge keeps co-partitioning intact. probeParts is normally empty at merge
+    // time (build executors are merged before the probe drains), but merging it is harmless.
+    buildParts.merge(other.buildParts);
+    probeParts.merge(other.probeParts);
+}
+
 std::unique_ptr<JoinHashTable> GraceHashJoinExecutor::buildHashTableForPartition(idx_t p) {
     auto jht = std::make_unique<JoinHashTable>(*mm, copyTypes(keyTypes), makeJoinHashTableSchema());
     auto& buildPart = buildParts.getResidentPartition(p);

@@ -1002,6 +1002,125 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorLeftJoin) {
         true /*isLeftJoin*/);
 }
 
+// Exercises GraceHashJoinExecutor::merge: two per-thread build executors accumulate disjoint halves of
+// the build side (each spilling under a tiny budget), are merged into one, then a single probe joins
+// against the merged partitions. This is the multi-threaded build path (parallel per-thread build
+// executors merged before the serial probe). The result must match a brute-force reference over the
+// whole build side, proving co-partitioning survives the merge.
+static void runGraceMergeTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
+    uint64_t budget) {
+    using namespace kuzu::processor;
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> buildPayloadTypes;
+    buildPayloadTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> probePayloadTypes;
+    probePayloadTypes.push_back(LogicalType::INT64());
+
+    auto makeExec = [&](const std::string& stem) {
+        return GraceHashJoinExecutor(mm, fs,
+            (std::filesystem::temp_directory_path() / (stem + "_b.spill")).string(),
+            (std::filesystem::temp_directory_path() / (stem + "_p.spill")).string(),
+            LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
+            LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, budget);
+    };
+    GraceHashJoinExecutor exec0 = makeExec("kuzu_ghje_merge0");
+    GraceHashJoinExecutor exec1 = makeExec("kuzu_ghje_merge1");
+
+    const uint64_t numBuild = 2000, numProbe = 1200;
+    auto buildKeyFn = [](uint64_t i) { return static_cast<int64_t>(i % 10); };
+    auto probeKeyFn = [](uint64_t j) { return static_cast<int64_t>(j % 12); };
+
+    auto feedBuild = [&](GraceHashJoinExecutor& exec, uint64_t lo, uint64_t hi) {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm);
+        ValueVector payVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        payVec.state = state;
+        for (uint64_t b = lo; b < hi; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, hi - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                keyVec.setNull(r, false);
+                keyVec.setValue<int64_t>(r, buildKeyFn(b + r));
+                payVec.setNull(r, false);
+                payVec.setValue<int64_t>(r, static_cast<int64_t>(b + r));
+            }
+            exec.appendBuild({&keyVec}, {&payVec});
+        }
+    };
+    // Two disjoint build halves into two executors, then merge into exec0.
+    feedBuild(exec0, 0, numBuild / 2);
+    feedBuild(exec1, numBuild / 2, numBuild);
+    exec0.merge(exec1);
+    // Probe against the merged build.
+    {
+        auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+        ValueVector keyVec(LogicalType::INT64(), mm);
+        ValueVector payVec(LogicalType::INT64(), mm);
+        keyVec.state = state;
+        payVec.state = state;
+        for (uint64_t b = 0; b < numProbe; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, numProbe - b);
+            state->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                keyVec.setNull(r, false);
+                keyVec.setValue<int64_t>(r, probeKeyFn(b + r));
+                payVec.setNull(r, false);
+                payVec.setValue<int64_t>(r, static_cast<int64_t>(b + r));
+            }
+            exec0.appendProbe({&keyVec}, {&payVec});
+        }
+    }
+    auto output = exec0.computeInnerJoin();
+
+    // Brute-force reference over the whole build side.
+    std::map<std::pair<int64_t, int64_t>, int64_t> expected;
+    std::unordered_map<int64_t, std::vector<int64_t>> buildByKey;
+    for (uint64_t i = 0; i < numBuild; i++) {
+        buildByKey[buildKeyFn(i)].push_back(static_cast<int64_t>(i));
+    }
+    for (uint64_t j = 0; j < numProbe; j++) {
+        auto it = buildByKey.find(probeKeyFn(j));
+        if (it == buildByKey.end()) {
+            continue;
+        }
+        for (auto bp : it->second) {
+            expected[{probeKeyFn(j), bp}]++;
+        }
+    }
+
+    std::vector<LogicalType> outTypes;
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (auto& t : outTypes) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(t.copy())));
+        values.push_back(holders.back().get());
+    }
+    std::map<std::pair<int64_t, int64_t>, int64_t> got;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        got[{values[0]->getValue<int64_t>(), values[2]->getValue<int64_t>()}]++;
+    }
+
+    ASSERT_EQ(got.size(), expected.size());
+    ASSERT_TRUE(got == expected)
+        << "GraceHashJoinExecutor merged output differs from brute-force reference";
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorMergeInMemory) {
+    runGraceMergeTest(getMemoryManager(*database), getFileSystem(*database), 1ull << 30 /*budget*/);
+}
+
+TEST_F(BufferManagerTest, GraceHashJoinExecutorMergeSpill) {
+    runGraceMergeTest(getMemoryManager(*database), getFileSystem(*database), 4096 /*forces spill*/);
+}
+
 // Exercises the MARK (EXISTS / semi-join) grace path: for each probe row emit exactly one output row
 // [probeKey, probePayload, mark], where mark == whether the probe key exists in the build side (a
 // NULL probe key never matches -> false). The build side carries keys only (no payload), as a MARK
