@@ -1837,6 +1837,101 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorSpillStringKey) {
         false /*intKey*/);
 }
 
+// Regression: a FLAT group-by input -- one group per append batch, with an UNFLAT aggregate-input
+// column (the shape a correlated subquery aggregate produces, e.g. `RETURN a, COUNT { MATCH (a)-->() }`)
+// -- must route the whole group to hash(key)'s partition instead of asserting in the unflat scatter
+// path (partitioned_factorized_table appendVectors requires an unflat chunk). Feeds each group as a
+// separate flat-key batch of unflat values and checks COUNT/SUM per group against a brute-force
+// reference under a given budget (spilling and in-memory).
+static void runPartitionedAggFlatKeyTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
+    uint64_t budget) {
+    using namespace kuzu::processor;
+    using namespace kuzu::function;
+
+    std::vector<LogicalType> keyTypes;
+    keyTypes.push_back(LogicalType::INT64());
+    std::vector<LogicalType> aggInputTypes;
+    aggInputTypes.push_back(LogicalType::ANY());   // COUNT(*)
+    aggInputTypes.push_back(LogicalType::INT64());  // SUM(value)
+    std::vector<LogicalType> aggResultTypes;
+    aggResultTypes.push_back(LogicalType::INT64());
+    aggResultTypes.push_back(LogicalType::INT64());
+
+    PartitionedAggregateExecutor exec(mm, fs,
+        (std::filesystem::temp_directory_path() / "kuzu_pae_flat.spill").string(),
+        LogicalType::copy(keyTypes), std::vector<LogicalType>{} /*dependentKeyTypes*/,
+        makeCountSumAggFuncs(), LogicalType::copy(aggInputTypes), LogicalType::copy(aggResultTypes),
+        2 /*logNumPartitions*/, budget);
+
+    const int64_t numGroups = 50;
+    const uint64_t perGroup = 300; // several vector-sized blocks per group
+    auto valOf = [](int64_t g, uint64_t j) { return static_cast<int64_t>((g * 131 + j * 7) % 100); };
+
+    // Flat group-key vector (single value per batch); the aggregate input is a separate unflat vector.
+    auto keyState = DataChunkState::getSingleValueDataChunkState();
+    ValueVector keyVec(LogicalType::INT64(), mm);
+    keyVec.state = keyState;
+    auto valState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+    ValueVector valVec(LogicalType::INT64(), mm);
+    valVec.state = valState;
+
+    std::map<int64_t, std::pair<int64_t, int64_t>> expected;
+    for (int64_t g = 0; g < numGroups; g++) {
+        keyState->getSelVectorUnsafe().setToUnfiltered(1);
+        keyVec.setNull(0, false);
+        keyVec.setValue<int64_t>(0, g);
+        for (uint64_t b = 0; b < perGroup; b += DEFAULT_VECTOR_CAPACITY) {
+            const auto m = std::min<uint64_t>(DEFAULT_VECTOR_CAPACITY, perGroup - b);
+            valState->initOriginalAndSelectedSize(m);
+            for (uint64_t r = 0; r < m; r++) {
+                valVec.setNull(r, false);
+                valVec.setValue<int64_t>(r, valOf(g, b + r));
+            }
+            exec.append({&keyVec}, {} /*dependentKeyVectors*/, {nullptr, &valVec});
+            auto& e = expected[g];
+            for (uint64_t r = 0; r < m; r++) {
+                e.first += 1;
+                e.second += valOf(g, b + r);
+            }
+        }
+    }
+
+    auto output = exec.computeAggregates();
+
+    // Output columns: [key, count(INT64), sum(INT64)].
+    std::vector<LogicalType> outTypes;
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    outTypes.push_back(LogicalType::INT64());
+    std::vector<std::unique_ptr<Value>> holders;
+    std::vector<Value*> values;
+    for (auto& t : outTypes) {
+        holders.push_back(std::make_unique<Value>(Value::createDefaultValue(t.copy())));
+        values.push_back(holders.back().get());
+    }
+    std::map<int64_t, std::pair<int64_t, int64_t>> got;
+    FlatTupleIterator it(*output, values);
+    while (it.hasNextFlatTuple()) {
+        it.getNextFlatTuple();
+        got[values[0]->getValue<int64_t>()] = {values[1]->getValue<int64_t>(),
+            values[2]->getValue<int64_t>()};
+    }
+
+    ASSERT_EQ(got.size(), static_cast<size_t>(numGroups));
+    ASSERT_TRUE(got == expected)
+        << "PartitionedAggregateExecutor flat-key result differs from brute-force reference";
+}
+
+TEST_F(BufferManagerTest, PartitionedAggregateExecutorFlatKeySpill) {
+    runPartitionedAggFlatKeyTest(getMemoryManager(*database), getFileSystem(*database),
+        4096 /*budget forces spill*/);
+}
+
+TEST_F(BufferManagerTest, PartitionedAggregateExecutorFlatKeyNoSpill) {
+    runPartitionedAggFlatKeyTest(getMemoryManager(*database), getFileSystem(*database),
+        1ull << 30 /*in memory*/);
+}
+
 // Picks the non-distinct MIN(STRING) aggregate function out of its function set. The min/max function
 // set entries are fully concrete (the comparison op is baked in via template), so no bind step is
 // needed.

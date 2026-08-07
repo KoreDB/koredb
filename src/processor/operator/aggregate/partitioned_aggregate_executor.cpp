@@ -145,7 +145,17 @@ void PartitionedAggregateExecutor::append(const std::vector<ValueVector*>& keyVe
         }
     }
     allVectors.push_back(multiplicityVector.get());
-    parts.appendVectors(allVectors, *hashVector);
+    if (state->isFlat()) {
+        // A flat group-by input (e.g. a correlated subquery aggregate, or a single-group aggregate)
+        // has one group per batch, so route the whole group to hash(key)'s partition. Any unflat
+        // aggregate-input column sharing the batch is flattened into its rows while the flat key and
+        // multiplicity columns broadcast (FactorizedTable::append). appendVectors below assumes an
+        // unflat (multi-row) chunk to scatter and would assert on a flat one.
+        parts.appendFactorizedGroup(allVectors, hashVector->getValue<hash_t>(sel[0]));
+    } else {
+        // Unflat group-by: scatter each row to its group's partition by hash.
+        parts.appendVectors(allVectors, *hashVector);
+    }
     parts.spillToReduceResidentBytesTo(memoryBudgetBytes);
 }
 
