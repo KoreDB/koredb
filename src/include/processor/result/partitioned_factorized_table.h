@@ -41,6 +41,13 @@ public:
     PartitionedFactorizedTable(storage::MemoryManager* mm,
         std::vector<common::LogicalType> columnTypes, common::idx_t logNumPartitions,
         common::VirtualFileSystem* vfs, std::string tmpFilePath);
+    // Factorization-preserving overload: `tableSchema` may mark columns unflat (factorized/overflow).
+    // When it does, spill/reload use FactorizedTable::serializePreservingFactorization so a factorized
+    // (e.g. RETURN *) payload is NOT flattened into the cross-product on the way to disk. `columnTypes`
+    // still gives each column's logical type (the schema does not store types).
+    PartitionedFactorizedTable(storage::MemoryManager* mm,
+        std::vector<common::LogicalType> columnTypes, FactorizedTableSchema tableSchema,
+        common::idx_t logNumPartitions, common::VirtualFileSystem* vfs, std::string tmpFilePath);
     ~PartitionedFactorizedTable();
 
     common::idx_t getNumPartitions() const { return partitions.size(); }
@@ -106,6 +113,8 @@ private:
 private:
     storage::MemoryManager* mm;
     std::vector<common::LogicalType> columnTypes;
+    FactorizedTableSchema partitionSchema; // canonical per-partition schema (may include unflat cols)
+    bool preserveFactorization;            // true iff partitionSchema has any unflat (overflow) column
     common::idx_t logNumPartitions;
     uint64_t numBytesPerTuple;
     std::vector<std::unique_ptr<FactorizedTable>> partitions;

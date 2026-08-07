@@ -21,11 +21,31 @@ using namespace kuzu::storage;
 namespace kuzu {
 namespace processor {
 
+static bool schemaHasUnflatColumn(const FactorizedTableSchema& schema) {
+    for (auto i = 0u; i < schema.getNumColumns(); i++) {
+        if (!schema.getColumn(i)->isFlat()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 PartitionedFactorizedTable::PartitionedFactorizedTable(MemoryManager* mm,
     std::vector<LogicalType> columnTypes, idx_t logNumPartitions, VirtualFileSystem* vfs,
     std::string tmpFilePath)
-    : mm{mm}, columnTypes{std::move(columnTypes)}, logNumPartitions{logNumPartitions}, vfs{vfs},
-      tmpFilePath{std::move(tmpFilePath)} {
+    // NOTE: pass copies to both the types and the schema argument. Do NOT std::move(columnTypes) into
+    // one argument while copying it into another -- argument evaluation order is unspecified, so the
+    // copy could read a moved-from (empty) vector.
+    : PartitionedFactorizedTable(mm, LogicalType::copy(columnTypes),
+          FactorizedTableUtils::createFlatTableSchema(LogicalType::copy(columnTypes)),
+          logNumPartitions, vfs, std::move(tmpFilePath)) {}
+
+PartitionedFactorizedTable::PartitionedFactorizedTable(MemoryManager* mm,
+    std::vector<LogicalType> columnTypes, FactorizedTableSchema tableSchema, idx_t logNumPartitions,
+    VirtualFileSystem* vfs, std::string tmpFilePath)
+    : mm{mm}, columnTypes{std::move(columnTypes)}, partitionSchema{std::move(tableSchema)},
+      preserveFactorization{schemaHasUnflatColumn(partitionSchema)},
+      logNumPartitions{logNumPartitions}, vfs{vfs}, tmpFilePath{std::move(tmpFilePath)} {
     const auto numPartitions = static_cast<idx_t>(1) << logNumPartitions;
     partitions.reserve(numPartitions);
     for (auto p = 0u; p < numPartitions; p++) {
@@ -49,7 +69,7 @@ PartitionedFactorizedTable::~PartitionedFactorizedTable() {
 }
 
 FactorizedTableSchema PartitionedFactorizedTable::createSchema() const {
-    return FactorizedTableUtils::createFlatTableSchema(LogicalType::copy(columnTypes));
+    return partitionSchema.copy();
 }
 
 FileInfo* PartitionedFactorizedTable::getOrCreateFile() {
@@ -168,7 +188,11 @@ void PartitionedFactorizedTable::spillPartition(idx_t partitionIdx) {
         auto writer = std::make_shared<BufferedFileWriter>(*file);
         writer->setFileOffset(fileWriteOffset);
         Serializer serializer(writer);
-        table.serialize(serializer, columnTypes);
+        if (preserveFactorization) {
+            table.serializePreservingFactorization(serializer, columnTypes);
+        } else {
+            table.serialize(serializer, columnTypes);
+        }
         writer->flush();
         const auto endOffset = writer->getFileOffset();
         spillState.spilled = true;
@@ -191,7 +215,10 @@ void PartitionedFactorizedTable::reloadPartition(idx_t partitionIdx) {
     auto blob = std::make_unique<uint8_t[]>(spillState.byteSize);
     fileInfo->readFromFile(blob.get(), spillState.byteSize, spillState.fileOffset);
     Deserializer deserializer(std::make_unique<BufferReader>(blob.get(), spillState.byteSize));
-    partitions[partitionIdx] = FactorizedTable::deserialize(deserializer, mm, columnTypes);
+    partitions[partitionIdx] =
+        preserveFactorization ?
+            FactorizedTable::deserializePreservingFactorization(deserializer, mm, columnTypes) :
+            FactorizedTable::deserialize(deserializer, mm, columnTypes);
     spillState.spilled = false;
     spillState.byteSize = 0;
     spillState.numTuples = 0;

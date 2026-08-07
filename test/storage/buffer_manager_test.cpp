@@ -207,6 +207,82 @@ TEST_F(BufferManagerTest, FactorizedTablePreserveFactorizationRoundTrip) {
     ASSERT_FALSE(iterator.hasNextFlatTuple());
 }
 
+// Verifies PartitionedFactorizedTable preserves factorization across spill+reload when constructed
+// with an unflat schema: a partition holding factorized (flat key + unflat list payload) rows spills
+// and reloads with the same raw-tuple count and flat expansion, instead of the plain path's flattening.
+TEST_F(BufferManagerTest, PartitionedFactorizedTablePreserveFactorizationSpillReload) {
+    using namespace kuzu::processor;
+    auto* mm = getMemoryManager(*database);
+    auto* fs = getFileSystem(*database);
+    std::vector<LogicalType> columnTypes;
+    columnTypes.push_back(LogicalType::INT64()); // flat key
+    columnTypes.push_back(LogicalType::INT64()); // unflat list payload
+
+    FactorizedTableSchema schema;
+    schema.appendColumn(ColumnSchema(false /*isUnFlat*/, 0 /*groupID*/,
+        LogicalTypeUtils::getRowLayoutSize(LogicalType::INT64())));
+    schema.appendColumn(
+        ColumnSchema(true /*isUnFlat*/, 1 /*groupID*/, sizeof(common::overflow_value_t)));
+    const auto spillPath =
+        (std::filesystem::temp_directory_path() / "kuzu_pft_factorized_test.spill").string();
+    PartitionedFactorizedTable partitioned(mm, LogicalType::copy(columnTypes), std::move(schema),
+        1 /*logNumPartitions*/, fs, spillPath);
+    ASSERT_EQ(partitioned.getNumPartitions(), 2u);
+
+    // Populate partition 0 directly with factorized rows (the hash-scatter append is flat-only; this
+    // exercises the spill/reload path, which is what M2 changes).
+    auto flatState = DataChunkState::getSingleValueDataChunkState();
+    auto unflatState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
+    ValueVector keyVector(LogicalType::INT64(), mm);
+    ValueVector payloadVector(LogicalType::INT64(), mm);
+    keyVector.state = flatState;
+    payloadVector.state = unflatState;
+    const uint64_t numRawTuples = 6;
+    uint64_t expectedFlatTuples = 0;
+    {
+        auto& part = partitioned.getResidentPartition(0);
+        for (auto i = 0u; i < numRawTuples; i++) {
+            keyVector.setNull(0, false);
+            keyVector.setValue<int64_t>(0, static_cast<int64_t>(i) * 100);
+            const auto listLen = i + 1;
+            unflatState->getSelVectorUnsafe().setToUnfiltered(listLen);
+            for (auto e = 0u; e < listLen; e++) {
+                payloadVector.setNull(e, false);
+                payloadVector.setValue<int64_t>(e, static_cast<int64_t>(i) * 10 + e);
+            }
+            std::vector<ValueVector*> vectors{&keyVector, &payloadVector};
+            part.append(vectors);
+            expectedFlatTuples += listLen;
+        }
+    }
+    ASSERT_EQ(partitioned.getPartitionNumTuples(0), numRawTuples);
+
+    partitioned.spillPartition(0);
+    ASSERT_TRUE(partitioned.isSpilled(0));
+
+    auto& reloaded = partitioned.getResidentPartition(0); // reloads from disk
+    ASSERT_FALSE(partitioned.isSpilled(0));
+    ASSERT_EQ(reloaded.getNumTuples(), numRawTuples);
+    ASSERT_EQ(reloaded.getTotalNumFlatTuples(), expectedFlatTuples);
+
+    std::vector<std::unique_ptr<Value>> valueHolders;
+    std::vector<Value*> values;
+    for (auto& type : columnTypes) {
+        valueHolders.push_back(std::make_unique<Value>(Value::createDefaultValue(type.copy())));
+        values.push_back(valueHolders.back().get());
+    }
+    FlatTupleIterator iterator(reloaded, values);
+    for (auto i = 0u; i < numRawTuples; i++) {
+        for (auto e = 0u; e < i + 1; e++) {
+            ASSERT_TRUE(iterator.hasNextFlatTuple());
+            iterator.getNextFlatTuple();
+            ASSERT_EQ(values[0]->getValue<int64_t>(), static_cast<int64_t>(i) * 100);
+            ASSERT_EQ(values[1]->getValue<int64_t>(), static_cast<int64_t>(i) * 10 + e);
+        }
+    }
+    ASSERT_FALSE(iterator.hasNextFlatTuple());
+}
+
 // Verifies the core of out-of-core (Grace) hash join / partitioned aggregation: build-side tuples
 // are radix-scattered into partitions by the high bits of their hash, each partition can be spilled
 // to disk (position-independent) and reloaded, and appending to a spilled partition transparently
