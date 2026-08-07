@@ -26,14 +26,13 @@ uint64_t getExternalMergeSortActivationCount() {
     return externalSortActivationCount.load();
 }
 
-// v1 external merge sort supports only fixed-width keys (memcmp of the encoded key is then a total
-// order) and flat payloads read one value per tuple via getAsValue, all in a single input data chunk
-// (so key and payload positions line up). STRING/nested keys, nested payloads, and multi-chunk
-// (factorized) inputs fall back to the in-memory sort.
+// The external merge sort supports fixed-width and STRING keys (STRING prefix ties are resolved
+// against the full payload string) and flat payloads read one value per tuple via getAsValue, all in
+// a single input data chunk (so key and payload positions line up). Nested keys, nested payloads, and
+// multi-chunk (factorized) inputs fall back to the in-memory sort.
 static bool isExternalSortEligible(const OrderByDataInfo& info) {
     for (auto& keyType : info.keyTypes) {
-        if (LogicalTypeUtils::isNested(keyType) ||
-            keyType.getPhysicalType() == PhysicalTypeID::STRING) {
+        if (LogicalTypeUtils::isNested(keyType)) {
             return false;
         }
     }

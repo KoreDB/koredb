@@ -2203,11 +2203,14 @@ TEST_F(BufferManagerTest, ExternalMergeSortDifferential) {
 TEST_F(BufferManagerTest, SpillOrderByDifferential) {
     using kuzu::processor::getExternalMergeSortActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
-    ASSERT_TRUE(conn->query("CREATE NODE TABLE ob(id INT64, a INT64, b DOUBLE, s STRING, "
+    // `us` is a unique long string with a shared 12-char prefix ("commonprefix"), so ordering by it
+    // ties on the encoded 12-byte prefix and must be resolved against the full payload string.
+    ASSERT_TRUE(conn->query("CREATE NODE TABLE ob(id INT64, a INT64, b DOUBLE, s STRING, us STRING, "
                             "PRIMARY KEY(id));")
                     ->isSuccess());
     ASSERT_TRUE(conn->query("UNWIND range(0, 4999) AS i CREATE (:ob {id: i, a: (i * 7) % 50, "
-                            "b: (i % 13) * 1.5, s: 'row' + cast(i % 20 AS STRING)});")
+                            "b: (i % 13) * 1.5, s: 'row' + cast(i % 20 AS STRING), "
+                            "us: 'commonprefix' + cast(i AS STRING)});")
                     ->isSuccess());
     const std::vector<std::string> queries = {
         // Fixed-width keys, INT64 + STRING payload (scalar string payload round-trip).
@@ -2216,6 +2219,12 @@ TEST_F(BufferManagerTest, SpillOrderByDifferential) {
         "MATCH (n:ob) RETURN n.id, n.b ORDER BY n.b DESC, n.id ASC",
         // Single unique key.
         "MATCH (n:ob) RETURN n.id, n.a ORDER BY n.id DESC",
+        // Unique long STRING key (ASC/DESC): every value shares the 12-char encoded prefix, so the
+        // full-string tie-break decides the order.
+        "MATCH (n:ob) RETURN n.id, n.us ORDER BY n.us ASC",
+        "MATCH (n:ob) RETURN n.id, n.us ORDER BY n.us DESC",
+        // STRING as a secondary key after a tie-heavy INT64 key.
+        "MATCH (n:ob) RETURN n.a, n.us, n.id ORDER BY n.a ASC, n.us DESC",
     };
     const auto before = getExternalMergeSortActivationCount();
     for (const auto& q : queries) {

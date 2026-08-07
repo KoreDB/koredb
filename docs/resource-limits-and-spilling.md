@@ -387,29 +387,36 @@ broaden coverage and reach the hard `RETURN *` case:
    Gated by `spill_order_by` (+`spill_order_by_budget`), plumbed exactly like `spill_aggregate` (section
    7), **off by default**. `OrderBy::initLocalStateInternal` activates the path at runtime when
    `spill_order_by` is on, `numThreads == 1`, and the sort is eligible; otherwise the in-memory sort
-   runs byte-for-byte unchanged. **Eligibility (v1):** fixed-width keys (non-`STRING`, non-nested — so
-   `memcmp` of the encoded key is a *total* order), non-nested payloads, and a single input data chunk.
+   runs byte-for-byte unchanged. **Eligibility:** fixed-width or `STRING` keys, non-nested payloads, and
+   a single input data chunk.
    - **Run generation** (`append`): reuse `OrderByKeyEncoder` to turn each tuple's keys into a
      memcmp-comparable byte prefix and pair it with the payload captured as self-describing
      `Value::serialize` bytes; buffer these `(key, payload)` records until the budget is hit, then sort
-     the run in memory (by `memcmp`) and spill it to a single scratch file. Decoupling the payload as
-     per-row `Value` bytes (rather than a spilled `FactorizedTable`) means runs carry no back-pointers
-     and need no re-basing.
+     the run in memory and spill it to a single scratch file. Decoupling the payload as per-row `Value`
+     bytes (rather than a spilled `FactorizedTable`) means runs carry no back-pointers and need no
+     re-basing.
+   - **Comparison** (`compareRecords`): plain `memcmp` of the encoded key for fixed-width keys;
+     otherwise column-by-column, resolving a `STRING` column's 12-byte-prefix tie against the full
+     string captured in the payload before moving to the next column — byte-for-byte matching the
+     in-memory `KeyBlockMerger::compareTuplePtrWithStringCol` (down to treating trailing non-string
+     columns after the last string column as a tie), so the spilled order is identical to the in-memory
+     sort. Used for both the in-run sort and the merge heap.
    - **Merge / scan** (`scanNext`, driven by `OrderByScan`): a **k-way streaming merge** — one
-     `BufferedFileReader` per run, a min-heap on the encoded key — emits sorted tuples straight into the
-     output vectors (`Value::deserialize` → `copyFromValue`). Memory is bounded to ~the budget during
-     generation and ~one buffered page per run during the merge; disk reads are sequential per run.
+     `BufferedFileReader` per run, a min-heap on `compareRecords` — emits sorted tuples straight into
+     the output vectors (`Value::deserialize` → `copyFromValue`). Because each run head's full payload
+     is already resident, the string tie-break needs no extra disk reads. Memory is bounded to ~the
+     budget during generation and ~one buffered page per run during the merge; disk reads are sequential
+     per run.
 
    `OrderByMerge` naturally no-ops (the executor merges internally, so `sortedKeyBlocks` stays empty).
    Verified by `buffer_manager_test`: `ExternalMergeSortDifferential` (library — 3000 rows, 4 KiB
    budget forcing 6 spilled runs, multiset + key-order checks over multi-column ASC/DESC/NULL keys) and
-   `SpillOrderByDifferential` (operator — 5000 rows, total-order queries, spill on vs off must match,
-   activation asserted), plus e2e `order_by/spill_order_by.test`.
+   `SpillOrderByDifferential` (operator — 5000 rows, total-order queries including long `STRING` keys
+   that share a 12-char prefix, spill on vs off must match, activation asserted), plus e2e
+   `order_by/spill_order_by.test`.
 
-   *Remaining sub-pieces:* **STRING/nested keys** — the encoder only stores a 12-byte string prefix, so
-   two long strings sharing that prefix tie under `memcmp`; resolving that needs a full-value tie-break
-   against the payload during the merge. **Multi-threaded** run generation (per-thread executors merged
-   at a barrier), and **factorized / multi-chunk** inputs.
+   *Remaining sub-pieces:* **nested keys** (the encoder does not encode nested types), **multi-threaded**
+   run generation (per-thread executors merged at a barrier), and **factorized / multi-chunk** inputs.
 
 6. **Partitioned aggregation — broadening.** The library executor and the gated live operator now
    exist (sections 6–7). What remains: distinct aggregates, multi-state / multi-chunk inputs,

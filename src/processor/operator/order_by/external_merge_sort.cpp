@@ -36,6 +36,61 @@ ExternalMergeSort::ExternalMergeSort(const OrderByDataInfo& info, storage::Memor
     numBytesPerTuple = encodedKeyBytes + OrderByConstants::NUM_BYTES_FOR_PAYLOAD_IDX;
     numKeyBytes = encodedKeyBytes;
     numPayloadCols = info.payloadTypes.size();
+    // Record each STRING key column's encoded-key offset and the payload column holding its full
+    // value, so a prefix tie can be resolved against the full string during comparison.
+    uint32_t encOffset = 0;
+    for (auto k = 0u; k < info.keyTypes.size(); k++) {
+        if (info.keyTypes[k].getPhysicalType() == common::PhysicalTypeID::STRING) {
+            strKeyCols.push_back(StrKeyCol{encOffset, info.isAscOrder[k], info.keyInPayloadPos[k]});
+        }
+        encOffset += OrderByKeyEncoder::getEncodingSize(info.keyTypes[k]);
+    }
+}
+
+int ExternalMergeSort::compareRecords(const uint8_t* keyA,
+    const std::vector<std::shared_ptr<Value>>& payloadA, const uint8_t* keyB,
+    const std::vector<std::shared_ptr<Value>>& payloadB) const {
+    if (strKeyCols.empty()) {
+        return std::memcmp(keyA, keyB, numKeyBytes);
+    }
+    // Column-by-column, resolving each STRING column's prefix tie against the full payload string
+    // before moving on. This mirrors KeyBlockMerger::compareTuplePtrWithStringCol exactly (including
+    // that trailing non-string columns after the last string column are treated as a tie), so the
+    // spilled order is identical to the in-memory sort.
+    const uint32_t strEncSize =
+        OrderByKeyEncoder::getEncodingSize(LogicalType(LogicalTypeID::STRING));
+    uint32_t lastComparedBytes = 0;
+    for (auto& sc : strKeyCols) {
+        const auto cmpLen = sc.offsetInEncodedKey - lastComparedBytes + strEncSize;
+        int result = std::memcmp(keyA + lastComparedBytes, keyB + lastComparedBytes, cmpLen);
+        const auto* leftStrPtr = keyA + sc.offsetInEncodedKey;
+        const auto* rightStrPtr = keyB + sc.offsetInEncodedKey;
+        if (OrderByKeyEncoder::isNullVal(leftStrPtr, sc.isAsc) &&
+            OrderByKeyEncoder::isNullVal(rightStrPtr, sc.isAsc)) {
+            lastComparedBytes = sc.offsetInEncodedKey + strEncSize;
+            continue;
+        }
+        if (result == 0) {
+            const bool leftLong = OrderByKeyEncoder::isLongStr(leftStrPtr, sc.isAsc);
+            const bool rightLong = OrderByKeyEncoder::isLongStr(rightStrPtr, sc.isAsc);
+            if (!leftLong && !rightLong) {
+                continue; // both fit in the prefix -> equal on this column
+            } else if (leftLong && !rightLong) {
+                return sc.isAsc ? 1 : -1;
+            } else if (!leftLong && rightLong) {
+                return sc.isAsc ? -1 : 1;
+            }
+            const std::string sA = payloadA[sc.payloadColIdx]->getValue<std::string>();
+            const std::string sB = payloadB[sc.payloadColIdx]->getValue<std::string>();
+            if (sA == sB) {
+                lastComparedBytes = sc.offsetInEncodedKey + strEncSize;
+                continue;
+            }
+            return (sc.isAsc == (sA > sB)) ? 1 : -1;
+        }
+        return result;
+    }
+    return 0;
 }
 
 ExternalMergeSort::~ExternalMergeSort() {
@@ -111,11 +166,12 @@ void ExternalMergeSort::sealRun() {
     if (buffer.empty()) {
         return;
     }
-    // Sort the run in memory by the memcmp-comparable encoded key.
+    // Sort the run in memory by the ORDER BY key (memcmp for fixed-width keys, string-aware otherwise).
     std::vector<uint32_t> order(buffer.size());
     std::iota(order.begin(), order.end(), 0);
     std::sort(order.begin(), order.end(), [this](uint32_t a, uint32_t b) {
-        return std::memcmp(buffer[a].key.data(), buffer[b].key.data(), numKeyBytes) < 0;
+        return compareRecords(buffer[a].key.data(), buffer[a].payload, buffer[b].key.data(),
+                   buffer[b].payload) < 0;
     });
     getOrCreateFile();
     const auto runStart = writer->getFileOffset();
@@ -158,7 +214,8 @@ void ExternalMergeSort::advanceCursor(MergeCursor& cursor) {
 }
 
 bool ExternalMergeSort::keyGreater(uint32_t a, uint32_t b) const {
-    return std::memcmp(cursors[a]->headKey.data(), cursors[b]->headKey.data(), numKeyBytes) > 0;
+    return compareRecords(cursors[a]->headKey.data(), cursors[a]->headPayload,
+               cursors[b]->headKey.data(), cursors[b]->headPayload) > 0;
 }
 
 void ExternalMergeSort::initMerge() {

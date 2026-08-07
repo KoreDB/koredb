@@ -30,10 +30,10 @@ namespace processor {
 // generation and ~one buffered page per run during the merge, so a large ORDER BY no longer needs the
 // whole result set resident at once (unlike the in-memory SortSharedState::payloadTables path).
 //
-// v1 scope: the encoded key must be a total order under plain memcmp, i.e. keys are fixed-width
-// (non-STRING, non-nested) types. STRING keys only store a 12-byte prefix in the encoding, so two
-// distinct long strings sharing that prefix would compare equal here; resolving such ties (against the
-// full payload value) is a follow-up. The live operator gates on this restriction.
+// Keys are compared on the memcmp-comparable encoded prefix; STRING keys, whose encoding only holds a
+// 12-byte prefix, are resolved column-by-column against the full string captured in the payload (see
+// compareRecords), byte-for-byte matching the in-memory KeyBlockMerger so the spilled order is
+// identical to the in-memory sort. Nested keys are still excluded (the live operator gates on this).
 class ExternalMergeSort {
 public:
     ExternalMergeSort(const OrderByDataInfo& info, storage::MemoryManager* mm,
@@ -78,12 +78,25 @@ private:
         bool valid = false;
     };
 
+    // A STRING key column: its byte offset within the encoded key, its sort direction, and the index
+    // of the column in the payload where the full string lives (used to resolve prefix ties).
+    struct StrKeyCol {
+        uint32_t offsetInEncodedKey;
+        bool isAsc;
+        uint32_t payloadColIdx;
+    };
+
     void sealRun();
     common::FileInfo* getOrCreateFile();
     void initMerge();
     void advanceCursor(MergeCursor& cursor);
-    // memcmp of the two cursors' head keys; true iff a's head key is strictly greater than b's (used
-    // to drive a min-key heap on top of the STL max-heap primitives).
+    // 3-way compare (<0 / 0 / >0) of two records by the ORDER BY key. Plain memcmp of the encoded key
+    // when there are no STRING keys; otherwise column-by-column with full-string tie resolution,
+    // mirroring the in-memory KeyBlockMerger exactly.
+    int compareRecords(const uint8_t* keyA,
+        const std::vector<std::shared_ptr<common::Value>>& payloadA, const uint8_t* keyB,
+        const std::vector<std::shared_ptr<common::Value>>& payloadB) const;
+    // true iff cursor a's head sorts strictly after b's (drives a min-key heap on the STL max-heap).
     bool keyGreater(uint32_t a, uint32_t b) const;
 
 private:
@@ -96,6 +109,7 @@ private:
     uint32_t numBytesPerTuple; // encoded key bytes + 8-byte (ignored here) payload back-pointer
     uint32_t numKeyBytes;      // numBytesPerTuple - 8
     uint32_t numPayloadCols;
+    std::vector<StrKeyCol> strKeyCols; // STRING key columns, in key order (empty -> pure memcmp)
 
     std::vector<InMemRecord> buffer; // current (unsorted) in-memory run
     uint64_t bufferBytes = 0;

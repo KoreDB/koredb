@@ -11,9 +11,9 @@
 ---- ok
 -STATEMENT CALL spill_order_by=true;
 ---- ok
--STATEMENT CREATE NODE TABLE t(id INT64, a INT64, PRIMARY KEY(id));
+-STATEMENT CREATE NODE TABLE t(id INT64, a INT64, us STRING, PRIMARY KEY(id));
 ---- ok
--STATEMENT UNWIND range(0, 5) AS i CREATE (:t {id: i, a: (i * 3) % 5});
+-STATEMENT UNWIND range(0, 5) AS i CREATE (:t {id: i, a: (i * 3) % 5, us: 'commonprefix' + cast(i AS STRING)});
 ---- ok
 -STATEMENT MATCH (n:t) RETURN n.id, n.a ORDER BY n.a ASC, n.id ASC;
 -CHECK_ORDER
@@ -33,3 +33,23 @@
 2|1
 5|0
 0|0
+# Long STRING key (13 chars, shared 12-char prefix): the encoded 12-byte prefix ties, so the order is
+# decided by the full string.
+-STATEMENT MATCH (n:t) RETURN n.id, n.us ORDER BY n.us ASC;
+-CHECK_ORDER
+---- 6
+0|commonprefix0
+1|commonprefix1
+2|commonprefix2
+3|commonprefix3
+4|commonprefix4
+5|commonprefix5
+-STATEMENT MATCH (n:t) RETURN n.id, n.us ORDER BY n.us DESC;
+-CHECK_ORDER
+---- 6
+5|commonprefix5
+4|commonprefix4
+3|commonprefix3
+2|commonprefix2
+1|commonprefix1
+0|commonprefix0
