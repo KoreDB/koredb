@@ -374,13 +374,24 @@ broaden coverage and reach the hard `RETURN *` case:
    streaming `getNextChunk` instead of the single-chunk materialize+scan.
 
 2. **Factorized (unflat) payloads — the `RETURN *` case.** `PlanMapper::createHashBuildInfo` stores a
-   payload from a different chunk than the keys as an `overflow_value_t` **factorized** column.
-   `PartitionedFactorizedTable` / the executor target **flat** payloads (the serialize path flattens
-   factorization, which would materialize the cross-product). Supporting factorized payloads without
-   flattening needs pointer *swizzling* of the overflow references on spill/reload (convert absolute
-   pointers to relative offsets before writing, back to pointers after). This is what many real
-   many-to-many `RETURN *` queries need, and is the largest remaining sub-piece. It is also the
-   gateway to the multi-chunk operator output in item 1(c).
+   payload from a different chunk than the keys as an `overflow_value_t` **factorized** column, which
+   the plain serialize path flattens into the cross-product on spill.
+
+   **Storage layer — done.** `FactorizedTable::serializePreservingFactorization` /
+   `deserializePreservingFactorization` iterate the *raw* tuples and write each unflat column as
+   `[numElements, elem-Values…]`; `Value`s serialize position-independently, so no pointer swizzling is
+   needed and the round-trip reproduces the exact factorized structure. `PartitionedFactorizedTable`
+   gains a schema-taking constructor and routes spill/reload through the preserving path when its schema
+   has any unflat column (`FactorizedTablePreserveFactorizationRoundTrip`,
+   `PartitionedFactorizedTablePreserveFactorizationSpillReload`).
+
+   **Operator integration — remaining, and the largest sub-piece.** Wiring this into the live Grace
+   join still needs: (a) a factorized **append** path (the scatter `appendVectors` asserts an unflat
+   batch, but a factorized build is one *flat key* + an *unflat list payload* per call), (b) the Grace
+   executor's `buildHashTableForPartition` / `computeJoin` to carry the unflat build payload through the
+   `JoinHashTable`, and (c) **multi-chunk output** emission (a factorized result is probe-flat +
+   build-unflat across separate output chunks) — i.e. this is intertwined with item 1(c), which the
+   single-chunk operator emission cannot yet produce.
 
 3. **Remaining join types & keys** — mark / count joins and multi-column / unflat probe keys in the
    executor (inner + left + single/composite flat key are done).
