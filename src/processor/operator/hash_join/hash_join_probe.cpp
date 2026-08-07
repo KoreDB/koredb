@@ -303,8 +303,11 @@ bool HashJoinProbe::getNextGraceTuples(ExecutionContext* context) {
         if (graceScanPartition >= exec->getNumPartitions()) {
             return false;
         }
-        graceOutput =
-            exec->computePartitionJoin(graceScanPartition++, joinType == JoinType::LEFT);
+        // COUNT join: the build is pre-aggregated to (key, count); each probe row emits its count (0 if
+        // absent). Otherwise INNER/LEFT: computeJoin null-pads a LEFT row that finds no build match.
+        graceOutput = joinType == JoinType::COUNT ?
+                          exec->computeCountPartition(graceScanPartition++) :
+                          exec->computePartitionJoin(graceScanPartition++, joinType == JoinType::LEFT);
         graceScanCursor = 0;
     }
     // A flat output chunk carries one row per call; an unflat one carries a vector of rows.

@@ -104,13 +104,19 @@ static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoi
     info.joinType = hashJoin.getJoinType();
     const auto jt = hashJoin.getJoinType();
     const bool isMark = (jt == JoinType::MARK) && hashJoin.hasMark();
+    const bool isCount = (jt == JoinType::COUNT);
     // Supported shapes: INNER/LEFT with build payloads (computeJoin null-pads a LEFT probe row that
-    // finds no build match, NULL-key rows included), or MARK (EXISTS/semi) whose build side
-    // materializes only keys (empty payloads) and which adds a single BOOL mark column per probe row.
-    // COUNT and every other shape keep the in-memory path.
+    // finds no build match, NULL-key rows included); MARK (EXISTS/semi) whose build side materializes
+    // only keys (empty payloads) and adds a single BOOL mark column per probe row; or COUNT
+    // (size/COUNT{} subquery) whose build is pre-aggregated to (key, count) -- one INT64 count payload
+    // read per probe row (0 when absent). Every other shape keeps the in-memory path.
     if (isMark) {
         if (!payloads.empty()) {
             return info; // a MARK join carrying build payloads is not the shape we handle
+        }
+    } else if (isCount) {
+        if (payloads.size() != 1 || hashJoin.hasMark()) {
+            return info; // COUNT join is a single pre-aggregated count payload, no mark
         }
     } else if (!((jt == JoinType::INNER || jt == JoinType::LEFT) && !hashJoin.hasMark() &&
                    !payloads.empty())) {
@@ -201,9 +207,9 @@ static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoi
     // Single-chunk output -> materialize + scan back into that one chunk; multi-chunk output -> stream
     // the join one flat tuple at a time (correct for any chunk structure).
     info.multiChunkOutput = !sameChunk(outputAllPos);
-    if (isMark && info.multiChunkOutput) {
-        // Only the single-chunk MARK shape (all probe columns + the mark in one data chunk) is handled;
-        // a multi-chunk MARK output falls back to the in-memory path.
+    if ((isMark || isCount) && info.multiChunkOutput) {
+        // Only the single-chunk MARK/COUNT shape (all probe columns + the mark/count in one data chunk)
+        // is handled; a multi-chunk output falls back to the in-memory path.
         return info; // eligible stays false
     }
     info.eligible = true;
