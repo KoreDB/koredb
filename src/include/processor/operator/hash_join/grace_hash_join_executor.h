@@ -87,17 +87,22 @@ public:
         std::vector<common::ValueVector*> buildOutVecs, bool isLeftJoin);
     bool getNextChunk();
 
+    // The kind of join the flat stream materializes per partition. The output column layout differs:
+    // INNER/LEFT read build payloads (LEFT null-pads a non-match); COUNT reads the single pre-aggregated
+    // count payload (0 on a non-match); MARK appends a BOOL mark (no build payloads).
+    enum class FlatStreamMode { INNER, LEFT, MARK, COUNT };
+
     // --- Flat (row-at-a-time) streaming for arbitrary multi-chunk output -------------------------
     // Emit the join one FLAT tuple at a time into `outVecs` (order [probeKeys..., probePayloads...,
-    // buildPayloads...]), setting each vector's state to a single value per call. Unlike the factorized
-    // getNextChunk (probe-flat / build-unflat, which assumes those two live in separate chunks), this
-    // is correct for ANY output chunk structure: every output column gets exactly one value, so a
-    // downstream cross-product over the output chunks yields exactly one row. It is what the live
-    // operator uses when the join output spans several data chunks (the RETURN *-style factorized
-    // case the planner actually produces, e.g. an unflat-key build). Memory is bounded to one
-    // partition's materialized join output plus one partition pair (the join is computed one partition
-    // at a time and scanned out row by row); slower than a vectorized emission but never OOMs.
-    void initFlatStream(std::vector<common::ValueVector*> outVecs, bool isLeftJoin);
+    // <buildPayloads | count | mark>]), setting each vector's state to a single value per call. Unlike
+    // the factorized getNextChunk (probe-flat / build-unflat, which assumes those two live in separate
+    // chunks), this is correct for ANY output chunk structure: every output column gets exactly one
+    // value, so a downstream cross-product over the output chunks yields exactly one row. It is what the
+    // live operator uses when the join output spans several data chunks (a factorized RETURN *-style
+    // join, or a factorized outer for MARK/COUNT). Memory is bounded to one partition's materialized
+    // output plus one partition pair (computed one partition at a time, scanned out row by row); slower
+    // than a vectorized emission but never OOMs. `mode` selects which per-partition materialization runs.
+    void initFlatStream(std::vector<common::ValueVector*> outVecs, FlatStreamMode mode);
     bool getNextFlatTuple();
 
     // Materialize just partition p's join output (columns [probeKeys..., probePayloads...,
@@ -210,8 +215,8 @@ private:
     std::unique_ptr<uint8_t*[]> streamMatchedTuples;
 
     // --- Flat (row-at-a-time) streaming state (valid between initFlatStream and the final call). ---
-    std::vector<common::ValueVector*> streamFlatOutVecs; // [keys..., probePayloads..., buildPayloads...]
-    bool streamFlatLeftJoin = false;
+    std::vector<common::ValueVector*> streamFlatOutVecs; // [keys..., probePayloads..., build/count/mark]
+    FlatStreamMode streamFlatMode = FlatStreamMode::INNER;
     common::idx_t streamFlatPartition = 0;           // next partition to materialize
     std::unique_ptr<FactorizedTable> streamFlatTable; // current partition's materialized output
     uint64_t streamFlatCursor = 0;                    // next tuple within streamFlatTable to emit

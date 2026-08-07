@@ -205,13 +205,9 @@ static GraceHashJoinInfo computeGraceHashJoinInfo(const LogicalHashJoin& hashJoi
         return info;
     }
     // Single-chunk output -> materialize + scan back into that one chunk; multi-chunk output -> stream
-    // the join one flat tuple at a time (correct for any chunk structure).
+    // the join one flat tuple at a time (correct for any chunk structure). Both are handled for every
+    // supported join type (INNER/LEFT/MARK/COUNT).
     info.multiChunkOutput = !sameChunk(outputAllPos);
-    if ((isMark || isCount) && info.multiChunkOutput) {
-        // Only the single-chunk MARK/COUNT shape (all probe columns + the mark/count in one data chunk)
-        // is handled; a multi-chunk output falls back to the in-memory path.
-        return info; // eligible stays false
-    }
     info.eligible = true;
     for (auto& t : buildKeyTypes) {
         info.keyTypes.push_back(t.copy());

@@ -1670,7 +1670,8 @@ static void runGraceUnflatKeyBuildTest(storage::MemoryManager* mm, common::Virtu
         aOut.state = sA;
         bOut.state = sB;
         oOut.state = sO;
-        exec.initFlatStream({&aOut, &bOut, &oOut}, false /*isLeftJoin*/);
+        exec.initFlatStream({&aOut, &bOut, &oOut},
+            kuzu::processor::GraceHashJoinExecutor::FlatStreamMode::INNER);
         while (exec.getNextFlatTuple()) {
             got[{aOut.getValue<int64_t>(sA->getSelVector()[0]),
                 bOut.getValue<int64_t>(sB->getSelVector()[0]),
@@ -2765,6 +2766,36 @@ TEST_F(BufferManagerTest, GraceHashJoinCountSpillDifferential) {
 
     ASSERT_GT(getGraceHashJoinActivationCount(), before) << "Grace COUNT path did not activate";
     ASSERT_EQ(inMemory, grace) << "Grace COUNT (spilling) vs in-memory mismatch";
+}
+
+// Differential correctness of MULTI-CHUNK MARK / COUNT joins: an EXISTS / COUNT{} subquery over a
+// factorized outer (here (a)-[:knows]->(b), so the output spans a's flat chunk and b's unflat chunk)
+// must return the same rows with spill_hash_join off (in-memory) and on, and the multi-chunk Grace path
+// must actually activate -- proving these shapes reach the flat-stream emission rather than falling back.
+TEST_F(BufferManagerTest, GraceHashJoinMarkCountMultiChunkDifferential) {
+    using kuzu::processor::getGraceHashJoinMultiChunkActivationCount;
+    ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
+    const std::vector<std::string> queries = {
+        // MARK (EXISTS) over a factorized (a, b) outer.
+        "MATCH (a:person)-[:knows]->(b:person) WHERE EXISTS { MATCH (a)-[:studyAt]->(o:organisation) } "
+        "RETURN a.ID, b.ID",
+        // MARK (NOT EXISTS) over the same outer.
+        "MATCH (a:person)-[:knows]->(b:person) WHERE NOT EXISTS { MATCH (a)-[:workAt]->(o:organisation) } "
+        "RETURN a.ID, b.fName",
+        // COUNT over the same factorized outer.
+        "MATCH (a:person)-[:knows]->(b:person) "
+        "RETURN a.ID, b.ID, COUNT { MATCH (a)-[:studyAt]->(o:organisation) }",
+    };
+    const auto before = getGraceHashJoinMultiChunkActivationCount();
+    for (const auto& q : queries) {
+        ASSERT_TRUE(conn->query("CALL spill_hash_join=false;")->isSuccess());
+        const auto inMemory = collectSortedRows(conn.get(), q);
+        ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
+        const auto grace = collectSortedRows(conn.get(), q);
+        ASSERT_EQ(inMemory, grace) << "multi-chunk MARK/COUNT Grace vs in-memory mismatch for: " << q;
+    }
+    ASSERT_GT(getGraceHashJoinMultiChunkActivationCount(), before)
+        << "no MARK/COUNT query activated the multi-chunk Grace path; the check is vacuous";
 }
 
 

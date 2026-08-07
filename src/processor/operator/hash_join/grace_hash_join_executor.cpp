@@ -428,10 +428,14 @@ std::unique_ptr<FactorizedTable> GraceHashJoinExecutor::computeMarkJoinImpl(idx_
     return output;
 }
 
-void GraceHashJoinExecutor::initFlatStream(std::vector<ValueVector*> outVecs, bool isLeftJoin) {
-    KU_ASSERT(outVecs.size() == numKeys + probePayloadTypes.size() + buildPayloadTypes.size());
+void GraceHashJoinExecutor::initFlatStream(std::vector<ValueVector*> outVecs, FlatStreamMode mode) {
+    // MARK appends one BOOL column and reads no build payloads; INNER/LEFT/COUNT carry the build
+    // payloads (COUNT: exactly the one count column).
+    KU_ASSERT(outVecs.size() ==
+              numKeys + probePayloadTypes.size() +
+                  (mode == FlatStreamMode::MARK ? 1 : buildPayloadTypes.size()));
     streamFlatOutVecs = std::move(outVecs);
-    streamFlatLeftJoin = isLeftJoin;
+    streamFlatMode = mode;
     streamFlatPartition = 0;
     streamFlatTable = nullptr;
     streamFlatCursor = 0;
@@ -443,9 +447,23 @@ bool GraceHashJoinExecutor::getNextFlatTuple() {
         if (streamFlatPartition >= buildParts.getNumPartitions()) {
             return false;
         }
-        // Materialize just this partition's join output (and free the partition pair), bounding peak
-        // memory to one partition's result instead of the whole join.
-        streamFlatTable = computeJoin(streamFlatLeftJoin, streamFlatPartition++);
+        // Materialize just this partition's output (and free the partition pair), bounding peak memory
+        // to one partition's result instead of the whole join.
+        const auto p = streamFlatPartition++;
+        switch (streamFlatMode) {
+        case FlatStreamMode::MARK:
+            streamFlatTable = computeMarkJoinImpl(p);
+            break;
+        case FlatStreamMode::COUNT:
+            streamFlatTable = computeJoin(false /*isLeftJoin*/, p, true /*countJoin*/);
+            break;
+        case FlatStreamMode::LEFT:
+            streamFlatTable = computeJoin(true /*isLeftJoin*/, p);
+            break;
+        default: // INNER
+            streamFlatTable = computeJoin(false /*isLeftJoin*/, p);
+            break;
+        }
         streamFlatCursor = 0;
     }
     // Emit one flat tuple: every output column gets a single value, whatever chunk it lives in.

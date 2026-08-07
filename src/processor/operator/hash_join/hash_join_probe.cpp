@@ -206,12 +206,47 @@ uint64_t HashJoinProbe::getJoinResult() {
 // VectorPtr corresponds to one unFlat build side data chunk that is appended to the resultSet).
 bool HashJoinProbe::getNextGraceTuples(ExecutionContext* context) {
     auto* exec = sharedState->getGraceExecutor();
+    if (sharedState->getGraceInfo().multiChunkOutput) {
+        // Multi-chunk (factorized) output: the join columns span several data chunks (a factorized outer
+        // for MARK/COUNT, or an unflat-key build for INNER/LEFT), so the single-chunk materialize+scan
+        // below cannot reproduce the shape. Drain the probe child, then stream the join one FLAT tuple at
+        // a time -- each output column gets one value per call, so the downstream cross-product over
+        // chunks yields exactly one row.
+        if (!graceDrained) {
+            while (children[0]->getNextTuple(context)) {
+                for (auto i = 0u; i < resultSet->multiplicity; ++i) {
+                    exec->appendProbe(keyVectors, probeNonKeyVectors);
+                }
+            }
+            // Output = [probeKeys..., probeNonKeys..., <mark | count | buildPayloads>].
+            std::vector<ValueVector*> outVecs = keyVectors;
+            outVecs.insert(outVecs.end(), probeNonKeyVectors.begin(), probeNonKeyVectors.end());
+            GraceHashJoinExecutor::FlatStreamMode mode;
+            if (joinType == JoinType::MARK) {
+                outVecs.push_back(markVector);
+                mode = GraceHashJoinExecutor::FlatStreamMode::MARK;
+            } else {
+                // COUNT reads the single count payload; INNER/LEFT read the build payloads -- all live in
+                // vectorsToReadInto.
+                outVecs.insert(outVecs.end(), vectorsToReadInto.begin(), vectorsToReadInto.end());
+                mode = joinType == JoinType::COUNT ? GraceHashJoinExecutor::FlatStreamMode::COUNT :
+                       joinType == JoinType::LEFT  ? GraceHashJoinExecutor::FlatStreamMode::LEFT :
+                                                     GraceHashJoinExecutor::FlatStreamMode::INNER;
+            }
+            exec->initFlatStream(std::move(outVecs), mode);
+            graceDrained = true;
+            resultSet->multiplicity = 1;
+        }
+        if (!exec->getNextFlatTuple()) {
+            return false;
+        }
+        metrics->numOutputTuple.increase(1);
+        return true;
+    }
     if (joinType == JoinType::MARK) {
-        // MARK (EXISTS / semi-join) grace path: emit exactly one output row per probe row = [probeKeys...,
-        // probeNonKeys..., mark], where mark is whether the probe row had a build match. Only the
-        // single-chunk shape is eligible (all these columns share one data chunk), so materialize one
-        // partition at a time and scan it back vectorized -- peak memory is bounded to one partition's
-        // rows instead of the whole build side.
+        // Single-chunk MARK (EXISTS / semi-join): emit one output row per probe row = [probeKeys...,
+        // probeNonKeys..., mark]; all columns share one data chunk, so materialize one partition at a
+        // time and scan it back vectorized -- peak memory is bounded to one partition's rows.
         if (!graceDrained) {
             // Phase 1: drain the probe child into the executor's (spilling) probe partitions.
             while (children[0]->getNextTuple(context)) {
@@ -219,8 +254,6 @@ bool HashJoinProbe::getNextGraceTuples(ExecutionContext* context) {
                     exec->appendProbe(keyVectors, probeNonKeyVectors);
                 }
             }
-            // Output column order [probeKeys..., probeNonKeys..., mark] matches computeMarkPartition's
-            // output table; they all share one output data chunk (single-chunk requirement).
             graceOutputVectors = keyVectors;
             graceOutputVectors.insert(graceOutputVectors.end(), probeNonKeyVectors.begin(),
                 probeNonKeyVectors.end());
@@ -248,30 +281,6 @@ bool HashJoinProbe::getNextGraceTuples(ExecutionContext* context) {
         graceOutput->scan(std::span<ValueVector*>(graceOutputVectors), graceScanCursor, n);
         graceScanCursor += n;
         metrics->numOutputTuple.increase(n);
-        return true;
-    }
-    if (sharedState->getGraceInfo().multiChunkOutput) {
-        // Multi-chunk (factorized) output: the join columns span several data chunks (e.g. an
-        // unflat-key build), so the single-chunk materialize+scan below cannot reproduce the shape.
-        // Drain the probe child, then stream the join one FLAT tuple at a time -- each output column
-        // gets one value per call, so the downstream cross-product over chunks yields exactly one row.
-        if (!graceDrained) {
-            while (children[0]->getNextTuple(context)) {
-                for (auto i = 0u; i < resultSet->multiplicity; ++i) {
-                    exec->appendProbe(keyVectors, probeNonKeyVectors);
-                }
-            }
-            std::vector<ValueVector*> outVecs = keyVectors;
-            outVecs.insert(outVecs.end(), probeNonKeyVectors.begin(), probeNonKeyVectors.end());
-            outVecs.insert(outVecs.end(), vectorsToReadInto.begin(), vectorsToReadInto.end());
-            exec->initFlatStream(std::move(outVecs), joinType == JoinType::LEFT);
-            graceDrained = true;
-            resultSet->multiplicity = 1;
-        }
-        if (!exec->getNextFlatTuple()) {
-            return false;
-        }
-        metrics->numOutputTuple.increase(1);
         return true;
     }
     // Single-chunk output: all output columns share one data chunk, so the join is scanned back into
