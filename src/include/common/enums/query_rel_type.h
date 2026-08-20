@@ -5,7 +5,7 @@
 
 #include "path_semantic.h"
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 class RJAlgorithm;
 }
@@ -37,4 +37,4 @@ struct QueryRelTypeUtils {
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

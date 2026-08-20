@@ -13,11 +13,11 @@
 #include "main/client_context.h"
 #include <catalog/catalog_entry/rel_group_catalog_entry.h>
 
-using namespace kuzu::common;
-using namespace kuzu::binder;
-using namespace kuzu::catalog;
+using namespace koredb::common;
+using namespace koredb::binder;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct Label {
@@ -145,4 +145,4 @@ function_set LabelFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

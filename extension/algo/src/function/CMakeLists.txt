@@ -1,6 +1,6 @@
 add_subdirectory(config)
 
-add_library(kuzu_algo_function
+add_library(koredb_algo_function
         OBJECT
         component_ids.cpp
         strongly_connected_components.cpp
@@ -12,5 +12,5 @@ add_library(kuzu_algo_function
         )
 
 set(ALGO_EXTENSION_OBJECT_FILES
-        ${ALGO_EXTENSION_OBJECT_FILES} $<TARGET_OBJECTS:kuzu_algo_function>
+        ${ALGO_EXTENSION_OBJECT_FILES} $<TARGET_OBJECTS:koredb_algo_function>
         PARENT_SCOPE)

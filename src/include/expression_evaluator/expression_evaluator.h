@@ -3,7 +3,7 @@
 #include "main/client_context.h"
 #include "processor/result/result_set.h"
 
-namespace kuzu {
+namespace koredb {
 namespace evaluator {
 
 struct EvaluatorLocalState {
@@ -116,4 +116,4 @@ protected:
 };
 
 } // namespace evaluator
-} // namespace kuzu
+} // namespace koredb

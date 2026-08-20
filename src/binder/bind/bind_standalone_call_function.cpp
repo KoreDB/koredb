@@ -6,9 +6,9 @@
 #include "parser/expression/parsed_function_expression.h"
 #include "parser/standalone_call_function.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 std::unique_ptr<BoundStatement> Binder::bindStandaloneCallFunction(
@@ -29,4 +29,4 @@ std::unique_ptr<BoundStatement> Binder::bindStandaloneCallFunction(
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

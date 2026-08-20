@@ -3,7 +3,7 @@
 #include "main/client_context.h"
 #include "query_graph.h"
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 class QueryGraphLabelAnalyzer {
@@ -23,4 +23,4 @@ private:
 };
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

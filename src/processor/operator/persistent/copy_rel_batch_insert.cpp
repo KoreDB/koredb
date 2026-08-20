@@ -3,7 +3,7 @@
 #include "storage/storage_utils.h"
 #include "storage/table/csr_chunked_node_group.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 static void setOffsetToWithinNodeGroup(storage::ColumnChunkData& chunk,
@@ -91,4 +91,4 @@ void CopyRelBatchInsert::writeToTable(RelBatchInsertExecutionState& executionSta
     }
 }
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

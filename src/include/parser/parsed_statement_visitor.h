@@ -2,7 +2,7 @@
 
 #include "statement.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 class ClientContext;
 }
@@ -63,4 +63,4 @@ private:
 };
 
 } // namespace parser
-} // namespace kuzu
+} // namespace koredb

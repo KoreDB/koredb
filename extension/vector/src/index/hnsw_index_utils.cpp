@@ -8,7 +8,7 @@
 #include "main/client_context.h"
 #include "simsimd.h"
 
-namespace kuzu {
+namespace koredb {
 namespace vector_extension {
 
 void HNSWIndexUtils::validateIndexExistence(const main::ClientContext& context,
@@ -117,4 +117,4 @@ void HNSWIndexUtils::validateColumnType(const common::LogicalType& type) {
 }
 
 } // namespace vector_extension
-} // namespace kuzu
+} // namespace koredb

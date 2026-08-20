@@ -2,13 +2,13 @@
 
 #include "function/struct/vector_struct_functions.h"
 
-using namespace kuzu::storage;
-using namespace kuzu::main;
-using namespace kuzu::common;
-using namespace kuzu::function;
-using namespace kuzu::processor;
+using namespace koredb::storage;
+using namespace koredb::main;
+using namespace koredb::common;
+using namespace koredb::function;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace evaluator {
 
 static void updateNullPattern(ValueVector& patternVector, const ValueVector& idVector) {
@@ -84,4 +84,4 @@ void UndirectedRelExpressionEvaluator::initFurther(const ResultSet& resultSet) {
 }
 
 } // namespace evaluator
-} // namespace kuzu
+} // namespace koredb

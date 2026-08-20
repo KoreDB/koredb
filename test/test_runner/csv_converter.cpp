@@ -11,9 +11,9 @@
 #include "spdlog/spdlog.h"
 #include "test_helper/test_helper.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 void CSVConverter::copySchemaFile() {
@@ -120,7 +120,7 @@ void CSVConverter::readCopyCommandsFromCSVDataset() {
         auto tokens = StringUtils::split(line, " ");
         auto path = std::filesystem::path(extractPath(tokens[3], '"'));
         auto table = tableNameMap[tokens[1]];
-        table->csvFilePath = TestHelper::appendKuzuRootPath(path.string());
+        table->csvFilePath = TestHelper::appendKoreDBRootPath(path.string());
         auto outputFileName = path.stem().string() + fileExtension;
         table->outputFilePath = outputDatasetPath + "/" + outputFileName;
     }
@@ -137,8 +137,8 @@ void CSVConverter::createCopyFile() {
     }
     if (fileExtension == ".json") {
 #ifndef __STATIC_LINK_EXTENSION_TEST__
-        outfile << "load extension \"" + TestHelper::appendKuzuRootPath(
-                                             "extension/json/build/libjson.kuzu_extension\"\n");
+        outfile << "load extension \"" + TestHelper::appendKoreDBRootPath(
+                                             "extension/json/build/libjson.koredb_extension\"\n");
 #endif
     }
     for (auto table : tables) {
@@ -160,7 +160,7 @@ void CSVConverter::convertCSVFiles() {
     if (fileExtension == ".json") {
         auto result = tempConn->query(
             "load extension \"" +
-            TestHelper::appendKuzuRootPath("extension/json/build/libjson.kuzu_extension\""));
+            TestHelper::appendKoreDBRootPath("extension/json/build/libjson.koredb_extension\""));
         if (!result->isSuccess()) {
             spdlog::error(result->getErrorMessage());
         }
@@ -230,4 +230,4 @@ std::string CSVConverter::RelTableInfo::getConverterQuery(main::ClientContext* c
 }
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

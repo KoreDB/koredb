@@ -13,10 +13,10 @@
 #include "storage/table/null_column.h"
 #include <bit>
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 offset_t ListOffsetSizeInfo::getListStartOffset(uint64_t pos) const {
@@ -402,4 +402,4 @@ void ListColumn::checkpointColumnChunk(ColumnCheckpointState& checkpointState,
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

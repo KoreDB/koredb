@@ -5,9 +5,9 @@
 #include <pthread/qos.h>
 #endif
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 #ifndef __SINGLE_THREADED__
@@ -225,4 +225,4 @@ void TaskScheduler::runTask(Task* task) {
     }
 }
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

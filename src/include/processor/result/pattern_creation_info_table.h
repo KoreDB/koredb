@@ -2,7 +2,7 @@
 
 #include "processor/operator/aggregate/aggregate_hash_table.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 struct PatternCreationInfo {
@@ -34,4 +34,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

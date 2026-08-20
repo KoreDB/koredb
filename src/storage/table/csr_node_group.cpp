@@ -6,10 +6,10 @@
 #include "storage/table/rel_table.h"
 #include "transaction/transaction.h"
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 bool CSRNodeGroupScanState::tryScanCachedTuples(RelTableScanState& tableScanState) {
@@ -1010,4 +1010,4 @@ void CSRNodeGroup::finalizeCheckpoint(const UniqLock& lock) {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

@@ -4,12 +4,12 @@
 #include "processor/execution_context.h"
 #include "wsp_utils.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::storage;
-using namespace kuzu::processor;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::storage;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 class Costs {
@@ -334,4 +334,4 @@ std::unique_ptr<RJAlgorithm> WeightedSPDestinationsFunction::getAlgorithm() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

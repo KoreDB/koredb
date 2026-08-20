@@ -10,11 +10,11 @@
 #include "processor/result/factorized_table_util.h"
 #include "storage/buffer_manager/memory_manager.h"
 
-using namespace kuzu::common;
-using namespace kuzu::function;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::function;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 static std::vector<LogicalType> copyTypes(const std::vector<LogicalType>& types) {
@@ -652,4 +652,4 @@ bool GraceHashJoinExecutor::getNextChunk() {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

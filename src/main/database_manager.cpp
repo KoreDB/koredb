@@ -3,9 +3,9 @@
 #include "common/exception/runtime.h"
 #include "common/string_utils.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 DatabaseManager::DatabaseManager() : defaultDatabase{""} {}
@@ -79,4 +79,4 @@ void DatabaseManager::invalidateCache() {
 }
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

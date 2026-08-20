@@ -7,9 +7,9 @@
 #include "function/comparison/comparison_functions.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::string TopKPrintInfo::toString() const {
@@ -283,4 +283,4 @@ void TopK::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

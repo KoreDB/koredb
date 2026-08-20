@@ -4,7 +4,7 @@
 #include "common/types/types.h"
 #include "common/vector/value_vector.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 // scans are based on data specification found here
@@ -490,7 +490,7 @@ void ArrowConverter::fromArrowArray(const ArrowSchema* schema, const ArrowArray*
             return scanArrowArrayFixedSizePrimitive<int64_t>(array, outputVector, mask, srcOffset,
                 dstOffset, count);
         case 'D':
-            // DURATION (KUZU INTERVAL)
+            // DURATION (KOREDB INTERVAL)
             switch (arrowType[2]) {
             case 's':
                 // consider implement overflow checking here?
@@ -595,4 +595,4 @@ void ArrowConverter::fromArrowArray(const ArrowSchema* schema, const ArrowArray*
 }
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

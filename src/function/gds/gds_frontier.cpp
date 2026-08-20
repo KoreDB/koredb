@@ -3,11 +3,11 @@
 #include "function/gds/gds_utils.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::common;
-using namespace kuzu::graph;
-using namespace kuzu::processor;
+using namespace koredb::common;
+using namespace koredb::graph;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 void SparseFrontier::pinTableID(table_id_t tableID) {
@@ -418,4 +418,4 @@ bool SPEdgeCompute::terminate(NodeOffsetMaskMap& maskMap) {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

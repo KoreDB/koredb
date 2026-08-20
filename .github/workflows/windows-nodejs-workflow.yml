@@ -8,36 +8,74 @@ on:
         type: boolean
         required: true
         default: false
-        
+
 jobs:
   build-windows-nodejs:
-    runs-on: self-hosted-windows
+    name: windows-nodejs-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            arch: x64
+            msvcArch: amd64
+          - runner: windows-11-arm
+            arch: arm64
+            msvcArch: arm64
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvcArch }}
+
+      - name: Ensure GNU Make is available
+        shell: pwsh
+        run: |
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            choco install make -y --no-progress
+          }
+          make --version
+
+      - name: Determine NUM_THREADS
+        shell: pwsh
+        run: |
+          "NUM_THREADS=$env:NUMBER_OF_PROCESSORS" >> $env:GITHUB_ENV
+
       - name: Update nightly version
         if: ${{ inputs.isNightly == true }}
+        shell: pwsh
+        working-directory: scripts
         run: |
-          pip3 install packaging
-          python3 update-nightly-build-version.py
-        working-directory: ./scripts
+          python -m pip install packaging
+          python update-nightly-build-version.py
 
       - name: Install Node.js dependencies
         working-directory: tools/nodejs_api
-        run: |
-          npm i
+        shell: cmd
+        run: npm i
 
       - name: Build Node.js native module
         shell: cmd
-        run: |
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-          make nodejs NUM_THREADS=48
+        run: make nodejs NUM_THREADS=%NUM_THREADS%
 
       - name: Move Node.js native module
         working-directory: tools/nodejs_api/build
-        run: ren kuzujs.node kuzujs-win32-x64.node
+        shell: cmd
+        run: ren koredbjs.node koredbjs-win32-${{ matrix.arch }}.node
 
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-nodejs-module
-          path: tools/nodejs_api/build/kuzujs-win32-x64.node
+          name: windows-nodejs-module-${{ matrix.arch }}
+          path: tools/nodejs_api/build/koredbjs-win32-${{ matrix.arch }}.node
+          if-no-files-found: error

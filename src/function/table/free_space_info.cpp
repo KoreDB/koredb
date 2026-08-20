@@ -5,7 +5,7 @@
 #include "storage/storage_manager.h"
 #include "storage/table/node_table.h"
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct FreeSpaceInfoBindData final : TableFuncBindData {
@@ -56,4 +56,4 @@ function_set FreeSpaceInfoFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

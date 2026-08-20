@@ -4,7 +4,7 @@
 #include "common/types/types.h"
 #include "storage/table/column_chunk_data.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 class MemoryManager;
 
@@ -90,4 +90,4 @@ private:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

@@ -4,7 +4,7 @@
 #include "main/database_manager.h"
 #include "processor/execution_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::string DetatchDatabasePrintInfo::toString() const {
@@ -15,7 +15,7 @@ void DetachDatabase::executeInternal(ExecutionContext* context) {
     auto clientContext = context->clientContext;
     auto dbManager = clientContext->getDatabaseManager();
     if (dbManager->hasAttachedDatabase(dbName) &&
-        dbManager->getAttachedDatabase(dbName)->getDBType() == common::ATTACHED_KUZU_DB_TYPE) {
+        dbManager->getAttachedDatabase(dbName)->getDBType() == common::ATTACHED_KOREDB_DB_TYPE) {
         clientContext->setDefaultDatabase(nullptr /* defaultDatabase */);
     }
     dbManager->detachDatabase(dbName);
@@ -23,4 +23,4 @@ void DetachDatabase::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

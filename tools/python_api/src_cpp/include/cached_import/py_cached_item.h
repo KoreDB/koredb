@@ -5,7 +5,7 @@
 
 #include "pybind_include.h"
 
-namespace kuzu {
+namespace koredb {
 
 class PythonCachedItem {
 public:
@@ -23,4 +23,4 @@ protected:
     py::handle object;
 };
 
-} // namespace kuzu
+} // namespace koredb

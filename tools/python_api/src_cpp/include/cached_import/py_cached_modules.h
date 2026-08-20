@@ -2,7 +2,7 @@
 
 #include "py_cached_item.h"
 
-namespace kuzu {
+namespace koredb {
 
 class DateTimeCachedItem : public PythonCachedItem {
 public:
@@ -152,4 +152,4 @@ public:
     PythonCachedItem UUID;
 };
 
-} // namespace kuzu
+} // namespace koredb

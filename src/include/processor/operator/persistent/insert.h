@@ -3,7 +3,7 @@
 #include "insert_executor.h"
 #include "processor/operator/physical_operator.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 struct InsertPrintInfo final : OPPrintInfo {
@@ -50,4 +50,4 @@ private:
     std::vector<RelInsertExecutor> relExecutors;
 };
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

@@ -3,9 +3,9 @@
 #include "common/exception/runtime.h"
 #include "pandas/pandas_analyzer.h"
 
-namespace kuzu {
+namespace koredb {
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
 struct PandasBindColumn {
 public:
@@ -111,4 +111,4 @@ void Pandas::bind(py::handle dfToBind,
     }
 }
 
-} // namespace kuzu
+} // namespace koredb

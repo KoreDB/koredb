@@ -7,7 +7,7 @@
 #include "compressed_file_system.h"
 #include "file_system.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 class Database;
 }
@@ -17,7 +17,7 @@ class BufferManager;
 };
 namespace common {
 
-class KUZU_API VirtualFileSystem final : public FileSystem {
+class KOREDB_API VirtualFileSystem final : public FileSystem {
     friend class storage::BufferManager;
 
 public:
@@ -81,4 +81,4 @@ private:
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

@@ -9,7 +9,7 @@ add_subdirectory(simple)
 add_subdirectory(table_scan)
 add_subdirectory(macro)
 
-add_library(kuzu_processor_operator
+add_library(koredb_processor_operator
         OBJECT
         base_partitioner_shared_state.cpp
         cross_product.cpp
@@ -36,5 +36,5 @@ add_library(kuzu_processor_operator
         unwind.cpp)
 
 set(ALL_OBJECT_FILES
-        ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:kuzu_processor_operator>
+        ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:koredb_processor_operator>
         PARENT_SCOPE)

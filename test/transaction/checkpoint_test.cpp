@@ -6,12 +6,12 @@
 #include "storage/wal/wal.h"
 #include "transaction/transaction_manager.h"
 
-using namespace kuzu::common;
-using namespace kuzu::testing;
-using namespace kuzu::transaction;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::testing;
+using namespace koredb::transaction;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 class FlakyCheckpointer {
@@ -226,4 +226,4 @@ TEST_F(FlakyCheckpointerTest, RecoverFromCheckpointClearingFilesFailure) {
 }
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

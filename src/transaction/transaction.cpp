@@ -9,9 +9,9 @@
 #include "storage/undo_buffer.h"
 #include "storage/wal/local_wal.h"
 
-using namespace kuzu::catalog;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace transaction {
 
 bool LocalCacheManager::put(std::unique_ptr<LocalCacheObject> object) {
@@ -209,4 +209,4 @@ Transaction DUMMY_CHECKPOINT_TRANSACTION = Transaction(TransactionType::CHECKPOI
     Transaction::DUMMY_TRANSACTION_ID, Transaction::START_TRANSACTION_ID - 1);
 
 } // namespace transaction
-} // namespace kuzu
+} // namespace koredb

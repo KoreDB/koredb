@@ -2,7 +2,7 @@ const { assert } = require("chai");
 
 describe("Connection constructor", function () {
   it("should create a connection with a valid database object", async function () {
-    const connection = new kuzu.Connection(db);
+    const connection = new koredb.Connection(db);
     assert.exists(connection);
     assert.equal(connection.constructor.name, "Connection");
     await connection.init();
@@ -13,7 +13,7 @@ describe("Connection constructor", function () {
 
   it("should throw error if the database object is invalid", async function () {
     try {
-      const _ = new kuzu.Connection({});
+      const _ = new koredb.Connection({});
       assert.fail("No error thrown when the database object is invalid.");
     } catch (e) {
       assert.equal(e.message, "database must be a valid Database object.");
@@ -187,7 +187,7 @@ describe("Query", function () {
 describe("Timeout", function () {
   it("should abort a query if the timeout is reached", async function () {
     try {
-      const newConn = new kuzu.Connection(db);
+      const newConn = new koredb.Connection(db);
       await newConn.init();
       // Disable partial-result-on-timeout (on by default) to exercise the abort-on-timeout path.
       await newConn.query("CALL enable_partial_result_on_timeout=false;");
@@ -202,7 +202,7 @@ describe("Timeout", function () {
   });
 
   it("should allow setting a timeout before the connection is initialized", async function () {
-    const newConn = new kuzu.Connection(db);
+    const newConn = new koredb.Connection(db);
     newConn.setQueryTimeout(1);
     await newConn.init();
     // The timeout set before init applies: with partial-result-on-timeout on by default, the query
@@ -215,7 +215,7 @@ describe("Timeout", function () {
   });
 
   it("should return partial results on timeout when enabled", async function () {
-    const newConn = new kuzu.Connection(db);
+    const newConn = new koredb.Connection(db);
     await newConn.init();
     await newConn.query("CALL enable_partial_result_on_timeout=true;");
     newConn.setQueryTimeout(1);
@@ -233,15 +233,18 @@ describe("Timeout", function () {
 
 describe("Memory limit", function () {
   it("should return partial results when the query memory limit is exceeded", async function () {
-    const newConn = new kuzu.Connection(db);
+    const newConn = new koredb.Connection(db);
     await newConn.init();
-    await newConn.query("CALL query_memory_limit=33554432;"); // 32 MiB
-    // The full result would materialize ~160 MB, well over the 32 MiB limit, so the query stops
+    await newConn.query("CALL query_memory_limit=4194304;"); // 4 MiB
+    // The full result would materialize ~16 MB, well over the 4 MiB limit, so the query stops
     // early and returns a partial (truncated) result instead of failing with an out-of-memory error.
-    const result = await newConn.query("UNWIND RANGE(1, 20000000) AS x RETURN x;");
+    // Keep the range small: the wall-clock cost here is dominated by RANGE() materializing its list,
+    // not by the rows the limit lets through, so a 10x larger range costs ~13x more time while
+    // exercising exactly the same truncation path.
+    const result = await newConn.query("UNWIND RANGE(1, 2000000) AS x RETURN x;");
     assert.isTrue(result.isTruncated());
     assert.equal(result.getTruncationReason(), "memory_limit");
-    assert.isBelow(result.getNumTuples(), 20000000);
+    assert.isBelow(result.getNumTuples(), 2000000);
     await result.close();
     await newConn.close();
   });
@@ -249,7 +252,7 @@ describe("Memory limit", function () {
 
 describe("Close", function () {
   it("should close the connection", async function () {
-    const newConn = new kuzu.Connection(db);
+    const newConn = new koredb.Connection(db);
     await newConn.init();
     await newConn.close();
     assert.isTrue(newConn._isClosed);

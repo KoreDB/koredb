@@ -4,7 +4,7 @@
 #include "storage/buffer_manager/spillable.h"
 #include "storage/file_handle.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 class VirtualFileSystem;
 };
@@ -45,4 +45,4 @@ private:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

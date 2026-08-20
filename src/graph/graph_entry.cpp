@@ -2,12 +2,12 @@
 
 #include "common/exception/runtime.h"
 
-using namespace kuzu::planner;
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::catalog;
+using namespace koredb::planner;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace graph {
 
 NativeGraphEntry::NativeGraphEntry(std::vector<TableCatalogEntry*> nodeEntries,
@@ -48,4 +48,4 @@ const NativeGraphEntryTableInfo& NativeGraphEntry::getRelInfo(table_id_t tableID
 }
 
 } // namespace graph
-} // namespace kuzu
+} // namespace koredb

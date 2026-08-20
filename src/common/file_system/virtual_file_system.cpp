@@ -7,7 +7,7 @@
 #include "common/string_utils.h"
 #include "main/client_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 VirtualFileSystem::VirtualFileSystem() : VirtualFileSystem{""} {}
@@ -44,7 +44,7 @@ std::unique_ptr<FileInfo> VirtualFileSystem::openFile(const std::string& path, F
         throw IOException{"Writing to compressed files is not supported yet."};
     }
     if (StringUtils::getLower(getFileExtension(path)) != ".csv") {
-        throw IOException{"Kuzu currently only supports reading from compressed csv files."};
+        throw IOException{"KoreDB currently only supports reading from compressed csv files."};
     }
     return compressedFileSystem.at(compressionType)->openCompressedFile(std::move(fileHandle));
 }
@@ -131,4 +131,4 @@ FileSystem* VirtualFileSystem::findFileSystem(const std::string& path) const {
 }
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

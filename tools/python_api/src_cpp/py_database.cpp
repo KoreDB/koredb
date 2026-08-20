@@ -7,7 +7,7 @@
 #include "main/version.h"
 #include "pandas/pandas_scan.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
 void PyDatabase::initialize(py::handle& m) {
     py::class_<PyDatabase>(m, "Database")
@@ -54,11 +54,11 @@ PyDatabase::PyDatabase(const std::string& databasePath, uint64_t bufferPoolSize,
         systemConfig.checkpointThreshold = static_cast<uint64_t>(checkpointThreshold);
     }
     database = std::make_unique<Database>(databasePath, systemConfig);
-    kuzu::extension::ExtensionUtils::addTableFunc<kuzu::PandasScanFunction>(*database);
+    koredb::extension::ExtensionUtils::addTableFunc<koredb::PandasScanFunction>(*database);
     storageDriver = std::make_unique<StorageDriver>(database.get());
     py::gil_scoped_acquire acquire;
-    if (kuzu::importCache.get() == nullptr) {
-        kuzu::importCache = std::make_shared<kuzu::PythonCachedImport>();
+    if (koredb::importCache.get() == nullptr) {
+        koredb::importCache = std::make_shared<koredb::PythonCachedImport>();
     }
 }
 

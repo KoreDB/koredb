@@ -500,7 +500,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kuzu"
+name = "koredb"
 version = "0.11.3"
 dependencies = [
  "arrow",
@@ -514,11 +514,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "kuzu-rust-example"
+name = "koredb-rust-example"
 version = "0.1.0"
 dependencies = [
  "arrow",
- "kuzu",
+ "koredb",
 ]
 
 [[package]]

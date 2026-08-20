@@ -2,7 +2,7 @@
 
 #include "binder/bound_database_statement.h"
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 class BoundDetachDatabase final : public BoundDatabaseStatement {
@@ -12,4 +12,4 @@ public:
 };
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

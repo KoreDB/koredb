@@ -9,10 +9,10 @@
 #include "storage/table/node_table.h"
 #include "storage/table/rel_table.h"
 
-using namespace kuzu::storage;
-using namespace kuzu::transaction;
+using namespace koredb::storage;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace vector_extension {
 
 InMemHNSWLayer::InMemHNSWLayer(MemoryManager* mm, InMemHNSWLayerInfo info)
@@ -1111,4 +1111,4 @@ bool OnDiskHNSWIndex::searchOverSecondHopNbrs(const EmbeddingHandle& queryVector
 }
 
 } // namespace vector_extension
-} // namespace kuzu
+} // namespace koredb

@@ -11,7 +11,7 @@
 #include "common/copy_constructors.h"
 #include "common/types/interval_t.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 class ClientContext;
 }
@@ -87,7 +87,7 @@ using cardinality_t = uint64_t;
 constexpr offset_t INVALID_LIMIT = UINT64_MAX;
 using offset_vec_t = std::vector<offset_t>;
 // System representation for internalID.
-struct KUZU_API internalID_t {
+struct KOREDB_API internalID_t {
     offset_t offset;
     table_id_t tableID;
 
@@ -260,28 +260,29 @@ class LogicalType {
     friend struct ListType;
     friend struct ArrayType;
 
-    KUZU_API LogicalType(const LogicalType& other);
+    KOREDB_API LogicalType(const LogicalType& other);
 
 public:
-    KUZU_API LogicalType() : typeID{LogicalTypeID::ANY}, extraTypeInfo{nullptr} {
+    KOREDB_API LogicalType() : typeID{LogicalTypeID::ANY}, extraTypeInfo{nullptr} {
         physicalType = getPhysicalType(this->typeID);
     };
-    explicit KUZU_API LogicalType(LogicalTypeID typeID, TypeCategory info = TypeCategory::INTERNAL);
+    explicit KOREDB_API LogicalType(LogicalTypeID typeID,
+        TypeCategory info = TypeCategory::INTERNAL);
     EXPLICIT_COPY_DEFAULT_MOVE(LogicalType);
 
-    KUZU_API bool operator==(const LogicalType& other) const;
-    KUZU_API bool operator!=(const LogicalType& other) const;
+    KOREDB_API bool operator==(const LogicalType& other) const;
+    KOREDB_API bool operator!=(const LogicalType& other) const;
 
-    KUZU_API std::string toString() const;
+    KOREDB_API std::string toString() const;
     static bool isBuiltInType(const std::string& str);
     static LogicalType convertFromString(const std::string& str, main::ClientContext* context);
 
-    KUZU_API LogicalTypeID getLogicalTypeID() const { return typeID; }
+    KOREDB_API LogicalTypeID getLogicalTypeID() const { return typeID; }
     bool containsAny() const;
     bool isInternalType() const { return category == TypeCategory::INTERNAL; }
 
-    KUZU_API PhysicalTypeID getPhysicalType() const { return physicalType; }
-    KUZU_API static PhysicalTypeID getPhysicalType(LogicalTypeID logicalType,
+    KOREDB_API PhysicalTypeID getPhysicalType() const { return physicalType; }
+    KOREDB_API static PhysicalTypeID getPhysicalType(LogicalTypeID logicalType,
         const std::unique_ptr<ExtraTypeInfo>& extraTypeInfo = nullptr);
 
     void setExtraTypeInfo(std::unique_ptr<ExtraTypeInfo> typeInfo) {
@@ -294,8 +295,8 @@ public:
 
     static LogicalType deserialize(Deserializer& deserializer);
 
-    KUZU_API static std::vector<LogicalType> copy(const std::vector<LogicalType>& types);
-    KUZU_API static std::vector<LogicalType> copy(const std::vector<LogicalType*>& types);
+    KOREDB_API static std::vector<LogicalType> copy(const std::vector<LogicalType>& types);
+    KOREDB_API static std::vector<LogicalType> copy(const std::vector<LogicalType*>& types);
 
     static LogicalType ANY() { return LogicalType(LogicalTypeID::ANY); }
 
@@ -328,37 +329,37 @@ public:
     static LogicalType TIMESTAMP_TZ() { return LogicalType(LogicalTypeID::TIMESTAMP_TZ); }
     static LogicalType TIMESTAMP() { return LogicalType(LogicalTypeID::TIMESTAMP); }
     static LogicalType INTERVAL() { return LogicalType(LogicalTypeID::INTERVAL); }
-    static KUZU_API LogicalType DECIMAL(uint32_t precision, uint32_t scale);
+    static KOREDB_API LogicalType DECIMAL(uint32_t precision, uint32_t scale);
     static LogicalType INTERNAL_ID() { return LogicalType(LogicalTypeID::INTERNAL_ID); }
     static LogicalType SERIAL() { return LogicalType(LogicalTypeID::SERIAL); }
     static LogicalType STRING() { return LogicalType(LogicalTypeID::STRING); }
     static LogicalType BLOB() { return LogicalType(LogicalTypeID::BLOB); }
     static LogicalType UUID() { return LogicalType(LogicalTypeID::UUID); }
     static LogicalType POINTER() { return LogicalType(LogicalTypeID::POINTER); }
-    static KUZU_API LogicalType STRUCT(std::vector<StructField>&& fields);
+    static KOREDB_API LogicalType STRUCT(std::vector<StructField>&& fields);
 
-    static KUZU_API LogicalType RECURSIVE_REL(std::vector<StructField>&& fields);
+    static KOREDB_API LogicalType RECURSIVE_REL(std::vector<StructField>&& fields);
 
-    static KUZU_API LogicalType NODE(std::vector<StructField>&& fields);
+    static KOREDB_API LogicalType NODE(std::vector<StructField>&& fields);
 
-    static KUZU_API LogicalType REL(std::vector<StructField>&& fields);
+    static KOREDB_API LogicalType REL(std::vector<StructField>&& fields);
 
-    static KUZU_API LogicalType UNION(std::vector<StructField>&& fields);
+    static KOREDB_API LogicalType UNION(std::vector<StructField>&& fields);
 
-    static KUZU_API LogicalType LIST(LogicalType childType);
+    static KOREDB_API LogicalType LIST(LogicalType childType);
     template<class T>
     static inline LogicalType LIST(T&& childType) {
         return LogicalType::LIST(LogicalType(std::forward<T>(childType)));
     }
 
-    static KUZU_API LogicalType MAP(LogicalType keyType, LogicalType valueType);
+    static KOREDB_API LogicalType MAP(LogicalType keyType, LogicalType valueType);
     template<class T>
     static LogicalType MAP(T&& keyType, T&& valueType) {
         return LogicalType::MAP(LogicalType(std::forward<T>(keyType)),
             LogicalType(std::forward<T>(valueType)));
     }
 
-    static KUZU_API LogicalType ARRAY(LogicalType childType, uint64_t numElements);
+    static KOREDB_API LogicalType ARRAY(LogicalType childType, uint64_t numElements);
     template<class T>
     static LogicalType ARRAY(T&& childType, uint64_t numElements) {
         return LogicalType::ARRAY(LogicalType(std::forward<T>(childType)), numElements);
@@ -367,7 +368,7 @@ public:
 private:
     friend struct CAPIHelper;
     friend struct JavaAPIHelper;
-    friend class kuzu::processor::ParquetReader;
+    friend class koredb::processor::ParquetReader;
     explicit LogicalType(LogicalTypeID typeID, std::unique_ptr<ExtraTypeInfo> extraTypeInfo);
 
 private:
@@ -377,7 +378,7 @@ private:
     TypeCategory category = TypeCategory::INTERNAL;
 };
 
-class KUZU_API ExtraTypeInfo {
+class KOREDB_API ExtraTypeInfo {
 public:
     virtual ~ExtraTypeInfo() = default;
 
@@ -398,7 +399,7 @@ protected:
     virtual void serializeInternal(Serializer& serializer) const = 0;
 };
 
-class KUZU_API UDTTypeInfo : public ExtraTypeInfo {
+class KOREDB_API UDTTypeInfo : public ExtraTypeInfo {
 public:
     explicit UDTTypeInfo(std::string typeName) : typeName{std::move(typeName)} {}
 
@@ -441,7 +442,7 @@ protected:
     uint32_t precision, scale;
 };
 
-class KUZU_API ListTypeInfo : public ExtraTypeInfo {
+class KOREDB_API ListTypeInfo : public ExtraTypeInfo {
 public:
     ListTypeInfo() = default;
     explicit ListTypeInfo(LogicalType childType) : childType{std::move(childType)} {}
@@ -463,7 +464,7 @@ protected:
     LogicalType childType;
 };
 
-class KUZU_API ArrayTypeInfo final : public ListTypeInfo {
+class KOREDB_API ArrayTypeInfo final : public ListTypeInfo {
 public:
     ArrayTypeInfo() : numElements{0} {};
     explicit ArrayTypeInfo(LogicalType childType, uint64_t numElements)
@@ -547,22 +548,22 @@ private:
 
 using logical_type_vec_t = std::vector<LogicalType>;
 
-struct KUZU_API DecimalType {
+struct KOREDB_API DecimalType {
     static uint32_t getPrecision(const LogicalType& type);
     static uint32_t getScale(const LogicalType& type);
     static std::string insertDecimalPoint(const std::string& value, uint32_t posFromEnd);
 };
 
-struct KUZU_API ListType {
+struct KOREDB_API ListType {
     static const LogicalType& getChildType(const LogicalType& type);
 };
 
-struct KUZU_API ArrayType {
+struct KOREDB_API ArrayType {
     static const LogicalType& getChildType(const LogicalType& type);
     static uint64_t getNumElements(const LogicalType& type);
 };
 
-struct KUZU_API StructType {
+struct KOREDB_API StructType {
     static std::vector<const LogicalType*> getFieldTypes(const LogicalType& type);
     // since the field types isn't stored as a vector of LogicalTypes, we can't return vector<>&
 
@@ -585,13 +586,13 @@ struct KUZU_API StructType {
     static struct_field_idx_t getFieldIdx(const LogicalType& type, const std::string& key);
 };
 
-struct KUZU_API MapType {
+struct KOREDB_API MapType {
     static const LogicalType& getKeyType(const LogicalType& type);
 
     static const LogicalType& getValueType(const LogicalType& type);
 };
 
-struct KUZU_API UnionType {
+struct KOREDB_API UnionType {
     static constexpr union_field_idx_t TAG_FIELD_IDX = 0;
 
     static constexpr auto TAG_FIELD_TYPE = LogicalTypeID::UINT16;
@@ -618,7 +619,7 @@ struct PhysicalTypeUtils {
     static uint32_t getFixedTypeSize(PhysicalTypeID physicalType);
 };
 
-struct KUZU_API LogicalTypeUtils {
+struct KOREDB_API LogicalTypeUtils {
     static std::string toString(LogicalTypeID dataTypeID);
     static std::string toString(const std::vector<LogicalType>& dataTypes);
     static std::string toString(const std::vector<LogicalTypeID>& dataTypeIDs);
@@ -664,4 +665,4 @@ private:
 enum class FileVersionType : uint8_t { ORIGINAL = 0, WAL_VERSION = 1 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

@@ -2,7 +2,7 @@
 
 #include "common/type_utils.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 void ColumnChunkStats::update(uint8_t* data, uint64_t offset, uint64_t numValues,
@@ -47,4 +47,4 @@ void MergedColumnChunkStats::merge(const MergedColumnChunkStats& o,
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

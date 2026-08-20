@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 const EXTENSIONS: &[&str; 7] = &["fts", "httpfs", "json", "llm", "vector", "neo4j", "algo"];
 
 fn link_mode() -> &'static str {
-    if env::var("KUZU_SHARED").is_ok() {
+    if env::var("KOREDB_SHARED").is_ok() {
         "dylib"
     } else {
         "static"
@@ -21,13 +21,13 @@ fn link_libraries() {
         println!("cargo:rustc-link-arg=-rdynamic");
     }
     if cfg!(windows) && link_mode() == "dylib" {
-        println!("cargo:rustc-link-lib=dylib=kuzu_shared");
+        println!("cargo:rustc-link-lib=dylib=koredb_shared");
     } else if link_mode() == "dylib" {
-        println!("cargo:rustc-link-lib={}=kuzu", link_mode());
+        println!("cargo:rustc-link-lib={}=koredb", link_mode());
     } else if rustversion::cfg!(since(1.82)) {
-        println!("cargo:rustc-link-lib=static:+whole-archive=kuzu");
+        println!("cargo:rustc-link-lib=static:+whole-archive=koredb");
     } else {
-        println!("cargo:rustc-link-lib=static=kuzu");
+        println!("cargo:rustc-link-lib=static=koredb");
     }
     if link_mode() == "static" {
         if cfg!(windows) {
@@ -82,11 +82,11 @@ fn link_libraries() {
         if std::env::var(format!("CARGO_FEATURE_{}", extension.to_uppercase())).is_ok() {
             if rustversion::cfg!(since(1.82)) {
                 println!(
-                    "cargo:rustc-link-lib=static:+whole-archive,+verbatim=lib{extension}_static.kuzu_extension"
+                    "cargo:rustc-link-lib=static:+whole-archive,+verbatim=lib{extension}_static.koredb_extension"
                 );
             } else {
                 println!(
-                    "cargo:rustc-link-lib=static:+verbatim=lib{extension}_static.kuzu_extension"
+                    "cargo:rustc-link-lib=static:+verbatim=lib{extension}_static.koredb_extension"
                 );
             }
         }
@@ -94,8 +94,8 @@ fn link_libraries() {
 }
 
 fn build_bundled_cmake() -> Vec<PathBuf> {
-    let kuzu_root = {
-        let root = Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("kuzu-src");
+    let koredb_root = {
+        let root = Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("koredb-src");
         if root.is_symlink() || root.is_dir() {
             root
         } else {
@@ -105,7 +105,7 @@ fn build_bundled_cmake() -> Vec<PathBuf> {
         }
     };
 
-    let mut build = cmake::Config::new(&kuzu_root);
+    let mut build = cmake::Config::new(&koredb_root);
     build
         .no_build_target(true)
         .define("BUILD_SHELL", "OFF")
@@ -135,8 +135,8 @@ fn build_bundled_cmake() -> Vec<PathBuf> {
 
     let build_dir = build.build();
 
-    let kuzu_lib_path = build_dir.join("build").join("src");
-    println!("cargo:rustc-link-search=native={}", kuzu_lib_path.display());
+    let koredb_lib_path = build_dir.join("build").join("src");
+    println!("cargo:rustc-link-search=native={}", koredb_lib_path.display());
 
     for dir in [
         "utf8proc",
@@ -230,12 +230,12 @@ fn build_bundled_cmake() -> Vec<PathBuf> {
     }
 
     vec![
-        kuzu_root.join("src/include"),
+        koredb_root.join("src/include"),
         build_dir.join("build/src"),
         build_dir.join("build/src/include"),
-        kuzu_root.join("third_party/nlohmann_json"),
-        kuzu_root.join("third_party/fastpfor"),
-        kuzu_root.join("third_party/alp/include"),
+        koredb_root.join("third_party/nlohmann_json"),
+        koredb_root.join("third_party/fastpfor"),
+        koredb_root.join("third_party/alp/include"),
     ]
 }
 
@@ -250,29 +250,29 @@ fn build_ffi(
     build.file(source_file);
 
     if bundled {
-        build.define("KUZU_BUNDLED", None);
+        build.define("KOREDB_BUNDLED", None);
     }
     if get_target() == "debug" || get_target() == "relwithdebinfo" {
         build.define("ENABLE_RUNTIME_CHECKS", "1");
     }
     if link_mode() == "static" {
-        build.define("KUZU_STATIC_DEFINE", None);
+        build.define("KOREDB_STATIC_DEFINE", None);
     }
 
     build.includes(include_paths);
 
-    println!("cargo:rerun-if-env-changed=KUZU_SHARED");
+    println!("cargo:rerun-if-env-changed=KOREDB_SHARED");
 
-    println!("cargo:rerun-if-changed=include/kuzu_rs.h");
-    println!("cargo:rerun-if-changed=src/kuzu_rs.cpp");
-    // Note that this should match the kuzu-src/* entries in the package.include list in Cargo.toml
+    println!("cargo:rerun-if-changed=include/koredb_rs.h");
+    println!("cargo:rerun-if-changed=src/koredb_rs.cpp");
+    // Note that this should match the koredb-src/* entries in the package.include list in Cargo.toml
     // Unfortunately they appear to need to be specified individually since the symlink is
     // considered to be changed each time.
-    println!("cargo:rerun-if-changed=kuzu-src/src");
-    println!("cargo:rerun-if-changed=kuzu-src/cmake");
-    println!("cargo:rerun-if-changed=kuzu-src/third_party");
-    println!("cargo:rerun-if-changed=kuzu-src/CMakeLists.txt");
-    println!("cargo:rerun-if-changed=kuzu-src/tools/CMakeLists.txt");
+    println!("cargo:rerun-if-changed=koredb-src/src");
+    println!("cargo:rerun-if-changed=koredb-src/cmake");
+    println!("cargo:rerun-if-changed=koredb-src/third_party");
+    println!("cargo:rerun-if-changed=koredb-src/CMakeLists.txt");
+    println!("cargo:rerun-if-changed=koredb-src/tools/CMakeLists.txt");
 
     if cfg!(windows) {
         build.flag("/std:c++20");
@@ -293,12 +293,12 @@ fn main() {
     let mut include_paths =
         vec![Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("include")];
 
-    if let (Ok(kuzu_lib_dir), Ok(kuzu_include)) =
-        (env::var("KUZU_LIBRARY_DIR"), env::var("KUZU_INCLUDE_DIR"))
+    if let (Ok(koredb_lib_dir), Ok(koredb_include)) =
+        (env::var("KOREDB_LIBRARY_DIR"), env::var("KOREDB_INCLUDE_DIR"))
     {
-        println!("cargo:rustc-link-search=native={kuzu_lib_dir}");
-        println!("cargo:rustc-link-arg=-Wl,-rpath,{kuzu_lib_dir}");
-        include_paths.push(Path::new(&kuzu_include).to_path_buf());
+        println!("cargo:rustc-link-search=native={koredb_lib_dir}");
+        println!("cargo:rustc-link-arg=-Wl,-rpath,{koredb_lib_dir}");
+        include_paths.push(Path::new(&koredb_include).to_path_buf());
     } else {
         include_paths.extend(build_bundled_cmake());
         bundled = true;
@@ -308,8 +308,8 @@ fn main() {
     }
     build_ffi(
         "src/ffi.rs",
-        "kuzu_rs",
-        "src/kuzu_rs.cpp",
+        "koredb_rs",
+        "src/koredb_rs.cpp",
         bundled,
         &include_paths,
     );
@@ -317,8 +317,8 @@ fn main() {
     if cfg!(feature = "arrow") {
         build_ffi(
             "src/ffi/arrow.rs",
-            "kuzu_arrow_rs",
-            "src/kuzu_arrow.cpp",
+            "koredb_arrow_rs",
+            "src/koredb_arrow.cpp",
             bundled,
             &include_paths,
         );

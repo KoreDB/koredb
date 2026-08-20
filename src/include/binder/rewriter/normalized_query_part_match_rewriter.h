@@ -2,7 +2,7 @@
 
 #include "binder/bound_statement_visitor.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 class ClientContext;
 }
@@ -28,4 +28,4 @@ private:
 };
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

@@ -5,13 +5,13 @@
  */
 "use strict";
 
-const KuzuWasm = require("./kuzu.js");
+const KoreDBWasm = require("./koredb.js");
 
 class PreparedStatement {
   /**
    * Internal constructor. Use `Connection.prepare` to get a
    * `PreparedStatement` object.
-   * @param {kuzu.sync.PreparedStatement} _preparedStatement the native prepared 
+   * @param {koredb.sync.PreparedStatement} _preparedStatement the native prepared 
    * statement object.
    */
   constructor(_preparedStatement) {
@@ -25,7 +25,7 @@ class PreparedStatement {
    * @private
    */
   _checkPreparedStatement() {
-    KuzuWasm.checkInit();
+    KoreDBWasm.checkInit();
     if (this._isClosed) {
       throw new Error("PreparedStatement is already closed.");
     }

@@ -5,9 +5,9 @@
 #include "storage/storage_manager.h"
 #include "storage/table/node_table.h"
 
-using namespace kuzu::planner;
+using namespace koredb::planner;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::unique_ptr<PhysicalOperator> PlanMapper::mapIndexLookup(
@@ -37,4 +37,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapIndexLookup(
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

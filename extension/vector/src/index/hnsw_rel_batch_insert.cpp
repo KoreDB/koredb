@@ -4,7 +4,7 @@
 #include "storage/storage_utils.h"
 #include "storage/table/csr_chunked_node_group.h"
 
-namespace kuzu {
+namespace koredb {
 namespace vector_extension {
 
 // NOLINTNEXTLINE(readability-make-member-function-const): Semantically non-const function.
@@ -141,4 +141,4 @@ void HNSWRelBatchInsert::writeToTable(processor::RelBatchInsertExecutionState& e
     localState.chunkedGroup->setNumRows(neighbourChunk.getNumValues());
 }
 } // namespace vector_extension
-} // namespace kuzu
+} // namespace koredb

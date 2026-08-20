@@ -3,7 +3,7 @@
 #include "main/database_manager.h"
 #include "processor/execution_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 void UseDatabase::executeInternal(ExecutionContext* context) {
@@ -20,4 +20,4 @@ std::string UseDatabasePrintInfo::toString() const {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

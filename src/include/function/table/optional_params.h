@@ -3,7 +3,7 @@
 #include "binder/expression/expression_util.h"
 #include "main/client_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 template<common::LogicalTypeID ID>
@@ -69,4 +69,4 @@ struct OptionalParams {
 };
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

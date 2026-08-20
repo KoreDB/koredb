@@ -7,7 +7,7 @@
 #include "storage/table/rel_table.h"
 #include "storage/table/table.h"
 
-namespace kuzu {
+namespace koredb {
 
 using common::Date;
 using common::date_t;
@@ -142,4 +142,4 @@ TEST_F(RelDeleteTest, RelDetachDeleteStudyAt) {
 }
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

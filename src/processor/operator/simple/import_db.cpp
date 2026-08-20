@@ -3,11 +3,11 @@
 #include "common/exception/runtime.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
-using namespace kuzu::catalog;
+using namespace koredb::common;
+using namespace koredb::transaction;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 static void validateQueryResult(main::QueryResult* queryResult) {
@@ -44,4 +44,4 @@ void ImportDB::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

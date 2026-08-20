@@ -10,9 +10,9 @@
 #include "py_connection.h"
 #include "py_query_result.h"
 
-using namespace kuzu::common;
-using namespace kuzu;
-using namespace kuzu::function;
+using namespace koredb::common;
+using namespace koredb;
+using namespace koredb::function;
 
 struct PyUDFScalarFunction final : ScalarFunction {
     PyUDFScalarFunction(std::string name, std::vector<common::LogicalTypeID> parameterTypeIDs,
@@ -131,7 +131,7 @@ static py::object getSignature(const py::function& udf) {
     constexpr int32_t PYTHON_3_10_HEX = 0x030a00f0;
     auto python_version = PY_VERSION_HEX;
 
-    auto signature_func = kuzu::importCache->inspect.signature();
+    auto signature_func = koredb::importCache->inspect.signature();
     if (python_version >= PYTHON_3_10_HEX) {
         return signature_func(udf, py::arg("eval_str") = true);
     } else {

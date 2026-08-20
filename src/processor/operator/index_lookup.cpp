@@ -9,10 +9,10 @@
 #include "storage/index/hash_index.h"
 #include "storage/table/node_table.h"
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 namespace {
@@ -157,4 +157,4 @@ void IndexLookup::lookup(transaction::Transaction* transaction, const IndexLooku
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

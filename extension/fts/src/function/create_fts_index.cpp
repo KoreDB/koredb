@@ -21,12 +21,12 @@
 #include "storage/storage_manager.h"
 #include "utils/fts_utils.h"
 
-namespace kuzu {
+namespace koredb {
 namespace fts_extension {
 
-using namespace kuzu::common;
-using namespace kuzu::main;
-using namespace kuzu::function;
+using namespace koredb::common;
+using namespace koredb::main;
+using namespace koredb::function;
 
 struct CreateFTSBindData final : FTSBindData {
     std::vector<property_id_t> propertyIDs;
@@ -379,4 +379,4 @@ function_set CreateFTSFunction::getFunctionSet() {
 }
 
 } // namespace fts_extension
-} // namespace kuzu
+} // namespace koredb

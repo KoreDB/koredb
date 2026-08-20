@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace kuzu {
+namespace koredb {
 namespace catalog {
 class TableCatalogEntry;
 class NodeTableCatalogEntry;
@@ -29,4 +29,4 @@ struct FTSIndexUtils {
 };
 
 } // namespace fts_extension
-} // namespace kuzu
+} // namespace koredb

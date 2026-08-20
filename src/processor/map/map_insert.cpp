@@ -5,14 +5,14 @@
 #include "processor/plan_mapper.h"
 #include "storage/storage_manager.h"
 
-using namespace kuzu::evaluator;
-using namespace kuzu::planner;
-using namespace kuzu::storage;
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::binder;
+using namespace koredb::evaluator;
+using namespace koredb::planner;
+using namespace koredb::storage;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::binder;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 static std::vector<DataPos> populateReturnColumnsPos(const LogicalInsertInfo& info,
@@ -105,4 +105,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapInsert(const LogicalOperator* l
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

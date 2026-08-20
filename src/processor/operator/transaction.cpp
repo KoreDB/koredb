@@ -5,10 +5,10 @@
 #include "transaction/transaction_context.h"
 #include "transaction/transaction_manager.h"
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::string TransactionPrintInfo::toString() const {
@@ -78,4 +78,4 @@ void Transaction::validateActiveTransaction(const TransactionContext& context) c
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

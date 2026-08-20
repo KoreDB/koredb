@@ -5,9 +5,9 @@
 #include "main/database.h"
 #include "transaction/transaction_manager.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace transaction {
 
 TransactionContext::TransactionContext(main::ClientContext& clientContext)
@@ -80,4 +80,4 @@ void TransactionContext::beginTransactionInternal(TransactionType transactionTyp
 }
 
 } // namespace transaction
-} // namespace kuzu
+} // namespace koredb

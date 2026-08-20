@@ -1,0 +1,4 @@
+*.koredb
+*.kuzu
+*.db
+dist/

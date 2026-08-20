@@ -3,9 +3,9 @@
 #include "common/metric.h"
 #include "processor/operator/order_by/external_merge_sort.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 void OrderByScanLocalState::init(std::vector<DataPos>& outVectorPos, SortSharedState& sharedState,
@@ -57,4 +57,4 @@ double OrderByScan::getProgress(ExecutionContext* /*context*/) const {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

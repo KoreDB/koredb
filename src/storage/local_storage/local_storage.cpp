@@ -8,10 +8,10 @@
 #include "storage/table/rel_table.h"
 #include "storage/table/table.h"
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 LocalTable* LocalStorage::getOrCreateLocalTable(Table& table) {
@@ -94,4 +94,4 @@ void LocalStorage::rollback() {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

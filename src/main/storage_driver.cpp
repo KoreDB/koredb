@@ -7,12 +7,12 @@
 #include "storage/storage_manager.h"
 #include "storage/table/node_table.h"
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
-using namespace kuzu::storage;
-using namespace kuzu::catalog;
+using namespace koredb::common;
+using namespace koredb::transaction;
+using namespace koredb::storage;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 StorageDriver::StorageDriver(Database* database) {
@@ -178,4 +178,4 @@ void StorageDriver::scanColumn(Table* table, column_id_t columnID, const offset_
 }
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

@@ -13,10 +13,10 @@
 #include "function/cast/functions/cast_functions.h"
 #include "main/client_context.h"
 
-using namespace kuzu::common;
-using namespace kuzu::binder;
+using namespace koredb::common;
+using namespace koredb::binder;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct CastChildFunctionExecutor {
@@ -1175,4 +1175,4 @@ function_set CastAnyFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

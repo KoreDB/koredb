@@ -8,7 +8,7 @@
 #include "parser/expression/parsed_function_expression.h"
 #include "parser/standalone_call_function.h"
 
-namespace kuzu {
+namespace koredb {
 namespace parser {
 
 std::string StandaloneCallRewriter::getRewriteQuery(const Statement& statement) {
@@ -44,4 +44,4 @@ void StandaloneCallRewriter::visitStandaloneCallFunction(const Statement& statem
 }
 
 } // namespace parser
-} // namespace kuzu
+} // namespace koredb

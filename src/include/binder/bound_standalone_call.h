@@ -4,7 +4,7 @@
 #include "binder/expression/expression.h"
 #include "main/db_config.h"
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 class BoundStandaloneCall final : public BoundStatement {
@@ -25,4 +25,4 @@ private:
 };
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

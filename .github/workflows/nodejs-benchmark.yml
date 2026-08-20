@@ -1,0 +1,146 @@
+name: Node.js Benchmark
+
+# Performance testing for KoreDB is centred on the Node.js binding. This
+# workflow builds the addon from source, generates a reproducible on-disk
+# database (bench/gen-bench-db.ts) and runs the query benchmark
+# (bench/query-bench.js), publishing the report as an artifact.
+#
+# It is manual-dispatch only for now; wire it into a schedule or into
+# build-and-deploy.yml once a result baseline is established.
+
+on:
+  workflow_dispatch:
+    inputs:
+      allPlatforms:
+        description: "Run on all six platform/architecture combinations?"
+        type: boolean
+        required: true
+        default: false
+      scale:
+        description: "Dataset scale factor passed to the generator"
+        type: string
+        required: true
+        default: "1"
+      mode:
+        description: "Benchmark process model"
+        type: choice
+        required: true
+        default: isolated
+        options:
+          - isolated
+          - shared
+  workflow_call:
+    inputs:
+      allPlatforms:
+        type: boolean
+        required: false
+        default: false
+      scale:
+        type: string
+        required: false
+        default: "1"
+      mode:
+        type: string
+        required: false
+        default: isolated
+
+jobs:
+  select-platforms:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        shell: bash
+        run: |
+          all='[{"runner":"ubuntu-24.04","os":"linux","arch":"x64"},
+                {"runner":"ubuntu-24.04-arm","os":"linux","arch":"arm64"},
+                {"runner":"macos-14","os":"macos","arch":"arm64"},
+                {"runner":"macos-15-intel","os":"macos","arch":"x64"},
+                {"runner":"windows-2022","os":"windows","arch":"x64"},
+                {"runner":"windows-11-arm","os":"windows","arch":"arm64"}]'
+          one='[{"runner":"ubuntu-24.04","os":"linux","arch":"x64"}]'
+          if [ "${{ inputs.allPlatforms }}" = "true" ]; then
+            selected="$all"
+          else
+            selected="$one"
+          fi
+          echo "matrix=$(echo "$selected" | tr -d '\n ')" >> "$GITHUB_OUTPUT"
+
+  benchmark:
+    name: bench-${{ matrix.target.os }}-${{ matrix.target.arch }}
+    needs: [select-platforms]
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.select-platforms.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: ${{ runner.os == 'Windows' }}
+        with:
+          arch: ${{ matrix.target.arch == 'arm64' && 'arm64' || 'amd64' }}
+
+      - name: Ensure GNU Make is available
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            choco install make -y --no-progress
+          }
+
+      - name: Determine NUM_THREADS
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            threads="$NUMBER_OF_PROCESSORS"
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            threads="$(sysctl -n hw.ncpu)"
+          else
+            threads="$(nproc)"
+          fi
+          echo "NUM_THREADS=$threads" >> "$GITHUB_ENV"
+
+      - name: Install Node.js dependencies
+        run: make nodejs-deps
+
+      - name: Build the Node.js addon
+        if: ${{ runner.os != 'Windows' }}
+        run: make nodejs NUM_THREADS=$NUM_THREADS
+
+      - name: Build the Node.js addon
+        if: ${{ runner.os == 'Windows' }}
+        shell: cmd
+        run: make nodejs NUM_THREADS=%NUM_THREADS%
+
+      - name: Generate the benchmark database
+        working-directory: tools/nodejs_api
+        shell: bash
+        env:
+          KOREDB_BENCH_SCALE: ${{ inputs.scale }}
+        run: npm run bench:gen
+
+      - name: Run the benchmark
+        working-directory: tools/nodejs_api
+        shell: bash
+        env:
+          KOREDB_BENCH_DB: ${{ github.workspace }}/tools/nodejs_api/bench/bench.koredb
+        run: |
+          npm run bench -- --${{ inputs.mode }} 2>&1 | tee bench-report.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nodejs-bench-${{ matrix.target.os }}-${{ matrix.target.arch }}
+          path: tools/nodejs_api/bench-report.txt
+          if-no-files-found: error

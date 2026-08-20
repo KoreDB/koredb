@@ -5,15 +5,15 @@ import sys
 
 base_dir = os.path.dirname(os.path.realpath(__file__))
 
-# import kuzu Python API
+# import koredb Python API
 sys.path.append(os.path.join(base_dir, '..', '..'))
-import tools.python_api.build.kuzu as kuzu
+import tools.python_api.build.koredb as koredb
 
-def _get_kuzu_version():
+def _get_koredb_version():
     cmake_file = os.path.join(base_dir, '..', '..', 'CMakeLists.txt')
     with open(cmake_file) as f:
         for line in f:
-            if line.startswith('project(Kuzu VERSION'):
+            if line.startswith('project(KoreDB VERSION'):
                 return line.split(' ')[2].strip()
             
             
@@ -137,15 +137,15 @@ def load_lsqb_dataset(conn, data_path):
 def serialize(dataset_name, dataset_path, serialized_graph_path):
     convert(dataset_path)
 
-    bin_version = _get_kuzu_version()
+    bin_version = _get_koredb_version()
     if check_updated_version(bin_version, dataset_name, serialized_graph_path):
         return
 
     shutil.rmtree(serialized_graph_path, ignore_errors=True)
     os.mkdir(serialized_graph_path)
 
-    db = kuzu.Database(os.path.join(serialized_graph_path, "db.kuzu"))
-    conn = kuzu.Connection(db)
+    db = koredb.Database(os.path.join(serialized_graph_path, "db.koredb"))
+    conn = koredb.Connection(db)
     logging.info("Successfully connected")
 
     load_lsqb_dataset(conn, dataset_path)

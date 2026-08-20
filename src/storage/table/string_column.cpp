@@ -12,11 +12,11 @@
 #include "storage/table/null_column.h"
 #include "storage/table/string_chunk_data.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 using string_index_t = DictionaryChunk::string_index_t;
@@ -232,4 +232,4 @@ bool StringColumn::canIndexCommitInPlace(const ChunkState& state, uint64_t numSt
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

@@ -4,7 +4,7 @@
 #include "function/function.h"
 #include "main/client_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct GenRandomUUID {
@@ -15,4 +15,4 @@ struct GenRandomUUID {
 };
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

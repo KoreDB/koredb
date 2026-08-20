@@ -2,7 +2,7 @@
 
 #include "graph_test/base_graph_test.h"
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 class ApiTest : public BaseGraphTest {
@@ -14,9 +14,9 @@ public:
     }
 
     std::string getInputDir() override {
-        return TestHelper::appendKuzuRootPath("dataset/tinysnb/");
+        return TestHelper::appendKoreDBRootPath("dataset/tinysnb/");
     }
 };
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

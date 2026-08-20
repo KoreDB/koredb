@@ -7,10 +7,10 @@
 #include "main/client_context.h"
 #include "parser/create_macro.h"
 
-using namespace kuzu::common;
-using namespace kuzu::parser;
+using namespace koredb::common;
+using namespace koredb::parser;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 std::unique_ptr<BoundStatement> Binder::bindCreateMacro(const Statement& statement) const {
@@ -31,4 +31,4 @@ std::unique_ptr<BoundStatement> Binder::bindCreateMacro(const Statement& stateme
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

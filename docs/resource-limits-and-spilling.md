@@ -41,8 +41,8 @@ decide how to continue (larger budget, or paginate with `SKIP`/`LIMIT`).
 - `QueryResult::isTruncated()` — `true` if the result is a partial prefix.
 - `QueryResult::getTruncationReason()` — `"timeout"`, `"memory_limit"`, or `""` (complete).
 
-Exposed across all bindings: C++, C API (`kuzu_query_result_is_truncated`,
-`kuzu_query_result_get_truncation_reason`), Node.js (`result.isTruncated()`,
+Exposed across all bindings: C++, C API (`koredb_query_result_is_truncated`,
+`koredb_query_result_get_truncation_reason`), Node.js (`result.isTruncated()`,
 `result.getTruncationReason()`), Python (`result.is_truncated()`,
 `result.get_truncation_reason()`), Java (`result.isTruncated()`, `result.getTruncationReason()`).
 

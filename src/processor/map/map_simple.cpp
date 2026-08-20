@@ -20,13 +20,13 @@
 #include "processor/plan_mapper.h"
 #include "processor/result/factorized_table_util.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
-using namespace kuzu::planner;
-using namespace kuzu::common;
-using namespace kuzu::storage;
-using namespace kuzu::extension;
+using namespace koredb::planner;
+using namespace koredb::common;
+using namespace koredb::storage;
+using namespace koredb::extension;
 
 std::unique_ptr<PhysicalOperator> PlanMapper::mapUseDatabase(
     const LogicalOperator* logicalOperator) {
@@ -147,4 +147,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapExtensionClause(
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

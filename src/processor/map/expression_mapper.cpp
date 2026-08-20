@@ -19,12 +19,12 @@
 #include "expression_evaluator/reference_evaluator.h"
 #include "planner/operator/schema.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::evaluator;
-using namespace kuzu::planner;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::evaluator;
+using namespace koredb::planner;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 static bool canEvaluateAsFunction(ExpressionType expressionType) {
@@ -212,4 +212,4 @@ std::vector<std::unique_ptr<ExpressionEvaluator>> ExpressionMapper::getEvaluator
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

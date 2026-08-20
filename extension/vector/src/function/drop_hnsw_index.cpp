@@ -5,9 +5,9 @@
 #include "index/hnsw_index_utils.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::function;
+using namespace koredb::function;
 
-namespace kuzu {
+namespace koredb {
 namespace vector_extension {
 
 struct DropHNSWIndexBindData final : TableFuncBindData {
@@ -90,4 +90,4 @@ function_set DropVectorIndexFunction::getFunctionSet() {
 }
 
 } // namespace vector_extension
-} // namespace kuzu
+} // namespace koredb

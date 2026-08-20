@@ -5,10 +5,10 @@
 #include "graph/graph_entry_set.h"
 #include "main/client_context.h"
 
-using namespace kuzu::common;
-using namespace kuzu::main;
+using namespace koredb::common;
+using namespace koredb::main;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct ProjectedGraphData {
@@ -76,4 +76,4 @@ function_set ShowProjectedGraphsFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

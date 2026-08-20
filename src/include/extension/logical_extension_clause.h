@@ -2,7 +2,7 @@
 
 #include "planner/operator/simple/logical_simple.h"
 
-namespace kuzu {
+namespace koredb {
 namespace extension {
 
 class LogicalExtensionClause : public planner::LogicalSimple {
@@ -20,4 +20,4 @@ private:
 };
 
 } // namespace extension
-} // namespace kuzu
+} // namespace koredb

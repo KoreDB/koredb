@@ -27,11 +27,11 @@
 #include "pyparse.h"
 #include "storage/storage_utils.h"
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
-using namespace kuzu::function;
+using namespace koredb::common;
+using namespace koredb::storage;
+using namespace koredb::function;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 NpyReader::NpyReader(const std::string& filePath)
@@ -352,4 +352,4 @@ function_set NpyScanFunction::getFunctionSet() {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

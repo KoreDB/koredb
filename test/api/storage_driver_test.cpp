@@ -1,9 +1,9 @@
 #include "api_test/api_test.h"
 #include "main/storage_driver.h"
 
-using namespace kuzu::main;
-using namespace kuzu::testing;
-using namespace kuzu::common;
+using namespace koredb::main;
+using namespace koredb::testing;
+using namespace koredb::common;
 
 // TODO(Guodong): FIX-ME. Rework storage driver scan.
 // TEST_F(ApiTest, StorageDriverScan) {

@@ -1,7 +1,7 @@
 #include "planner/operator/sip/logical_semi_masker.h"
 
-namespace kuzu {
+namespace koredb {
 namespace planner {
 LogicalSemiMasker::~LogicalSemiMasker() = default;
 }
-} // namespace kuzu
+} // namespace koredb

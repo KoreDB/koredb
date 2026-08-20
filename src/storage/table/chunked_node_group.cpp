@@ -9,10 +9,10 @@
 #include "storage/table/column_chunk.h"
 #include "storage/table/node_table.h"
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 ChunkedNodeGroup::ChunkedNodeGroup(std::vector<std::unique_ptr<ColumnChunk>> chunks,
@@ -585,4 +585,4 @@ void ChunkedNodeGroup::handleAppendException() {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

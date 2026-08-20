@@ -6,10 +6,10 @@
 #include "common/serializer/serializer.h"
 #include "main/client_context.h"
 
-using namespace kuzu::common;
-using namespace kuzu::binder;
+using namespace koredb::common;
+using namespace koredb::binder;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 void WALRecord::serialize(Serializer& serializer) const {
@@ -480,4 +480,4 @@ std::unique_ptr<LoadExtensionRecord> LoadExtensionRecord::deserialize(Deserializ
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

@@ -7,17 +7,17 @@
 -LOAD_DYNAMIC_EXTENSION fts
 -STATEMENT CALL SHOW_LOADED_EXTENSIONS() RETURN *
 ---- 1
-FTS|USER|${KUZU_ROOT_DIRECTORY}/extension/fts/build/libfts.kuzu_extension
--STATEMENT load extension "${KUZU_ROOT_DIRECTORY}/extension/duckdb/build/libduckdb.kuzu_extension"
+FTS|USER|${KOREDB_ROOT_DIRECTORY}/extension/fts/build/libfts.koredb_extension
+-STATEMENT load extension "${KOREDB_ROOT_DIRECTORY}/extension/duckdb/build/libduckdb.koredb_extension"
 ---- ok
 -STATEMENT CALL SHOW_LOADED_EXTENSIONS() RETURN *
 ---- 2
-FTS|USER|${KUZU_ROOT_DIRECTORY}/extension/fts/build/libfts.kuzu_extension
-DUCKDB|USER|${KUZU_ROOT_DIRECTORY}/extension/duckdb/build/libduckdb.kuzu_extension
--STATEMENT load extension "${KUZU_ROOT_DIRECTORY}/extension/httpfs/build/libhttpfs.kuzu_extension"
+FTS|USER|${KOREDB_ROOT_DIRECTORY}/extension/fts/build/libfts.koredb_extension
+DUCKDB|USER|${KOREDB_ROOT_DIRECTORY}/extension/duckdb/build/libduckdb.koredb_extension
+-STATEMENT load extension "${KOREDB_ROOT_DIRECTORY}/extension/httpfs/build/libhttpfs.koredb_extension"
 ---- ok
 -STATEMENT CALL SHOW_LOADED_EXTENSIONS() RETURN *
 ---- 3
-FTS|USER|${KUZU_ROOT_DIRECTORY}/extension/fts/build/libfts.kuzu_extension
-DUCKDB|USER|${KUZU_ROOT_DIRECTORY}/extension/duckdb/build/libduckdb.kuzu_extension
-HTTPFS|USER|${KUZU_ROOT_DIRECTORY}/extension/httpfs/build/libhttpfs.kuzu_extension
+FTS|USER|${KOREDB_ROOT_DIRECTORY}/extension/fts/build/libfts.koredb_extension
+DUCKDB|USER|${KOREDB_ROOT_DIRECTORY}/extension/duckdb/build/libduckdb.koredb_extension
+HTTPFS|USER|${KOREDB_ROOT_DIRECTORY}/extension/httpfs/build/libhttpfs.koredb_extension

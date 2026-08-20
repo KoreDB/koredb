@@ -3,9 +3,9 @@
 #include <string>
 #include <vector>
 
-#include "main/kuzu.h"
+#include "main/koredb.h"
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 // Insert a dataset row by row instead of batch insert (copy)
@@ -33,4 +33,4 @@ private:
 };
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

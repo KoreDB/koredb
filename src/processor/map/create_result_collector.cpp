@@ -3,11 +3,11 @@
 #include "processor/plan_mapper.h"
 #include "processor/result/factorized_table_util.h"
 
-using namespace kuzu::common;
-using namespace kuzu::planner;
-using namespace kuzu::binder;
+using namespace koredb::common;
+using namespace koredb::planner;
+using namespace koredb::binder;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::unique_ptr<ResultCollector> PlanMapper::createResultCollector(AccumulateType accumulateType,
@@ -35,4 +35,4 @@ std::unique_ptr<ResultCollector> PlanMapper::createResultCollector(AccumulateTyp
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

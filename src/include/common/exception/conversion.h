@@ -3,14 +3,14 @@
 #include "common/api.h"
 #include "exception.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
-class KUZU_API ConversionException : public Exception {
+class KOREDB_API ConversionException : public Exception {
 public:
     explicit ConversionException(const std::string& msg)
         : Exception("Conversion exception: " + msg) {}
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

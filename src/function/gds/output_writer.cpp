@@ -3,10 +3,10 @@
 #include "main/client_context.h"
 #include <function/gds/gds_frontier.h>
 
-using namespace kuzu::common;
-using namespace kuzu::processor;
+using namespace koredb::common;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 RJOutputWriter::RJOutputWriter(main::ClientContext* context, NodeOffsetMaskMap* outputNodeMask,
@@ -393,4 +393,4 @@ void SPPathsOutputWriter::writeInternal(FactorizedTable& fTable, nodeID_t dstNod
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

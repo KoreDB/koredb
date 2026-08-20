@@ -5,7 +5,7 @@
 #include "processor/operator/order_by/radix_sort.h"
 #include "processor/result/factorized_table.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 class ExternalMergeSort;
@@ -109,4 +109,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

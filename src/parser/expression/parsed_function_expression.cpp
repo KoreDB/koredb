@@ -3,9 +3,9 @@
 #include "common/serializer/deserializer.h"
 #include "common/serializer/serializer.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace parser {
 
 std::unique_ptr<ParsedFunctionExpression> ParsedFunctionExpression::deserialize(
@@ -28,4 +28,4 @@ void ParsedFunctionExpression::serializeInternal(Serializer& serializer) const {
 }
 
 } // namespace parser
-} // namespace kuzu
+} // namespace koredb

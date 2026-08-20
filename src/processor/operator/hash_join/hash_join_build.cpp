@@ -10,10 +10,10 @@
 #include "storage/buffer_manager/buffer_manager.h"
 #include "storage/buffer_manager/memory_manager.h"
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 // Unique suffix for the per-operator spill files, so concurrent queries never collide.
@@ -46,7 +46,7 @@ static std::unique_ptr<GraceHashJoinExecutor> makeGraceExecutor(ExecutionContext
                                                           mm->getBufferManager()->getMemoryLimit();
     const auto token = graceSpillFileCounter.fetch_add(1);
     const auto tempDir = std::filesystem::temp_directory_path();
-    const auto stem = "kuzu_grace_" + std::to_string(opId) + "_" + std::to_string(token);
+    const auto stem = "koredb_grace_" + std::to_string(opId) + "_" + std::to_string(token);
     auto buildPath = (tempDir / (stem + "_build.spill")).string();
     auto probePath = (tempDir / (stem + "_probe.spill")).string();
     std::vector<LogicalType> keyTypes, buildPayloadTypes, probeNonKeyTypes;
@@ -217,4 +217,4 @@ void HashJoinBuild::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

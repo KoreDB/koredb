@@ -4,7 +4,7 @@
 #include "main/db_config.h"
 #include "processor/operator/physical_operator.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 struct StandaloneCallPrintInfo final : OPPrintInfo {
@@ -60,4 +60,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

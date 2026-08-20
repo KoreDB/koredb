@@ -4,7 +4,7 @@ on: workflow_dispatch
 
 jobs:
   build-python-package:
-    runs-on: kuzu-self-hosted-linux-building-x86_64
+    runs-on: koredb-self-hosted-linux-building-x86_64
     env:
       PLATFORM: manylinux_2_28_x86_64
     steps:
@@ -14,13 +14,13 @@ jobs:
         working-directory: scripts/pip-package/
         run: |
           mkdir wheelhouse
-          /opt/python/cp310-cp310/bin/python package_tar.py kuzu.tar.gz
-          /opt/python/cp310-cp310/bin/pip wheel kuzu.tar.gz --no-deps -w wheelhouse/
-          auditwheel repair wheelhouse/kuzu-*.whl -w wheelhouse/
+          /opt/python/cp310-cp310/bin/python package_tar.py koredb.tar.gz
+          /opt/python/cp310-cp310/bin/pip wheel koredb.tar.gz --no-deps -w wheelhouse/
+          auditwheel repair wheelhouse/koredb-*.whl -w wheelhouse/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: kuzu-python-package
+          name: koredb-python-package
           path: scripts/pip-package/wheelhouse/*.manylinux_2_28_x86_64.whl
 
   generate-python-docs:
@@ -34,7 +34,7 @@ jobs:
       - name: Download Python package
         uses: actions/download-artifact@v4
         with:
-          name: kuzu-python-package
+          name: koredb-python-package
 
       - name: Install Python packages
         run: |
@@ -46,12 +46,12 @@ jobs:
       - name: Generate Python docs
         run: |
           mkdir docs
-          pdoc --docformat "numpy" -o docs kuzu
+          pdoc --docformat "numpy" -o docs koredb
 
       - name: Upload Python docs
         uses: actions/upload-artifact@v4
         with:
-          name: kuzu-python-docs
+          name: koredb-python-docs
           path: ./docs
 
   generate-nodejs-docs:
@@ -76,7 +76,7 @@ jobs:
       - name: Upload Node.js docs
         uses: actions/upload-artifact@v4
         with:
-          name: kuzu-nodejs-docs
+          name: koredb-nodejs-docs
           path: ./docs
   
   generate-wasm-docs:
@@ -103,26 +103,7 @@ jobs:
       - name: Upload Node.js docs
         uses: actions/upload-artifact@v4
         with:
-          name: kuzu-wasm-docs
-          path: ./docs
-
-  generate-java-docs:
-    runs-on: ubuntu-latest
-    container:
-      image: openjdk:20
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Generate Java docs
-        shell: bash
-        run: |
-          mkdir docs
-          cd docs && javadoc ../tools/java_api/src/main/java/com/kuzudb/*.java
-
-      - name: Upload Java docs
-        uses: actions/upload-artifact@v4
-        with:
-          name: kuzu-java-docs
+          name: koredb-wasm-docs
           path: ./docs
 
   generate-cpp-docs:
@@ -143,13 +124,13 @@ jobs:
       - name: Upload C++ docs
         uses: actions/upload-artifact@v4
         with:
-          name: kuzu-cpp-docs
+          name: koredb-cpp-docs
           path: ./scripts/generate-cpp-docs/cpp/docs/html
       
       - name: Upload C docs
         uses: actions/upload-artifact@v4
         with:
-          name: kuzu-c-docs
+          name: koredb-c-docs
           path: ./scripts/generate-cpp-docs/c/docs/html
 
   update-docs:
@@ -158,13 +139,12 @@ jobs:
       generate-python-docs,
       generate-nodejs-docs,
       generate-wasm-docs,
-      generate-java-docs,
       generate-cpp-docs
     ]
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: kuzudb/api-docs
+          repository: koredb/api-docs
           token: ${{ secrets.DOC_PUSH_TOKEN }}
           path: api-docs
         
@@ -173,44 +153,37 @@ jobs:
           rm -rf api-docs/python
           rm -rf api-docs/nodejs
           rm -rf api-docs/wasm
-          rm -rf api-docs/java
           rm -rf api-docs/cpp
           rm -rf api-docs/c
 
       - name: Download Python docs
         uses: actions/download-artifact@v4
         with:
-          name: kuzu-python-docs
+          name: koredb-python-docs
           path: api-docs/python
       
       - name: Download Node.js docs
         uses: actions/download-artifact@v4
         with:
-          name: kuzu-nodejs-docs
+          name: koredb-nodejs-docs
           path: api-docs/nodejs
 
       - name: Download WASM docs
         uses: actions/download-artifact@v4
         with:
-          name: kuzu-wasm-docs
+          name: koredb-wasm-docs
           path: api-docs/wasm
         
-      - name: Download Java docs
-        uses: actions/download-artifact@v4
-        with:
-          name: kuzu-java-docs
-          path: api-docs/java
-
       - name: Download C++ docs
         uses: actions/download-artifact@v4
         with:
-          name: kuzu-cpp-docs
+          name: koredb-cpp-docs
           path: api-docs/cpp
         
       - name: Download C docs
         uses: actions/download-artifact@v4
         with:
-          name: kuzu-c-docs
+          name: koredb-c-docs
           path: api-docs/c
         
       - name: Push changes

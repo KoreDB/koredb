@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-import kuzu
+import koredb
 import timeit
 import psutil
 
-db = kuzu.Database("mydb")
-con = kuzu.Connection(db)
+db = koredb.Database("mydb")
+con = koredb.Connection(db)
 
 start = timeit.default_timer()
 con.execute(open("create.cypher").read())

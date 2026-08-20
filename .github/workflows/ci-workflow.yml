@@ -70,7 +70,7 @@ jobs:
   generate-binary-datasets:
     name: generate binary dataset
     needs: [ sanity-checks, python-lint-check ]
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     env:
       NUM_THREADS: 32
       GEN: Ninja
@@ -80,6 +80,8 @@ jobs:
       GCS_SECRET_ACCESS_KEY: ${{ secrets.GCS_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Build
         run: make release
@@ -137,7 +139,7 @@ jobs:
   gcc-build-test:
     name: gcc build & test
     needs: [ sanity-checks, python-lint-check, generate-binary-datasets ]
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     env:
       NUM_THREADS: 32
       TEST_JOBS: 16
@@ -159,6 +161,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Download binary-demo
         uses: actions/download-artifact@v4
@@ -209,15 +213,12 @@ jobs:
       - name: Node.js test
         run: make nodejstest
 
-      - name: Java test
-        run: make javatest
-
       - name: Rust test with pre-built library
         env:
-          KUZU_SHARED: 1
-          KUZU_INCLUDE_DIR: ${{ github.workspace }}/build/release/src
-          KUZU_LIBRARY_DIR: ${{ github.workspace }}/build/release/src
-          KUZU_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
+          KOREDB_SHARED: 1
+          KOREDB_INCLUDE_DIR: ${{ github.workspace }}/build/release/src
+          KOREDB_LIBRARY_DIR: ${{ github.workspace }}/build/release/src
+          KOREDB_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
         run: |
           make extension-release
           make rusttest
@@ -225,7 +226,7 @@ jobs:
   gcc-build-test-vector-size:
     name: gcc build & test in-mem only with various vector size
     needs: [ gcc-build-test ]
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     env:
       NUM_THREADS: 32
       TEST_JOBS: 16
@@ -247,6 +248,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Download binary-demo
         uses: actions/download-artifact@v4
@@ -286,7 +289,7 @@ jobs:
 
   code-coverage:
     name: code coverage
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     needs: [ sanity-checks, python-lint-check, generate-binary-datasets ]
     env:
       NUM_THREADS: 32
@@ -294,6 +297,8 @@ jobs:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Download binary-demo
         uses: actions/download-artifact@v4
@@ -372,7 +377,7 @@ jobs:
   webassembly-build-test:
     name: webassembly build & test
     needs: [ sanity-checks, generate-binary-datasets ]
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     env:
       WERROR: 0
       TEST_JOBS: 8
@@ -380,6 +385,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Download binary-demo
         uses: actions/download-artifact@v4
@@ -427,13 +434,13 @@ jobs:
 
   rust-build-test:
     name: rust build & test
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     env:
       # CARGO_BUILD_JOBS is set using this in the Makefile
       NUM_THREADS: 32
       CC: gcc
       CXX: g++
-      KUZU_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
+      KOREDB_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
     steps:
       - uses: actions/checkout@v4
 
@@ -453,7 +460,7 @@ jobs:
   clang-build-test-with-tsan:
     name: clang build & test with tsan
     needs: [ clang-build-test, generate-binary-datasets ]
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     env:
       NUM_THREADS: 32
       TEST_JOBS: 16
@@ -463,6 +470,8 @@ jobs:
       WERROR: 0
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Download binary-demo
         uses: actions/download-artifact@v4
@@ -484,7 +493,7 @@ jobs:
   gcc-build-test-with-asan:
     name: gcc build & test with asan
     needs: [ gcc-build-test, generate-binary-datasets ]
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     env:
       NUM_THREADS: 32
       TEST_JOBS: 16
@@ -494,6 +503,8 @@ jobs:
       WERROR: 0
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Download binary-demo
         uses: actions/download-artifact@v4
@@ -524,7 +535,7 @@ jobs:
   clang-build-test:
     name: clang build & test
     needs: [ sanity-checks, python-lint-check, generate-binary-datasets ]
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     env:
       NUM_THREADS: 32
       TEST_JOBS: 16
@@ -542,6 +553,8 @@ jobs:
       HTTP_CACHE_FILE: TRUE
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Download binary-demo
         uses: actions/download-artifact@v4
@@ -587,15 +600,12 @@ jobs:
       - name: Node.js test
         run: make nodejstest
 
-      - name: Java test
-        run: make javatest
-
       - name: Rust test with pre-built library
         env:
-          KUZU_SHARED: 1
-          KUZU_INCLUDE_DIR: ${{ github.workspace }}/build/release/src
-          KUZU_LIBRARY_DIR: ${{ github.workspace }}/build/release/src
-          KUZU_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
+          KOREDB_SHARED: 1
+          KOREDB_INCLUDE_DIR: ${{ github.workspace }}/build/release/src
+          KOREDB_LIBRARY_DIR: ${{ github.workspace }}/build/release/src
+          KOREDB_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
         run: |
           make extension-release
           make rusttest
@@ -606,7 +616,7 @@ jobs:
         page_size_log2: [ 16, 18 ]
     name: clang build & test with page_size_log2=${{ matrix.page_size_log2 }}
     needs: [ clang-build-test ]
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     env:
       NUM_THREADS: 32
       TEST_JOBS: 16
@@ -624,6 +634,8 @@ jobs:
       HTTP_CACHE_FILE: TRUE
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Build
         run: |
@@ -644,7 +656,7 @@ jobs:
         node_group_size_log2: [ 4, 12, 19 ]
     name: clang build & test with node_group_size_log2=${{ matrix.node_group_size_log2 }}
     needs: [ clang-build-test ]
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     env:
       NUM_THREADS: 32
       TEST_JOBS: 16
@@ -661,6 +673,8 @@ jobs:
       BUFFER_POOL_SIZE: 1073741824
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Build
         run: |
@@ -706,6 +720,8 @@ jobs:
       WERROR: 0
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Download binary-demo
         uses: actions/download-artifact@v4
@@ -786,16 +802,10 @@ jobs:
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           make nodejstest
 
-      - name: Java test
-        shell: cmd
-        run: |
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-          make javatest
-
       - name: Rust test
         shell: cmd
         env:
-          KUZU_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
+          KOREDB_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
         run: |
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
           make extension-release
@@ -803,10 +813,10 @@ jobs:
 
       - name: Rust test with pre-built library
         env:
-          KUZU_SHARED: 1
-          KUZU_INCLUDE_DIR: ${{ github.workspace }}/build/release/src
-          KUZU_LIBRARY_DIR: ${{ github.workspace }}/build/release/src
-          KUZU_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
+          KOREDB_SHARED: 1
+          KOREDB_INCLUDE_DIR: ${{ github.workspace }}/build/release/src
+          KOREDB_LIBRARY_DIR: ${{ github.workspace }}/build/release/src
+          KOREDB_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
         shell: cmd
         run: |
           call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
@@ -930,7 +940,7 @@ jobs:
   clang-tidy:
     name: clang tidy & clangd diagnostics check
     needs: [ sanity-checks ]
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     env:
       GEN: Ninja
       NUM_THREADS: 32
@@ -973,6 +983,8 @@ jobs:
       HTTP_CACHE_FILE: TRUE
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Determine NUM_THREADS
         run: |
@@ -1037,28 +1049,22 @@ jobs:
           ulimit -n 10240
           make nodejstest
 
-      - name: Java test
-        run: |
-          ulimit -n 10240
-          export JAVA_HOME=`/usr/libexec/java_home`
-          make javatest
-
       - name: Rust test
         env:
-          KUZU_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
+          KOREDB_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
         run: |
           ulimit -n 10240
           source /Users/runner/.cargo/env
-          # `extension-release` disables KUZU_BUILD, but it is a dependency of `BUILD_EXAMPLES`, so disable it too.
+          # `extension-release` disables KOREDB_BUILD, but it is a dependency of `BUILD_EXAMPLES`, so disable it too.
           make extension-release EXTRA_CMAKE_FLAGS="-DBUILD_EXAMPLES=OFF"
           make rusttest
 
       - name: Rust test with pre-built library
         env:
-          KUZU_SHARED: 1
-          KUZU_INCLUDE_DIR: ${{ github.workspace }}/build/release/src
-          KUZU_LIBRARY_DIR: ${{ github.workspace }}/build/release/src
-          KUZU_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
+          KOREDB_SHARED: 1
+          KOREDB_INCLUDE_DIR: ${{ github.workspace }}/build/release/src
+          KOREDB_LIBRARY_DIR: ${{ github.workspace }}/build/release/src
+          KOREDB_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
         run: |
           ulimit -n 10240
           source /Users/runner/.cargo/env
@@ -1090,7 +1096,7 @@ jobs:
   linux-extension-test:
     name: linux extension test
     needs: [ gcc-build-test, clang-build-test ]
-    runs-on: kuzu-self-hosted-testing
+    runs-on: koredb-self-hosted-testing
     env:
       NUM_THREADS: 32
       TEST_JOBS: 16
@@ -1117,6 +1123,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Update PostgreSQL host
         working-directory: extension/postgres/test/test_files
         env:
@@ -1216,6 +1224,8 @@ jobs:
       HTTP_CACHE_FILE: FALSE
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Determine NUM_THREADS
         run: |
@@ -1308,6 +1318,8 @@ jobs:
       WERROR: 0
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Install dependencies
         run: pip install rangehttpserver requests
 

@@ -19,15 +19,15 @@
 
 #include "protocol/TProtocol.h"
 
-namespace kuzu_apache {
+namespace koredb_apache {
 namespace thrift {
 namespace protocol {
 
 TProtocol::~TProtocol() = default;
 uint32_t TProtocol::skip_virt(TType type) {
-  return ::kuzu_apache::thrift::protocol::skip(*this, type);
+  return ::koredb_apache::thrift::protocol::skip(*this, type);
 }
 
 TProtocolFactory::~TProtocolFactory() = default;
 
-}}} // kuzu_apache::thrift::protocol
+}}} // koredb_apache::thrift::protocol

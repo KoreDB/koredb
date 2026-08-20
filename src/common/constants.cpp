@@ -1,6 +1,6 @@
-namespace kuzu {
+namespace koredb {
 namespace common {
 
-const char* KUZU_VERSION = KUZU_CMAKE_VERSION;
+const char* KOREDB_VERSION = KOREDB_CMAKE_VERSION;
 }
-} // namespace kuzu
+} // namespace koredb

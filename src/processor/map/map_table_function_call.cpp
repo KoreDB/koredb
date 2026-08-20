@@ -1,10 +1,10 @@
 #include "planner/operator/logical_table_function_call.h"
 #include "processor/plan_mapper.h"
 
-using namespace kuzu::planner;
-using namespace kuzu::common;
+using namespace koredb::planner;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::unique_ptr<PhysicalOperator> PlanMapper::mapTableFunctionCall(
@@ -18,4 +18,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapTableFunctionCall(
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

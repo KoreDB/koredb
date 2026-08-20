@@ -8,13 +8,13 @@
 #include "graph/graph.h"
 #include "graph/graph_entry.h"
 
-using namespace kuzu::common;
-using namespace kuzu::catalog;
-using namespace kuzu::function;
-using namespace kuzu::processor;
-using namespace kuzu::graph;
+using namespace koredb::common;
+using namespace koredb::catalog;
+using namespace koredb::function;
+using namespace koredb::processor;
+using namespace koredb::graph;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 static std::shared_ptr<FrontierTask> getFrontierTask(const main::ClientContext* context,
@@ -167,4 +167,4 @@ void GDSUtils::runVertexCompute(ExecutionContext* context, GDSDensityState densi
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

@@ -8,14 +8,14 @@
 #include "function/gds/gds_vertex_compute.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::processor;
-using namespace kuzu::storage;
-using namespace kuzu::graph;
-using namespace kuzu::function;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::processor;
+using namespace koredb::storage;
+using namespace koredb::graph;
+using namespace koredb::function;
 
-namespace kuzu {
+namespace koredb {
 namespace algo_extension {
 
 using Colors = ComponentIDs;
@@ -310,4 +310,4 @@ function_set SCCFunction::getFunctionSet() {
 }
 
 } // namespace algo_extension
-} // namespace kuzu
+} // namespace koredb

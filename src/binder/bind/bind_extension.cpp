@@ -7,9 +7,9 @@
 #include "extension/extension_manager.h"
 #include "parser/extension_statement.h"
 
-using namespace kuzu::parser;
+using namespace koredb::parser;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 static void bindInstallExtension(const ExtensionAuxInfo& auxInfo) {
@@ -80,4 +80,4 @@ std::unique_ptr<BoundStatement> Binder::bindExtension(const Statement& statement
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

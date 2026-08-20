@@ -4,10 +4,10 @@
 #include "common/exception/io.h"
 #include "common/exception/not_implemented.h"
 
-namespace kuzu {
+namespace koredb {
 namespace httpfs_extension {
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
 HTTPResponse::HTTPResponse(httplib::Response& res, std::string url)
     : code{res.status}, error{res.reason}, url{std::move(url)}, body{res.body} {
@@ -505,4 +505,4 @@ void HTTPFileSystem::initCachedFileManager(main::ClientContext* context) {
 }
 
 } // namespace httpfs_extension
-} // namespace kuzu
+} // namespace koredb

@@ -3,9 +3,9 @@
 #include "main/settings.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 ProcessorTask::ProcessorTask(Sink* sink, ExecutionContext* executionContext)
@@ -37,4 +37,4 @@ bool ProcessorTask::terminate() {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

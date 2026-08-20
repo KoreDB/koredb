@@ -7,7 +7,7 @@
 #include "common/types/value/value.h"
 #include "common/vector/value_vector.h"
 #include "factorized_table_schema.h"
-namespace kuzu {
+namespace koredb {
 namespace common {
 class Serializer;
 class Deserializer;
@@ -88,7 +88,7 @@ private:
 
 class FlatTupleIterator;
 
-class KUZU_API FactorizedTable {
+class KOREDB_API FactorizedTable {
     friend FlatTupleIterator;
     friend class JoinHashTable;
     friend class PathPropertyProbe;
@@ -351,4 +351,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

@@ -12,7 +12,7 @@
 #include "common/types/types.h"
 #include "common/types/uuid.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 class ValueVector;
@@ -320,4 +320,4 @@ template<>
 std::string TypeUtils::toString(const union_entry_t& val, void* valueVector);
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

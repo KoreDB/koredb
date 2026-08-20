@@ -6,7 +6,7 @@
 #include "common/exception/binder.h"
 #include "main/client_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace fts_extension {
 
 void FTSIndexUtils::validateIndexExistence(const main::ClientContext& context,
@@ -53,4 +53,4 @@ void FTSIndexUtils::validateAutoTransaction(const main::ClientContext& context,
 }
 
 } // namespace fts_extension
-} // namespace kuzu
+} // namespace koredb

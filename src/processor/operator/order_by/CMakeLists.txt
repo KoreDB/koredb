@@ -1,4 +1,4 @@
-add_library(kuzu_processor_operator_order_by
+add_library(koredb_processor_operator_order_by
         OBJECT
         external_merge_sort.cpp
         key_block_merger.cpp
@@ -12,5 +12,5 @@ add_library(kuzu_processor_operator_order_by
         top_k_scanner.cpp)
 
 set(ALL_OBJECT_FILES
-        ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:kuzu_processor_operator_order_by>
+        ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:koredb_processor_operator_order_by>
         PARENT_SCOPE)

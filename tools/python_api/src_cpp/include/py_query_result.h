@@ -5,10 +5,10 @@
 
 #include "arrow_array.h"
 #include "common/arrow/arrow.h"
-#include "main/kuzu.h"
+#include "main/koredb.h"
 #include "pybind_include.h"
 
-using namespace kuzu::main;
+using namespace koredb::main;
 
 class PyQueryResult {
     friend class PyConnection;
@@ -30,11 +30,11 @@ public:
 
     void close();
 
-    static py::object convertValueToPyObject(const kuzu::common::Value& value);
+    static py::object convertValueToPyObject(const koredb::common::Value& value);
 
     py::object getAsDF();
 
-    kuzu::pyarrow::Table getAsArrow(std::int64_t chunkSize);
+    koredb::pyarrow::Table getAsArrow(std::int64_t chunkSize);
 
     py::list getColumnDataTypes();
 
@@ -57,11 +57,11 @@ public:
     size_t getNumTuples();
 
 private:
-    static py::dict convertNodeIdToPyDict(const kuzu::common::nodeID_t& nodeId);
+    static py::dict convertNodeIdToPyDict(const koredb::common::nodeID_t& nodeId);
 
-    bool getNextArrowChunk(const std::vector<kuzu::common::LogicalType>& types,
+    bool getNextArrowChunk(const std::vector<koredb::common::LogicalType>& types,
         const std::vector<std::string>& names, py::list& batches, std::int64_t chunk_size);
-    py::object getArrowChunks(const std::vector<kuzu::common::LogicalType>& types,
+    py::object getArrowChunks(const std::vector<koredb::common::LogicalType>& types,
         const std::vector<std::string>& names, std::int64_t chunkSize);
 
 private:

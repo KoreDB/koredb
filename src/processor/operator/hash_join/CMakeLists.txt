@@ -1,4 +1,4 @@
-add_library(kuzu_processor_operator_hash_join
+add_library(koredb_processor_operator_hash_join
         OBJECT
         grace_hash_join_executor.cpp
         hash_join_build.cpp
@@ -6,5 +6,5 @@ add_library(kuzu_processor_operator_hash_join
         join_hash_table.cpp)
 
 set(ALL_OBJECT_FILES
-        ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:kuzu_processor_operator_hash_join>
+        ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:koredb_processor_operator_hash_join>
         PARENT_SCOPE)

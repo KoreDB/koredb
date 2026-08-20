@@ -17,12 +17,12 @@
 #include "storage/storage_manager.h"
 #include "storage/table/node_table.h"
 
-using namespace kuzu::common;
-using namespace kuzu::function;
-using namespace kuzu::processor;
-using namespace kuzu::processor;
+using namespace koredb::common;
+using namespace koredb::function;
+using namespace koredb::processor;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace vector_extension {
 
 CreateInMemHNSWSharedState::CreateInMemHNSWSharedState(const CreateHNSWIndexBindData& bindData)
@@ -368,4 +368,4 @@ function_set CreateVectorIndexFunction::getFunctionSet() {
 }
 
 } // namespace vector_extension
-} // namespace kuzu
+} // namespace koredb

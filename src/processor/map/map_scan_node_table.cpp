@@ -9,11 +9,11 @@
 #include "processor/plan_mapper.h"
 #include "storage/storage_manager.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::planner;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::planner;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::unique_ptr<PhysicalOperator> PlanMapper::mapScanNodeTable(
@@ -91,4 +91,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapScanNodeTable(
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

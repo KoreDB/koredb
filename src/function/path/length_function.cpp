@@ -6,10 +6,10 @@
 #include "function/path/vector_path_functions.h"
 #include "function/rewrite_function.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
+using namespace koredb::binder;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 static std::shared_ptr<Expression> rewriteFunc(const RewriteFunctionBindInput& input) {
@@ -55,4 +55,4 @@ function_set LengthFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

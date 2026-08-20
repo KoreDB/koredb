@@ -4,7 +4,7 @@
 #include "function/config/max_iterations_config.h"
 #include "function/gds/gds.h"
 
-namespace kuzu {
+namespace koredb {
 namespace algo_extension {
 
 struct CCConfig final : public function::GDSConfig {
@@ -16,4 +16,4 @@ struct CCConfig final : public function::GDSConfig {
 static constexpr char GROUP_ID_COLUMN_NAME[] = "group_id";
 
 } // namespace algo_extension
-} // namespace kuzu
+} // namespace koredb

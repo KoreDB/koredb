@@ -5,7 +5,7 @@
 #include "main/db_config.h"
 #include "storage/storage_extension.h"
 
-namespace kuzu {
+namespace koredb {
 namespace extension {
 
 struct ExtensionEntry {
@@ -17,19 +17,19 @@ class ExtensionManager {
 public:
     void loadExtension(const std::string& path, main::ClientContext* context);
 
-    KUZU_API std::string toCypher();
+    KOREDB_API std::string toCypher();
 
-    KUZU_API void addExtensionOption(std::string name, common::LogicalTypeID type,
+    KOREDB_API void addExtensionOption(std::string name, common::LogicalTypeID type,
         common::Value defaultValue, bool isConfidential);
 
     const main::ExtensionOption* getExtensionOption(std::string name) const;
 
-    KUZU_API void registerStorageExtension(std::string name,
+    KOREDB_API void registerStorageExtension(std::string name,
         std::unique_ptr<storage::StorageExtension> storageExtension);
 
     std::vector<storage::StorageExtension*> getStorageExtensions();
 
-    KUZU_API const std::vector<LoadedExtension>& getLoadedExtensions() const {
+    KOREDB_API const std::vector<LoadedExtension>& getLoadedExtensions() const {
         return loadedExtensions;
     }
 
@@ -48,4 +48,4 @@ private:
 };
 
 } // namespace extension
-} // namespace kuzu
+} // namespace koredb

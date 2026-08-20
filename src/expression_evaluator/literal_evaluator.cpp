@@ -2,11 +2,11 @@
 
 #include "common/types/value/value.h"
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
-using namespace kuzu::main;
+using namespace koredb::common;
+using namespace koredb::storage;
+using namespace koredb::main;
 
-namespace kuzu {
+namespace koredb {
 namespace evaluator {
 
 void LiteralExpressionEvaluator::evaluate() {}
@@ -40,4 +40,4 @@ void LiteralExpressionEvaluator::resolveResultVector(const processor::ResultSet&
 }
 
 } // namespace evaluator
-} // namespace kuzu
+} // namespace koredb

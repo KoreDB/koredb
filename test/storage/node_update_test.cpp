@@ -1,6 +1,6 @@
 #include "graph_test/private_graph_test.h"
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 class NodeUpdateTest : public EmptyDBTest {
@@ -42,4 +42,4 @@ TEST_F(NodeUpdateTest, UpdateSameRowRedundtanly) {
 }
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

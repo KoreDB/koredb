@@ -4,11 +4,11 @@
 #include "function/gds/rec_joins.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::processor;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 class SSPPathsEdgeCompute : public SPEdgeCompute {
@@ -103,4 +103,4 @@ std::unique_ptr<RJAlgorithm> SingleSPPathsFunction::getAlgorithm() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

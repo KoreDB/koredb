@@ -10,11 +10,11 @@
 #include "storage/table/version_record_handler.h"
 #include "transaction/transaction.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::main;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::main;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 struct UndoRecordHeader {
@@ -323,4 +323,4 @@ void UndoBuffer::rollbackVectorUpdateInfo(const transaction::Transaction* transa
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

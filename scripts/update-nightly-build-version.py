@@ -1,7 +1,7 @@
 PYPI_URL = "https://pypi.org/pypi/kuzu/json"
-CMAKE_KEYWORD = "project(Kuzu VERSION "
+CMAKE_KEYWORD = "project(KoreDB VERSION "
 CMAKE_SUFFIX = " LANGUAGES CXX C)\n"
-EXTENSION_KEYWORD = 'add_definitions(-DKUZU_EXTENSION_VERSION="'
+EXTENSION_KEYWORD = 'add_definitions(-DKOREDB_EXTENSION_VERSION="'
 EXTENSION_SUFFIX = '")\n'
 EXTENSION_DEV_VERSION = "dev"
 
@@ -62,7 +62,7 @@ def main():
     print("Committing changes...")
     sys.stdout.flush()
     os.system("git config user.email ci@kuzudb.com")
-    os.system("git config user.name \"Kuzu CI\"")
+    os.system("git config user.name \"KoreDB CI\"")
     os.system("git add %s" % cmake_lists_path)
     os.system("git commit -m \"Update CMake version to %s and change extension version to dev.\"" % cmake_version)
     sys.stdout.flush()

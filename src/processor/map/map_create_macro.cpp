@@ -4,9 +4,9 @@
 #include "processor/plan_mapper.h"
 #include "processor/result/factorized_table_util.h"
 
-using namespace kuzu::planner;
+using namespace koredb::planner;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::unique_ptr<PhysicalOperator> PlanMapper::mapCreateMacro(
@@ -22,4 +22,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapCreateMacro(
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

@@ -18,12 +18,12 @@
 #include "function/function_collection.h"
 #include "transaction/transaction.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::storage;
-using namespace kuzu::transaction;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::storage;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace catalog {
 
 Catalog::Catalog() : version{0} {
@@ -556,4 +556,4 @@ void Catalog::deserialize(Deserializer& deSer) {
 }
 
 } // namespace catalog
-} // namespace kuzu
+} // namespace koredb

@@ -10,12 +10,12 @@
 #include "storage/table/node_table.h"
 #include "utils/fts_utils.h"
 
-namespace kuzu {
+namespace koredb {
 namespace fts_extension {
 
-using namespace kuzu::common;
-using namespace kuzu::main;
-using namespace kuzu::function;
+using namespace koredb::common;
+using namespace koredb::main;
+using namespace koredb::function;
 
 static std::unique_ptr<TableFuncBindData> bindFunc(ClientContext* context,
     const TableFuncBindInput* input) {
@@ -82,4 +82,4 @@ function_set DropFTSFunction::getFunctionSet() {
 }
 
 } // namespace fts_extension
-} // namespace kuzu
+} // namespace koredb

@@ -7,13 +7,13 @@
 #include "storage/storage_manager.h"
 #include "storage/table/node_table.h"
 
-namespace kuzu {
+namespace koredb {
 namespace fts_extension {
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
-using namespace kuzu::transaction;
-using namespace kuzu::catalog;
+using namespace koredb::common;
+using namespace koredb::storage;
+using namespace koredb::transaction;
+using namespace koredb::catalog;
 
 void FTSUtils::normalizeQuery(std::string& query, const RE2& ignorePattern) {
     std::string replacePattern = " ";
@@ -85,4 +85,4 @@ std::vector<std::string> FTSUtils::stemTerms(std::vector<std::string> terms,
 }
 
 } // namespace fts_extension
-} // namespace kuzu
+} // namespace koredb

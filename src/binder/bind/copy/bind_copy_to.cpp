@@ -7,10 +7,10 @@
 #include "main/client_context.h"
 #include "parser/copy.h"
 
-using namespace kuzu::common;
-using namespace kuzu::parser;
+using namespace koredb::common;
+using namespace koredb::parser;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 std::unique_ptr<BoundStatement> Binder::bindCopyToClause(const Statement& statement) {
@@ -45,4 +45,4 @@ std::unique_ptr<BoundStatement> Binder::bindCopyToClause(const Statement& statem
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

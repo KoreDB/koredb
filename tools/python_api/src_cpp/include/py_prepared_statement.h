@@ -1,10 +1,10 @@
 #pragma once
 
-#include "main/kuzu.h"
+#include "main/koredb.h"
 #include "main/prepared_statement.h"
 #include "pybind_include.h"
 
-using namespace kuzu::main;
+using namespace koredb::main;
 
 class PyPreparedStatement {
     friend class PyConnection;

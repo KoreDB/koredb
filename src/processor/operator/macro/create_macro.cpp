@@ -3,9 +3,9 @@
 #include "common/string_format.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::string CreateMacroPrintInfo::toString() const {
@@ -22,4 +22,4 @@ void CreateMacro::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

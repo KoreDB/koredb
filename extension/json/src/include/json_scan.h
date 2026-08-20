@@ -2,7 +2,7 @@
 
 #include "function/table/table_function.h"
 
-namespace kuzu {
+namespace koredb {
 namespace json_extension {
 
 struct JsonScan {
@@ -12,4 +12,4 @@ struct JsonScan {
 };
 
 } // namespace json_extension
-} // namespace kuzu
+} // namespace koredb

@@ -2,7 +2,7 @@
 
 #include "storage/table/column.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 class MemoryManager;
 
@@ -43,4 +43,4 @@ private:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

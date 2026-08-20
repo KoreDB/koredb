@@ -6,7 +6,7 @@ const importTest = (name, path) => {
   });
 };
 
-describe("kuzu-wasm", function () {
+describe("koredb-wasm", function () {
   before(() => {
     return initTests();
   });

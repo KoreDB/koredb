@@ -6,11 +6,11 @@
 #include "common/serializer/serializer.h"
 #include "common/vector/value_vector.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::binder;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::binder;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 LocalWAL::LocalWAL(MemoryManager& mm) {
@@ -108,4 +108,4 @@ void LocalWAL::addNewWALRecord(const WALRecord& walRecord) {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

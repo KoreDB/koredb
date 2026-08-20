@@ -18,9 +18,9 @@
 #include "processor/operator/order_by/order_by_key_encoder.h"
 #include "storage/buffer_manager/memory_manager.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 ExternalMergeSort::ExternalMergeSort(const OrderByDataInfo& info, storage::MemoryManager* mm,
@@ -334,4 +334,4 @@ uint64_t ExternalMergeSort::scanNext(const std::vector<ValueVector*>& payloadVec
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

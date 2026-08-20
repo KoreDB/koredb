@@ -2,7 +2,7 @@
 
 #include "physical_operator.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 class EmptyResult final : public PhysicalOperator {
@@ -22,4 +22,4 @@ public:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

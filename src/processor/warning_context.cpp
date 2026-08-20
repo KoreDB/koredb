@@ -3,9 +3,9 @@
 #include "common/assert.h"
 #include "common/uniq_lock.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 static PopulatedCopyFromError defaultPopulateFunc(CopyFromFileError error, common::idx_t) {
@@ -87,4 +87,4 @@ bool WarningContext::getIgnoreErrorsOption() const {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

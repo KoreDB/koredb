@@ -3,7 +3,7 @@
 #include "function/function.h"
 #include "main/client_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct ExportFuncLocalState {
@@ -68,7 +68,7 @@ using export_sink_t = std::function<void(ExportFuncSharedState&, ExportFuncLocal
 using export_combine_t = std::function<void(ExportFuncSharedState&, ExportFuncLocalState&)>;
 using export_finalize_t = std::function<void(ExportFuncSharedState&)>;
 
-struct KUZU_API ExportFunction : public Function {
+struct KOREDB_API ExportFunction : public Function {
     ExportFunction() = default;
     explicit ExportFunction(std::string name) : Function{std::move(name), {}} {}
 
@@ -102,4 +102,4 @@ struct ExportParquetFunction : public ExportFunction {
 };
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

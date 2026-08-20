@@ -4,7 +4,7 @@
 #include "main/query_result.h"
 #include "printer.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 class JsonPrinter : public Printer {
@@ -53,4 +53,4 @@ private:
 };
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

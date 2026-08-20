@@ -4,11 +4,11 @@
 #include "extension/extension_manager.h"
 #include "processor/execution_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
-using namespace kuzu::common;
-using namespace kuzu::extension;
+using namespace koredb::common;
+using namespace koredb::extension;
 
 void InstallExtension::setOutputMessage(bool installed, storage::MemoryManager* memoryManager) {
     if (info.forceInstall) {
@@ -32,9 +32,10 @@ void InstallExtension::setOutputMessage(bool installed, storage::MemoryManager* 
 
 void InstallExtension::executeInternal(ExecutionContext* context) {
     if (context->clientContext->getExtensionManager()->isStaticLinkedExtension(info.name)) {
-        appendMessage(stringFormat("Extension {} is already statically linked with the kuzu core. "
-                                   "No need to INSTALL.",
-                          info.name),
+        appendMessage(
+            stringFormat("Extension {} is already statically linked with the koredb core. "
+                         "No need to INSTALL.",
+                info.name),
             context->clientContext->getMemoryManager());
         return;
     }
@@ -48,4 +49,4 @@ void InstallExtension::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

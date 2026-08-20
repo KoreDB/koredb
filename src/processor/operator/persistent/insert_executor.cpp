@@ -1,9 +1,9 @@
 #include "processor/operator/persistent/insert_executor.h"
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 void NodeInsertInfo::init(const ResultSet& resultSet) {
@@ -187,4 +187,4 @@ void RelInsertExecutor::skipInsert() const {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

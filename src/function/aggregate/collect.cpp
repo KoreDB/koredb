@@ -1,12 +1,12 @@
 #include "function/aggregate_function.h"
 #include "storage/storage_utils.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::storage;
-using namespace kuzu::processor;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::storage;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 /**
@@ -182,4 +182,4 @@ function_set CollectFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

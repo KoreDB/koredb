@@ -2,7 +2,7 @@
 
 #include "storage/wal/wal_record.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 class BufferedFileWriter;
 class VirtualFileSystem;
@@ -42,4 +42,4 @@ private:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

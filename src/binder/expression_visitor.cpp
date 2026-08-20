@@ -11,9 +11,9 @@
 #include "function/sequence/sequence_functions.h"
 #include "function/uuid/vector_uuid_functions.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 void ExpressionVisitor::visit(std::shared_ptr<Expression> expr) {
@@ -328,4 +328,4 @@ bool ConstantExpressionVisitor::visitChildren(const Expression& expr) {
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

@@ -2,11 +2,11 @@ use crate::logical_type::LogicalType;
 use std::fmt;
 
 pub enum Error {
-    /// Exception raised by C++ kuzu library
+    /// Exception raised by C++ koredb library
     CxxException(cxx::Exception),
-    /// Message produced by kuzu when a query fails
+    /// Message produced by koredb when a query fails
     FailedQuery(String),
-    /// Message produced by kuzu when a query fails to prepare
+    /// Message produced by koredb when a query fails to prepare
     FailedPreparedStatement(String),
     /// Message produced when you attempt to pass read-only types over the FFI boundary
     ReadOnlyType(LogicalType),

@@ -5,7 +5,7 @@
 #include "main/client_context.h"
 #include "main/db_config.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 struct ThreadsSetting {
@@ -351,4 +351,4 @@ struct SpillOrderByBudgetSetting {
 };
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

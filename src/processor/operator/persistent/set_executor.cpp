@@ -1,8 +1,8 @@
 #include "processor/operator/persistent/set_executor.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 void NodeSetInfo::init(const ResultSet& resultSet, main::ClientContext* context) {
@@ -136,4 +136,4 @@ void MultiLabelRelSetExecutor::set(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

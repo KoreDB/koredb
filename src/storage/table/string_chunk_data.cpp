@@ -10,9 +10,9 @@
 #include "storage/table/dictionary_chunk.h"
 #include "storage/table/string_column.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 StringChunkData::StringChunkData(MemoryManager& mm, LogicalType dataType, uint64_t capacity,
@@ -304,4 +304,4 @@ std::string StringChunkData::getValue<std::string>(offset_t pos) const {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

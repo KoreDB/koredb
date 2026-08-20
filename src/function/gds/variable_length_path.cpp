@@ -5,11 +5,11 @@
 #include "graph/graph.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::processor;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 class VarLenPathsOutputWriter final : public PathsOutputWriter {
@@ -150,4 +150,4 @@ std::unique_ptr<RJAlgorithm> VarLenJoinsFunction::getAlgorithm() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

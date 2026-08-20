@@ -22,13 +22,13 @@
 #include "processor/result/factorized_table.h"
 #include "processor/result/factorized_table_schema.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 // Test-only: how many times the out-of-core (spilling) aggregation path has been activated in this
 // process. Lets a differential test confirm the spilling path actually ran instead of silently
 // falling back to the in-memory path.
-KUZU_API uint64_t getSpillAggregateActivationCount();
+KOREDB_API uint64_t getSpillAggregateActivationCount();
 
 // Static (plan-time) metadata that lets a hash aggregation run the out-of-core (spilling) path when
 // `spill_aggregate` is on. `eligible` is the conservative shape check (see map_aggregate.cpp);
@@ -262,4 +262,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

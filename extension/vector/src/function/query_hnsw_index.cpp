@@ -24,14 +24,14 @@
 #include "processor/plan_mapper.h"
 #include "storage/storage_manager.h"
 
-using namespace kuzu::common;
-using namespace kuzu::binder;
-using namespace kuzu::function;
-using namespace kuzu::planner;
-using namespace kuzu::catalog;
-using namespace kuzu::processor;
+using namespace koredb::common;
+using namespace koredb::binder;
+using namespace koredb::function;
+using namespace koredb::planner;
+using namespace koredb::catalog;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace vector_extension {
 
 static std::vector<LogicalType> inferInputTypes(const expression_vector& params) {
@@ -388,4 +388,4 @@ function_set QueryVectorIndexFunction::getFunctionSet() {
 }
 
 } // namespace vector_extension
-} // namespace kuzu
+} // namespace koredb

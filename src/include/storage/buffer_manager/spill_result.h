@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 struct SpillResult {
@@ -11,4 +11,4 @@ struct SpillResult {
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

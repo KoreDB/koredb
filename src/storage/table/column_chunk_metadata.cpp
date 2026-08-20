@@ -9,7 +9,7 @@
 #include "storage/compression/float_compression.h"
 #include "storage/table/column_chunk_data.h"
 
-namespace kuzu::storage {
+namespace koredb::storage {
 using namespace common;
 
 namespace {
@@ -123,7 +123,7 @@ ColumnChunkMetadata GetBitpackingMetadata::operator()(std::span<const uint8_t> /
             },
             [&](auto) {});
     }
-    const auto numValuesPerPage = compMeta.numValues(KUZU_PAGE_SIZE, dataType);
+    const auto numValuesPerPage = compMeta.numValues(KOREDB_PAGE_SIZE, dataType);
     const auto numPages =
         numValuesPerPage == UINT64_MAX ?
             0 :
@@ -232,7 +232,7 @@ ColumnChunkMetadata GetFloatCompressionMetadata<T>::operator()(std::span<const u
         return uncompressedGetMetadataInternal(buffer.size(), numValues, min, max);
     }
 
-    const auto numValuesPerPage = compMeta.numValues(KUZU_PAGE_SIZE, dataType);
+    const auto numValuesPerPage = compMeta.numValues(KOREDB_PAGE_SIZE, dataType);
     const auto numPagesForEncoded = ceilDiv(capacity, numValuesPerPage);
     const auto numPagesForExceptions =
         EncodeException<T>::numPagesFromExceptions(floatMetadata->exceptionCapacity);
@@ -242,4 +242,4 @@ ColumnChunkMetadata GetFloatCompressionMetadata<T>::operator()(std::span<const u
 
 template class GetFloatCompressionMetadata<float>;
 template class GetFloatCompressionMetadata<double>;
-} // namespace kuzu::storage
+} // namespace koredb::storage

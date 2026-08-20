@@ -3,9 +3,9 @@
 #include "graph/graph_entry_set.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct DropProjectedGraphBindData final : TableFuncBindData {
@@ -46,4 +46,4 @@ function_set DropProjectedGraphFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

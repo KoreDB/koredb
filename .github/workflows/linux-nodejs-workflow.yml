@@ -10,63 +10,69 @@ on:
         default: false
 
 jobs:
-  build-linux-nodejs-x86_64:
-    runs-on: kuzu-self-hosted-linux-building-x86_64
+  build-linux-nodejs:
+    name: linux-nodejs-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    # Build inside manylinux so the resulting addon keeps a low glibc floor
+    # (manylinux_2_28 => glibc 2.28, i.e. RHEL 8 / Ubuntu 20.04 and newer).
+    container:
+      image: quay.io/pypa/manylinux_2_28_${{ matrix.manylinuxArch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+            manylinuxArch: x86_64
+            nodeDist: linux-x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            manylinuxArch: aarch64
+            nodeDist: linux-arm64
+    env:
+      NODE_VERSION: v20.19.2
+      PYBIN: /opt/python/cp311-cp311/bin
     steps:
+      - name: Install build toolchain
+        run: |
+          dnf install -y make tar xz gzip which
+          "$PYBIN/python" -m pip install --upgrade pip cmake ninja packaging
+          echo "$PYBIN" >> "$GITHUB_PATH"
+
+      - name: Install Node.js
+        run: |
+          curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-${{ matrix.nodeDist }}.tar.xz" -o /tmp/node.tar.xz
+          mkdir -p /opt/node
+          tar -xJf /tmp/node.tar.xz -C /opt/node --strip-components=1
+          echo "/opt/node/bin" >> "$GITHUB_PATH"
+
       - uses: actions/checkout@v4
+
+      - name: Trust the workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Report toolchain versions
+        run: |
+          node --version
+          npm --version
+          cmake --version
+          python --version
 
       - name: Update nightly version
         if: ${{ inputs.isNightly == true }}
-        run: |
-          /opt/python/cp310-cp310/bin/python -m pip install packaging
-          /opt/python/cp310-cp310/bin/python update-nightly-build-version.py
+        run: python update-nightly-build-version.py
         working-directory: scripts
-      
+
       - name: Create Node.js source distribution
         working-directory: tools/nodejs_api
         run: |
-          rm -rf kuzu-source.tar.gz package *.node
+          rm -rf koredb-source.tar.gz package *.node
           node package
 
       - name: Extract tarball
         working-directory: tools/nodejs_api
-        run: tar -xvzf kuzu-source.tar.gz
-
-      - name: Build Node.js native module
-        working-directory: tools/nodejs_api/package
-        run: |
-          npm i
-
-      - name: Move Node.js native module
-        working-directory: tools/nodejs_api/package
-        run: mv kuzujs.node kuzujs-linux-x64.node
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-nodejs-module-x86_64
-          path: tools/nodejs_api/package/kuzujs-linux-x64.node
-
-  build-linux-nodejs-aarch64:
-    runs-on: kuzu-self-hosted-linux-building-aarch64
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Update nightly version
-        if: ${{ inputs.isNightly == true }}
-        run: |
-          /opt/python/cp310-cp310/bin/python -m pip install packaging
-          /opt/python/cp310-cp310/bin/python update-nightly-build-version.py
-        working-directory: scripts
-
-      - name: Create Node.js source distribution
-        working-directory: tools/nodejs_api
-        run: |
-          rm -rf kuzu-source.tar.gz package *.node
-          node package
-
-      - name: Extract tarball
-        working-directory: tools/nodejs_api
-        run: tar -xvzf kuzu-source.tar.gz
+        run: tar -xzf koredb-source.tar.gz
 
       - name: Build Node.js native module
         working-directory: tools/nodejs_api/package
@@ -74,9 +80,10 @@ jobs:
 
       - name: Move Node.js native module
         working-directory: tools/nodejs_api/package
-        run: mv kuzujs.node kuzujs-linux-arm64.node
+        run: mv koredbjs.node koredbjs-linux-${{ matrix.arch }}.node
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-nodejs-module-aarch64
-          path: tools/nodejs_api/package/kuzujs-linux-arm64.node
+          name: linux-nodejs-module-${{ matrix.arch }}
+          path: tools/nodejs_api/package/koredbjs-linux-${{ matrix.arch }}.node
+          if-no-files-found: error

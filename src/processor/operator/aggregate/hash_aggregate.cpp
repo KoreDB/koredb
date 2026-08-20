@@ -17,11 +17,11 @@
 #include "storage/buffer_manager/buffer_manager.h"
 #include "storage/buffer_manager/memory_manager.h"
 
-using namespace kuzu::common;
-using namespace kuzu::function;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::function;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 // Test-only activation counter (see getSpillAggregateActivationCount).
@@ -163,7 +163,7 @@ std::unique_ptr<PartitionedAggregateExecutor> HashAggregateSharedState::createLo
     static std::atomic<uint64_t> spillFileCounter{0};
     const auto token = spillFileCounter.fetch_add(1);
     auto path = (std::filesystem::temp_directory_path() /
-                 ("kuzu_spill_agg_" + std::to_string(token) + ".spill"))
+                 ("koredb_spill_agg_" + std::to_string(token) + ".spill"))
                     .string();
     return std::make_unique<PartitionedAggregateExecutor>(memoryManager, graceVfs, std::move(path),
         LogicalType::copy(graceKeyTypes), LogicalType::copy(gracePayloadTypes),
@@ -377,4 +377,4 @@ void HashAggregate::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

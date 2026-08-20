@@ -9,7 +9,7 @@
 
 struct ArrowSchema;
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 struct ArrowSchemaHolder {
@@ -47,4 +47,4 @@ private:
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

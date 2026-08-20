@@ -3,7 +3,7 @@
 #include "storage/buffer_manager/memory_manager.h"
 #include "storage/table/dictionary_column.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 class StringColumn final : public Column {
@@ -63,4 +63,4 @@ private:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

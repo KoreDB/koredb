@@ -2,7 +2,7 @@
 
 #include "function/scalar_function.h"
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 /**
@@ -185,4 +185,4 @@ struct CastAnyFunction {
 };
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

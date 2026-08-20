@@ -9,7 +9,7 @@
 #include "common/types/value/value.h"
 #include "storage/storage_utils.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 static void resizeVector(ArrowVector* vector, const LogicalType& type, int64_t capacity);
@@ -969,4 +969,4 @@ ArrowArray ArrowRowBatch::append(main::QueryResult& queryResult, std::int64_t ch
 }
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

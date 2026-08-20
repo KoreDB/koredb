@@ -8,7 +8,7 @@
 #include "common/types/types.h"
 #include "processor/result/partitioned_factorized_table.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 class ValueVector;
 class VirtualFileSystem;
@@ -38,7 +38,7 @@ class JoinHashTable;
 //
 // Scope: inner join, flat (fixed-layout and variable-length via serialization) columns. Not
 // thread-safe; intended to be driven by a single thread (or one instance per thread then merged).
-class KUZU_API GraceHashJoinExecutor {
+class KOREDB_API GraceHashJoinExecutor {
 public:
     GraceHashJoinExecutor(storage::MemoryManager* mm, common::VirtualFileSystem* vfs,
         std::string buildSpillPath, std::string probeSpillPath,
@@ -230,4 +230,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

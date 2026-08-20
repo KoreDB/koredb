@@ -5,9 +5,9 @@
 #include "function/scalar_function.h"
 #include "main/client_context.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct CurrVal {
@@ -55,4 +55,4 @@ function_set NextValFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

@@ -9,10 +9,10 @@
 #include "storage/checkpointer.h"
 #include "storage/wal/local_wal.h"
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace transaction {
 
 Transaction* TransactionManager::beginTransaction(main::ClientContext& clientContext,
@@ -175,4 +175,4 @@ void TransactionManager::checkpointNoLock(main::ClientContext& clientContext) {
 }
 
 } // namespace transaction
-} // namespace kuzu
+} // namespace koredb

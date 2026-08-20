@@ -8,10 +8,10 @@
 #include "main/client_context.h"
 #include <common/exception/binder.h>
 
-using namespace kuzu::common;
-using namespace kuzu::main;
+using namespace koredb::common;
+using namespace koredb::main;
 
-namespace kuzu {
+namespace koredb {
 namespace catalog {
 
 void RelGroupCatalogEntry::addFromToConnection(table_id_t srcTableID, table_id_t dstTableID,
@@ -185,4 +185,4 @@ RelGroupCatalogEntry::getBoundExtraCreateInfo(transaction::Transaction*) const {
 }
 
 } // namespace catalog
-} // namespace kuzu
+} // namespace koredb

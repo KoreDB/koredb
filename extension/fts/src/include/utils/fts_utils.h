@@ -4,7 +4,7 @@
 #include "function/fts_config.h"
 #include "main/client_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 class NodeTable;
 }
@@ -60,4 +60,4 @@ struct FTSUtils {
 };
 
 } // namespace fts_extension
-} // namespace kuzu
+} // namespace koredb

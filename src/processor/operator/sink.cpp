@@ -2,7 +2,7 @@
 
 #include "processor/result/factorized_table_util.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::unique_ptr<ResultSet> Sink::getResultSet(storage::MemoryManager* memoryManager) {
@@ -18,4 +18,4 @@ void SimpleSink::appendMessage(const std::string& msg, storage::MemoryManager* m
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

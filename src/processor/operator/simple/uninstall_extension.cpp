@@ -6,11 +6,11 @@
 #include "extension/extension.h"
 #include "processor/execution_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
-using namespace kuzu::common;
-using namespace kuzu::extension;
+using namespace koredb::common;
+using namespace koredb::extension;
 
 void UninstallExtension::executeInternal(ExecutionContext* context) {
     auto clientContext = context->clientContext;
@@ -34,4 +34,4 @@ void UninstallExtension::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

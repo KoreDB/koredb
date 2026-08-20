@@ -4,13 +4,13 @@
 #include "common/cast.h"
 #include "common/enums/zone_map_check_result.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 struct MergedColumnChunkStats;
 
 class ColumnPredicate;
-class KUZU_API ColumnPredicateSet {
+class KOREDB_API ColumnPredicateSet {
 public:
     ColumnPredicateSet() = default;
     EXPLICIT_COPY_DEFAULT_MOVE(ColumnPredicateSet);
@@ -33,7 +33,7 @@ private:
     std::vector<std::unique_ptr<ColumnPredicate>> predicates;
 };
 
-class KUZU_API ColumnPredicate {
+class KOREDB_API ColumnPredicate {
 public:
     ColumnPredicate(std::string columnName, common::ExpressionType expressionType)
         : columnName{std::move(columnName)}, expressionType(expressionType) {}
@@ -56,10 +56,10 @@ protected:
     common::ExpressionType expressionType;
 };
 
-struct KUZU_API ColumnPredicateUtil {
+struct KOREDB_API ColumnPredicateUtil {
     static std::unique_ptr<ColumnPredicate> tryConvert(const binder::Expression& column,
         const binder::Expression& predicate);
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

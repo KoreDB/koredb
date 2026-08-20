@@ -10,7 +10,7 @@
 #include "graph/on_disk_graph.h"
 #include "main/client_context.h"
 
-namespace kuzu {
+namespace koredb {
 
 using common::Date;
 using common::date_t;
@@ -339,4 +339,4 @@ TEST_F(EmptyVertexScanTest, ScanVertexPropertiesDuringTransaction) {
 }
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

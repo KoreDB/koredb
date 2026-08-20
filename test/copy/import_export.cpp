@@ -2,13 +2,13 @@
 #include "graph_test/base_graph_test.h"
 #include "graph_test/private_graph_test.h"
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 class ImportExportDBTest : public DBTest {
 public:
     std::string getInputDir() override {
-        return TestHelper::appendKuzuRootPath("dataset/tinysnb/");
+        return TestHelper::appendKoreDBRootPath("dataset/tinysnb/");
     }
 };
 
@@ -28,4 +28,4 @@ TEST_F(ImportExportDBTest, Test) {
 }
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

@@ -6,11 +6,11 @@
 #include "storage/storage_manager.h"
 #include "storage/table/node_table.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::main;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::main;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct StatsInfoBindData final : TableFuncBindData {
@@ -87,4 +87,4 @@ function_set StatsInfoFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

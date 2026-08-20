@@ -4,12 +4,12 @@
 #include "common/profiler.h"
 #include "main/client_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 class FactorizedTable;
 
-struct KUZU_API ExecutionContext {
+struct KOREDB_API ExecutionContext {
     uint64_t queryID;
     common::Profiler* profiler;
     main::ClientContext* clientContext;
@@ -20,4 +20,4 @@ struct KUZU_API ExecutionContext {
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

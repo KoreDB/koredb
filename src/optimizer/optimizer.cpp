@@ -15,7 +15,7 @@
 #include "optimizer/top_k_optimizer.h"
 #include "planner/operator/logical_explain.h"
 
-namespace kuzu {
+namespace koredb {
 namespace optimizer {
 
 void Optimizer::optimize(planner::LogicalPlan* plan, main::ClientContext* context,
@@ -77,4 +77,4 @@ void Optimizer::optimize(planner::LogicalPlan* plan, main::ClientContext* contex
 }
 
 } // namespace optimizer
-} // namespace kuzu
+} // namespace koredb

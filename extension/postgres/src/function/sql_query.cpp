@@ -10,12 +10,12 @@
 #include "storage/attached_postgres_database.h"
 #include "storage/postgres_storage.h"
 
-using namespace kuzu::function;
-using namespace kuzu::main;
-using namespace kuzu::common;
-using namespace kuzu::duckdb_extension;
+using namespace koredb::function;
+using namespace koredb::main;
+using namespace koredb::common;
+using namespace koredb::duckdb_extension;
 
-namespace kuzu {
+namespace koredb {
 namespace postgres_extension {
 
 // SQL based database uses single quote `'` as the escape character. We have to manually escape
@@ -101,4 +101,4 @@ function_set SqlQueryFunction::getFunctionSet() {
 }
 
 } // namespace postgres_extension
-} // namespace kuzu
+} // namespace koredb

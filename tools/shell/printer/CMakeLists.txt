@@ -3,7 +3,7 @@ include_directories(
     ${PROJECT_SOURCE_DIR}/extension/json/src/include
 )
 
-add_library(kuzu_shell_printer
+add_library(koredb_shell_printer
         OBJECT
         json_printer.cpp
         printer_factory.cpp
@@ -11,6 +11,6 @@ add_library(kuzu_shell_printer
         ${PROJECT_SOURCE_DIR}/extension/json/src/type/json_type.cpp
 )
 
-set(KUZU_SHELL_OBJECT_FILES
-        ${KUZU_SHELL_OBJECT_FILES} $<TARGET_OBJECTS:kuzu_shell_printer>
+set(KOREDB_SHELL_OBJECT_FILES
+        ${KOREDB_SHELL_OBJECT_FILES} $<TARGET_OBJECTS:koredb_shell_printer>
         PARENT_SCOPE)

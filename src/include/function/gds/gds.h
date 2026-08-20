@@ -7,7 +7,7 @@
 #include "graph/parsed_graph_entry.h"
 #include "processor/result/factorized_table_pool.h"
 
-namespace kuzu {
+namespace koredb {
 
 namespace main {
 class ClientContext;
@@ -15,7 +15,7 @@ class ClientContext;
 
 namespace function {
 
-struct KUZU_API GDSConfig {
+struct KOREDB_API GDSConfig {
     virtual ~GDSConfig() = default;
 
     template<class TARGET>
@@ -24,7 +24,7 @@ struct KUZU_API GDSConfig {
     }
 };
 
-struct KUZU_API GDSBindData : public TableFuncBindData {
+struct KOREDB_API GDSBindData : public TableFuncBindData {
     graph::NativeGraphEntry graphEntry;
     std::shared_ptr<binder::Expression> nodeOutput;
 
@@ -50,7 +50,7 @@ private:
     std::shared_ptr<processor::FactorizedTable> resultTable;
 };
 
-struct KUZU_API GDSFuncSharedState : public TableFuncSharedState {
+struct KOREDB_API GDSFuncSharedState : public TableFuncSharedState {
     std::unique_ptr<graph::Graph> graph;
 
     GDSFuncSharedState(std::shared_ptr<processor::FactorizedTable> fTable,
@@ -68,7 +68,7 @@ private:
 };
 
 // Base class for every graph data science algorithm.
-class KUZU_API GDSFunction {
+class KOREDB_API GDSFunction {
     static constexpr char NODE_COLUMN_NAME[] = "node";
 
 public:
@@ -91,4 +91,4 @@ public:
 };
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

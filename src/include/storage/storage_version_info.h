@@ -6,7 +6,7 @@
 
 #include "common/api.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 using storage_version_t = uint64_t;
@@ -23,10 +23,10 @@ struct StorageVersionInfo {
             {"0.0.3", 1}};
     }
 
-    static KUZU_API storage_version_t getStorageVersion();
+    static KOREDB_API storage_version_t getStorageVersion();
 
     static constexpr const char* MAGIC_BYTES = "KUZU";
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

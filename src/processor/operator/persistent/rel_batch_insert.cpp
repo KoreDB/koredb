@@ -13,11 +13,11 @@
 #include "storage/table/column_chunk_data.h"
 #include "storage/table/rel_table.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::string RelBatchInsertPrintInfo::toString() const {
@@ -275,4 +275,4 @@ void RelBatchInsert::updateProgress(const ExecutionContext* context) const {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

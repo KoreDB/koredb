@@ -2,7 +2,7 @@
 
 #include "storage/table/column_reader_writer.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 class MemoryManager;
 
@@ -174,4 +174,4 @@ struct ColumnFactory {
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

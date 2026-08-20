@@ -4,10 +4,10 @@
 #include "common/cast.h"
 #include "planner/operator/factorization/flatten_resolver.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
+using namespace koredb::binder;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace planner {
 
 void LogicalMerge::computeFactorizedSchema() {
@@ -48,4 +48,4 @@ std::unique_ptr<LogicalOperator> LogicalMerge::copy() {
 }
 
 } // namespace planner
-} // namespace kuzu
+} // namespace koredb

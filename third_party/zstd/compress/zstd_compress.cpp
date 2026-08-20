@@ -33,7 +33,7 @@
 #include <sanitizer/msan_interface.h>
 #endif
 
-namespace kuzu_zstd {
+namespace koredb_zstd {
 /*-*************************************
 *  Helper functions
 ***************************************/

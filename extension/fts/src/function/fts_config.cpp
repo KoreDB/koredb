@@ -12,7 +12,7 @@
 #include "re2.h"
 #include "utils/fts_utils.h"
 
-namespace kuzu {
+namespace koredb {
 namespace fts_extension {
 
 void Stemmer::validate(const std::string& stemmer) {
@@ -201,4 +201,4 @@ void TopK::validate(uint64_t value) {
 }
 
 } // namespace fts_extension
-} // namespace kuzu
+} // namespace koredb

@@ -14,12 +14,12 @@
 #include "function/scalar_macro_function.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
-using namespace kuzu::catalog;
-using namespace kuzu::main;
+using namespace koredb::common;
+using namespace koredb::transaction;
+using namespace koredb::catalog;
+using namespace koredb::main;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 using std::stringstream;
@@ -197,4 +197,4 @@ void ExportDB::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

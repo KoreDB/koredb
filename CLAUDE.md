@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Bighorn is a fork of [Kuzu](https://github.com/kuzudb/kuzu), an embedded graph database written in C++ (C++20). It implements the Cypher query language over a property-graph data model, with columnar disk-based storage, a vectorized + factorized query processor, and serializable ACID transactions. The core engine lives in `src/`; language bindings (Python, Java, Node.js, Rust, Wasm, shell) live in `tools/`; pluggable functionality lives in `extension/`.
+Bighorn is KoreDB, a fork of [Kuzu](https://github.com/kuzudb/kuzu) renamed to `koredb`; it is an embedded graph database written in C++ (C++20). It implements the Cypher query language over a property-graph data model, with columnar disk-based storage, a vectorized + factorized query processor, and serializable ACID transactions. The core engine lives in `src/`; language bindings (Python, Java, Node.js, Rust, Wasm, shell) live in `tools/`; pluggable functionality lives in `extension/`.
 
 ## Build & Test Commands
 
@@ -60,11 +60,11 @@ A Cypher string flows through these stages, each a top-level directory under `sr
 2. **`binder/`** — resolves names against the catalog, type-checks, and produces a bound statement with `expression/` trees.
 3. **`planner/`** — builds a logical plan (logical operators).
 4. **`optimizer/`** — rewrites the logical plan (join order, filter pushdown, factorization, etc.).
-5. **`processor/`** — maps the logical plan to physical operators (`processor/operator/`, `processor/map/`) and executes them. The processor is **vectorized** (data flows in column vectors, capacity set by `KUZU_VECTOR_CAPACITY_LOG2`) and **factorized**.
+5. **`processor/`** — maps the logical plan to physical operators (`processor/operator/`, `processor/map/`) and executes them. The processor is **vectorized** (data flows in column vectors, capacity set by `KOREDB_VECTOR_CAPACITY_LOG2`) and **factorized**.
 
 ### Supporting subsystems
 
-- **`storage/`** — disk-based columnar storage. Key pieces: `buffer_manager/` (paged buffer pool), `table/` (node & rel tables; rels use CSR adjacency lists), `index/` (hash index, etc.), `compression/`, `wal/` (write-ahead log), `local_storage/` (uncommitted transaction-local data), `checkpointer.cpp`, `page_manager.cpp`. Page size, node-group size, and segment size are compile-time constants (`KUZU_PAGE_SIZE_LOG2`, `KUZU_NODE_GROUP_SIZE_LOG2`, `KUZU_MAX_SEGMENT_SIZE_LOG2`).
+- **`storage/`** — disk-based columnar storage. Key pieces: `buffer_manager/` (paged buffer pool), `table/` (node & rel tables; rels use CSR adjacency lists), `index/` (hash index, etc.), `compression/`, `wal/` (write-ahead log), `local_storage/` (uncommitted transaction-local data), `checkpointer.cpp`, `page_manager.cpp`. Page size, node-group size, and segment size are compile-time constants (`KOREDB_PAGE_SIZE_LOG2`, `KOREDB_NODE_GROUP_SIZE_LOG2`, `KOREDB_MAX_SEGMENT_SIZE_LOG2`).
 - **`catalog/`** — schema metadata (tables, properties, indexes, functions).
 - **`transaction/`** — MVCC, undo buffer, serializable ACID semantics.
 - **`function/`** — scalar, aggregate, table, and cast functions.

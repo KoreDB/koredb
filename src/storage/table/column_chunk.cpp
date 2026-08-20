@@ -9,10 +9,10 @@
 #include "storage/table/column.h"
 #include "transaction/transaction.h"
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 ColumnChunk::ColumnChunk(MemoryManager& mm, LogicalType&& dataType, uint64_t capacity,
@@ -265,4 +265,4 @@ void ColumnChunk::reclaimStorage(PageAllocator& pageAllocator) const {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

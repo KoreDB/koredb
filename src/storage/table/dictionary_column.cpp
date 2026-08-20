@@ -9,10 +9,10 @@
 #include "storage/table/string_column.h"
 #include <bit>
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 using string_index_t = DictionaryChunk::string_index_t;
@@ -153,7 +153,7 @@ bool DictionaryColumn::canDataCommitInPlace(const ChunkState& dataState,
     uint64_t totalStringLengthToAdd) {
     // Make sure there is sufficient space in the data chunk (not currently compressed)
     auto totalStringDataAfterUpdate = dataState.metadata.numValues + totalStringLengthToAdd;
-    if (totalStringDataAfterUpdate > dataState.metadata.getNumPages() * KUZU_PAGE_SIZE) {
+    if (totalStringDataAfterUpdate > dataState.metadata.getNumPages() * KOREDB_PAGE_SIZE) {
         // Data cannot be updated in place
         return false;
     }
@@ -164,7 +164,7 @@ bool DictionaryColumn::canOffsetCommitInPlace(const ChunkState& offsetState,
     const ChunkState& dataState, uint64_t numNewStrings, uint64_t totalStringLengthToAdd) const {
     auto totalStringOffsetsAfterUpdate = dataState.metadata.numValues + totalStringLengthToAdd;
     auto offsetCapacity =
-        offsetState.metadata.compMeta.numValues(KUZU_PAGE_SIZE, offsetColumn->getDataType()) *
+        offsetState.metadata.compMeta.numValues(KOREDB_PAGE_SIZE, offsetColumn->getDataType()) *
         offsetState.metadata.getNumPages();
     auto numStringsAfterUpdate = offsetState.metadata.numValues + numNewStrings;
     if (numStringsAfterUpdate > offsetCapacity) {
@@ -195,4 +195,4 @@ bool DictionaryColumn::canOffsetCommitInPlace(const ChunkState& offsetState,
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

@@ -4,9 +4,9 @@
 #include "main/database.h"
 #include "main/settings.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 #define GET_CONFIGURATION(_PARAM)                                                                  \
@@ -57,4 +57,4 @@ bool DBConfig::isDBPathInMemory(const std::string& dbPath) {
 }
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

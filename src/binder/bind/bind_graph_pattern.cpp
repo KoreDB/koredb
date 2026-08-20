@@ -16,11 +16,11 @@
 #include "function/schema/vector_node_rel_functions.h"
 #include "main/client_context.h"
 
-using namespace kuzu::common;
-using namespace kuzu::parser;
-using namespace kuzu::catalog;
+using namespace koredb::common;
+using namespace koredb::parser;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 // A graph pattern contains node/rel and a set of key-value pairs associated with the variable. We
@@ -691,4 +691,4 @@ std::vector<TableCatalogEntry*> Binder::bindRelGroupEntries(
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

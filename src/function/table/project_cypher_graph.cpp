@@ -6,10 +6,10 @@
 #include "parser/parser.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::common;
-using namespace kuzu::graph;
+using namespace koredb::common;
+using namespace koredb::graph;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct ProjectGraphCypherBindData final : TableFuncBindData {
@@ -59,4 +59,4 @@ function_set ProjectGraphCypherFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

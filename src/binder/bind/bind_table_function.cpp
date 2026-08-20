@@ -6,10 +6,10 @@
 #include "function/built_in_function_utils.h"
 #include "main/client_context.h"
 
-using namespace kuzu::common;
-using namespace kuzu::function;
+using namespace koredb::common;
+using namespace koredb::function;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 BoundTableScanInfo Binder::bindTableFunc(const std::string& tableFuncName,
@@ -71,4 +71,4 @@ BoundTableScanInfo Binder::bindTableFunc(const std::string& tableFuncName,
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

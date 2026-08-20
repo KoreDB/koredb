@@ -8,9 +8,9 @@
 #include "storage/storage_utils.h"
 #include "storage/wal/local_wal.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 WAL::WAL(const std::string& dbPath, bool readOnly, VirtualFileSystem* vfs)
@@ -86,4 +86,4 @@ void WAL::addNewWALRecordNoLock(const WALRecord& walRecord) {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

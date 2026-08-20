@@ -10,52 +10,125 @@ on:
         default: false
 
 jobs:
-  build-wheels:
-    runs-on: self-hosted-windows
+  build-windows-wheels-amd64:
+    name: windows-wheel-AMD64-${{ matrix.python }}
+    runs-on: windows-2022
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["cp39", "cp310", "cp311", "cp312", "cp313"]
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+
+      - name: Ensure GNU Make is available
+        shell: pwsh
+        run: |
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            choco install make -y --no-progress
+          }
+          make --version
+
+      - name: Determine NUM_THREADS
+        shell: pwsh
+        run: |
+          "NUM_THREADS=$env:NUMBER_OF_PROCESSORS" >> $env:GITHUB_ENV
+
       - name: Update nightly version
         if: ${{ inputs.isNightly == true }}
+        working-directory: scripts
         run: |
-          pip3 install packaging
-          python3 update-nightly-build-version.py
-        working-directory: ./scripts
+          python -m pip install packaging
+          python update-nightly-build-version.py
 
       - name: Create source distribution
         working-directory: ./scripts/pip-package/
-        shell: cmd
+        shell: pwsh
         run: |
-          if exist wheelhouse rmdir /s /q wheelhouse
-          mkdir wheelhouse
-          python.exe package_tar.py kuzu.tar.gz
+          if (Test-Path wheelhouse) { Remove-Item -Recurse -Force wheelhouse }
+          New-Item -ItemType Directory wheelhouse | Out-Null
+          python package_tar.py koredb.tar.gz
 
-      # Manually set up cibuildwheel instead of importing their
-      # action since there seems to be an issue with quoting
-      # --only when inputs.only is empty.
-      # See https://github.com/pypa/cibuildwheel/blob/main/action.yml
-      - uses: actions/setup-python@v5
-        id: python
-        with:
-          python-version: "3.7 - 3.12"
-          update-environment: false
-
-      - name: Build Wheels
-        env:
-          CIBW_ARCHS_WINDOWS: AMD64
-          CIBW_SKIP: pp* cp36* cp314*
-          CIBW_BUILD_VERBOSITY: 3
-          NUM_THREADS: 40
-        shell: cmd
+      - name: Build wheels
         working-directory: ./scripts/pip-package/
-        run:
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-
-          pipx run --spec cibuildwheel cibuildwheel
-          "kuzu.tar.gz"
-          --output-dir "wheelhouse"
+        env:
+          CIBW_BUILD: ${{ matrix.python }}-*
+          CIBW_ARCHS_WINDOWS: AMD64
+          CIBW_BUILD_VERBOSITY: 3
+        run: pipx run --spec "cibuildwheel>=3.0" cibuildwheel --output-dir wheelhouse koredb.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:
-          name: windows-wheels
+          name: windows-wheels-AMD64-${{ matrix.python }}
           path: ./scripts/pip-package/wheelhouse/*.whl
+          if-no-files-found: error
+
+  build-windows-wheels-arm64:
+    name: windows-wheel-ARM64-${{ matrix.python }}
+    runs-on: windows-11-arm
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      # CPython only ships official win_arm64 builds from 3.11 onwards.
+      matrix:
+        python: ["cp311", "cp312", "cp313"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: arm64
+
+      - name: Ensure GNU Make is available
+        shell: pwsh
+        run: |
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            choco install make -y --no-progress
+          }
+          make --version
+
+      - name: Determine NUM_THREADS
+        shell: pwsh
+        run: |
+          "NUM_THREADS=$env:NUMBER_OF_PROCESSORS" >> $env:GITHUB_ENV
+
+      - name: Update nightly version
+        if: ${{ inputs.isNightly == true }}
+        working-directory: scripts
+        run: |
+          python -m pip install packaging
+          python update-nightly-build-version.py
+
+      - name: Create source distribution
+        working-directory: ./scripts/pip-package/
+        shell: pwsh
+        run: |
+          if (Test-Path wheelhouse) { Remove-Item -Recurse -Force wheelhouse }
+          New-Item -ItemType Directory wheelhouse | Out-Null
+          python package_tar.py koredb.tar.gz
+
+      - name: Build wheels
+        working-directory: ./scripts/pip-package/
+        env:
+          CIBW_BUILD: ${{ matrix.python }}-*
+          CIBW_ARCHS_WINDOWS: ARM64
+          CIBW_BUILD_VERBOSITY: 3
+        run: pipx run --spec "cibuildwheel>=3.0" cibuildwheel --output-dir wheelhouse koredb.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-wheels-ARM64-${{ matrix.python }}
+          path: ./scripts/pip-package/wheelhouse/*.whl
+          if-no-files-found: error

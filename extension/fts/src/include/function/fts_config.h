@@ -5,7 +5,7 @@
 #include "common/types/types.h"
 #include "function/table/bind_input.h"
 
-namespace kuzu {
+namespace koredb {
 namespace fts_extension {
 
 struct Stemmer {
@@ -118,4 +118,4 @@ struct TopK {
 };
 
 } // namespace fts_extension
-} // namespace kuzu
+} // namespace koredb

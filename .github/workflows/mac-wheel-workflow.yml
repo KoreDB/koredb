@@ -1,4 +1,4 @@
-name: Build Mac Wheels
+name: Build macOS Wheels
 
 on:
   workflow_dispatch:
@@ -8,76 +8,58 @@ on:
         type: boolean
         required: true
         default: false
+
 env:
   PIP_BREAK_SYSTEM_PACKAGES: 1
 
 jobs:
-  build-wheels-arm64:
-    runs-on: self-hosted-mac-x64
+  build-mac-wheels:
+    name: macos-wheel-${{ matrix.target.arch }}-${{ matrix.python }}
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["cp39", "cp310", "cp311", "cp312", "cp313"]
+        target:
+          - runner: macos-14
+            arch: arm64
+          # macos-15-intel is GitHub's replacement for the retired macos-13
+          # image and is the last x86_64 macOS runner (available until Aug 2027).
+          - runner: macos-15-intel
+            arch: x86_64
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Update nightly version
         if: ${{ inputs.isNightly == true }}
         run: |
-          pip3 install packaging
-          python3 update-nightly-build-version.py
+          python -m pip install packaging
+          python update-nightly-build-version.py
         working-directory: scripts
 
       - name: Create source distribution
         working-directory: ./scripts/pip-package/
         run: |
-          rm -rf wheelhouse kuzu.tar.gz
+          rm -rf wheelhouse koredb.tar.gz
           mkdir wheelhouse
-          python3 package_tar.py kuzu.tar.gz
+          python package_tar.py koredb.tar.gz
 
-      - name: Build wheels for Apple Silicon
-        uses: pypa/cibuildwheel@v2.22
-        env:
-          CIBW_SKIP: pp*
-          CIBW_ARCHS_MACOS: arm64
-          CIBW_BUILD_VERBOSITY: 3
-          MACOSX_DEPLOYMENT_TARGET: 11.0
-        with:
-          package-dir: ./scripts/pip-package/kuzu.tar.gz
-          output-dir: ./scripts/pip-package/wheelhouse
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-wheels-arm64
-          path: ./scripts/pip-package/wheelhouse/*.whl
-
-  build-wheels-x86_64:
-    runs-on: self-hosted-mac-x64
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Update nightly version
-        if: ${{ inputs.isNightly == true }}
-        run: |
-          pip3 install packaging
-          python3 update-nightly-build-version.py
-        working-directory: scripts
-
-      - name: Create source distribution
+      - name: Build wheels
         working-directory: ./scripts/pip-package/
-        run: |
-          rm -rf wheelhouse kuzu.tar.gz
-          mkdir wheelhouse
-          python3 package_tar.py kuzu.tar.gz
-
-      - name: Build wheels for Intel
-        uses: pypa/cibuildwheel@v2.22
         env:
-          CIBW_SKIP: pp* cp36*
-          CIBW_ARCHS_MACOS: x86_64
+          CIBW_BUILD: ${{ matrix.python }}-*
+          CIBW_ARCHS_MACOS: ${{ matrix.target.arch }}
           CIBW_BUILD_VERBOSITY: 3
-          MACOSX_DEPLOYMENT_TARGET: 11.0
-        with:
-          package-dir: ./scripts/pip-package/kuzu.tar.gz
-          output-dir: ./scripts/pip-package/wheelhouse
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+        run: pipx run --spec 'cibuildwheel>=3.0' cibuildwheel --output-dir wheelhouse koredb.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-wheels-x86_64
+          name: macos-wheels-${{ matrix.target.arch }}-${{ matrix.python }}
           path: ./scripts/pip-package/wheelhouse/*.whl
+          if-no-files-found: error

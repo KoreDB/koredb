@@ -2,10 +2,10 @@
 #include "parser/extension_statement.h"
 #include "parser/transformer.h"
 
-using namespace kuzu::common;
-using namespace kuzu::extension;
+using namespace koredb::common;
+using namespace koredb::extension;
 
-namespace kuzu {
+namespace koredb {
 namespace parser {
 
 std::unique_ptr<Statement> Transformer::transformExtension(CypherParser::KU_ExtensionContext& ctx) {
@@ -40,4 +40,4 @@ std::unique_ptr<Statement> Transformer::transformExtension(CypherParser::KU_Exte
 }
 
 } // namespace parser
-} // namespace kuzu
+} // namespace koredb

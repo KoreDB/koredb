@@ -7,15 +7,15 @@
 #include "storage/storage_manager.h"
 #include "storage/table/table.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::catalog;
-using namespace kuzu::planner;
-using namespace kuzu::evaluator;
-using namespace kuzu::transaction;
-using namespace kuzu::storage;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::catalog;
+using namespace koredb::planner;
+using namespace koredb::evaluator;
+using namespace koredb::transaction;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 static column_id_t getColumnID(const TableCatalogEntry& entry,
@@ -166,4 +166,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapSetRelProperty(
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

@@ -4,10 +4,10 @@
 #include "common/string_format.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
+using namespace koredb::catalog;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::string CreateSequencePrintInfo::toString() const {
@@ -35,4 +35,4 @@ void CreateSequence::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

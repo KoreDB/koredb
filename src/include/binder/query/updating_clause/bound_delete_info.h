@@ -4,7 +4,7 @@
 #include "common/enums/delete_type.h"
 #include "common/enums/table_type.h"
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 struct BoundDeleteInfo {
@@ -25,4 +25,4 @@ private:
 };
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

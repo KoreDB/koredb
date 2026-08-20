@@ -4,10 +4,10 @@
 #include "processor/operator/sink.h"
 #include "processor/processor_task.h"
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 #if defined(__APPLE__)
 QueryProcessor::QueryProcessor(uint64_t numThreads, uint32_t threadQos) {
@@ -75,4 +75,4 @@ void QueryProcessor::initTask(Task* task) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

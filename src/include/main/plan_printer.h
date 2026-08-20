@@ -6,9 +6,9 @@
 #include "common/assert.h"
 #include "common/profiler.h"
 #include "json_fwd.hpp"
-#include "kuzu_fwd.h"
+#include "koredb_fwd.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 class OpProfileBox {
@@ -117,4 +117,4 @@ private:
 };
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

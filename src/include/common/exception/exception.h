@@ -5,10 +5,10 @@
 
 #include "common/api.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
-class KUZU_API Exception : public std::exception {
+class KOREDB_API Exception : public std::exception {
 public:
     explicit Exception(std::string msg);
 
@@ -20,4 +20,4 @@ private:
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

@@ -3,7 +3,7 @@
 #include "common/uniq_lock.h"
 #include "storage/file_handle.h"
 
-namespace kuzu::storage {
+namespace koredb::storage {
 static constexpr bool ENABLE_FSM = true;
 
 PageRange PageManager::allocatePageRange(common::page_idx_t numPages) {
@@ -57,4 +57,4 @@ void PageManager::finalizeCheckpoint() {
 void PageManager::clearEvictedBMEntriesIfNeeded(BufferManager* bufferManager) {
     freeSpaceManager->clearEvictedBufferManagerEntriesIfNeeded(bufferManager);
 }
-} // namespace kuzu::storage
+} // namespace koredb::storage

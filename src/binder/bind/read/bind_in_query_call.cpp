@@ -6,13 +6,13 @@
 #include "parser/expression/parsed_function_expression.h"
 #include "parser/query/reading_clause/in_query_call_clause.h"
 
-using namespace kuzu::common;
-using namespace kuzu::catalog;
-using namespace kuzu::parser;
-using namespace kuzu::function;
-using namespace kuzu::catalog;
+using namespace koredb::common;
+using namespace koredb::catalog;
+using namespace koredb::parser;
+using namespace koredb::function;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 std::unique_ptr<BoundReadingClause> Binder::bindInQueryCall(const ReadingClause& readingClause) {
@@ -42,4 +42,4 @@ std::unique_ptr<BoundReadingClause> Binder::bindInQueryCall(const ReadingClause&
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

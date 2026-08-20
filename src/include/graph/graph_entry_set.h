@@ -6,7 +6,7 @@
 #include "common/assert.h"
 #include "parsed_graph_entry.h"
 
-namespace kuzu {
+namespace koredb {
 namespace graph {
 
 class GraphEntrySet {
@@ -34,4 +34,4 @@ private:
 };
 
 } // namespace graph
-} // namespace kuzu
+} // namespace koredb

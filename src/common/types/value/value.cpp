@@ -14,7 +14,7 @@
 #include "function/hash/hash_functions.h"
 #include "storage/storage_utils.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 bool Value::operator==(const Value& rhs) const {
@@ -1130,4 +1130,4 @@ std::string Value::decimalToString() const {
 }
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

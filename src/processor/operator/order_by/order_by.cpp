@@ -11,9 +11,9 @@
 #include "storage/buffer_manager/buffer_manager.h"
 #include "storage/buffer_manager/memory_manager.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 // Unique suffix for the per-operator spill files, so concurrent queries never collide.
@@ -73,7 +73,7 @@ static std::unique_ptr<ExternalMergeSort> makeExternalSorter(ExecutionContext* c
     }
     const auto token = externalSortSpillFileCounter.fetch_add(1);
     const auto tempDir = std::filesystem::temp_directory_path();
-    const auto stem = "kuzu_ems_" + std::to_string(opId) + "_" + std::to_string(token) + ".spill";
+    const auto stem = "koredb_ems_" + std::to_string(opId) + "_" + std::to_string(token) + ".spill";
     auto spillPath = (tempDir / stem).string();
     return std::make_unique<ExternalMergeSort>(info, mm, vfs, std::move(spillPath), budget);
 }
@@ -135,4 +135,4 @@ void OrderBy::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

@@ -3,7 +3,7 @@
 #include "common/types/types.h"
 #include "processor/execution_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 struct BatchInsertCachedError {
     explicit BatchInsertCachedError(std::string message,
@@ -47,4 +47,4 @@ private:
     std::vector<BatchInsertCachedError> cachedErrors;
 };
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

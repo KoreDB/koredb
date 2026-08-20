@@ -4,12 +4,12 @@
 #include "storage/storage_manager.h"
 #include "storage/table/node_table.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::planner;
-using namespace kuzu::storage;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::planner;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::unique_ptr<PhysicalPlan> PlanMapper::mapLogicalPlanToPhysical(const LogicalPlan* logicalPlan,
@@ -215,4 +215,4 @@ std::unique_ptr<SemiMask> PlanMapper::createSemiMask(table_id_t tableID) const {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

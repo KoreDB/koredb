@@ -7,9 +7,9 @@
 #include "processor/execution_context.h"
 #include "processor/operator/hash_join/grace_hash_join_executor.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::string HashJoinProbePrintInfo::toString() const {
@@ -347,4 +347,4 @@ bool HashJoinProbe::getNextTuplesInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

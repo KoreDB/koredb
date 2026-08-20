@@ -1,0 +1,89 @@
+name: Node.js Electron Test
+
+# Verifies that the *published* Node.js package loads and runs inside a real
+# Electron main process on every supported platform/architecture. The addon is
+# built against Node-API (NAPI_VERSION=6), which is ABI-stable across Node.js
+# and Electron, so the prebuilt binaries are reused as-is - this workflow is the
+# guard that keeps that assumption honest.
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifactName:
+        description: "Name of the artifact holding koredb-source.tar.gz"
+        type: string
+        required: true
+        default: koredb-deploy-nodejs
+  workflow_call:
+    inputs:
+      artifactName:
+        type: string
+        required: false
+        default: koredb-deploy-nodejs
+
+jobs:
+  electron-test:
+    name: electron-${{ matrix.target.os }}-${{ matrix.target.arch }}
+    runs-on: ${{ matrix.target.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { runner: ubuntu-24.04, os: linux, arch: x64 }
+          - { runner: ubuntu-24.04-arm, os: linux, arch: arm64 }
+          - { runner: macos-14, os: macos, arch: arm64 }
+          - { runner: macos-15-intel, os: macos, arch: x64 }
+          - { runner: windows-2022, os: windows, arch: x64 }
+          - { runner: windows-11-arm, os: windows, arch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Electron runtime dependencies
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
+            libdrm2 libgtk-3-0t64 libgbm1 libasound2t64
+
+      - name: Download packaged Node.js tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifactName }}
+          path: packaged
+
+      - name: Install Electron test app dependencies
+        working-directory: tools/nodejs_api/test/electron
+        run: npm install
+
+      - name: Install the packaged KoreDB build
+        working-directory: tools/nodejs_api/test/electron
+        shell: bash
+        run: npm install "$GITHUB_WORKSPACE/packaged/koredb-source.tar.gz"
+
+      - name: Verify a prebuilt binary was used
+        working-directory: tools/nodejs_api/test/electron
+        shell: bash
+        run: |
+          test -f node_modules/koredb/koredbjs.node
+          echo "Resolved addon:"
+          ls -l node_modules/koredb/koredbjs.node
+
+      - name: Compile the Electron smoke test
+        working-directory: tools/nodejs_api/test/electron
+        run: npm run build
+
+      - name: Run the Electron smoke test
+        working-directory: tools/nodejs_api/test/electron
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            xvfb-run -a npm start
+          else
+            npm start
+          fi

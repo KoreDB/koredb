@@ -5,7 +5,7 @@
 # Explicit targets to avoid conflict with files of the same name.
 .PHONY: \
 	release relwithdebinfo debug all allconfig alldebug \
-	test-build test lcov \
+	test-build test lcov check-dataset \
 	java_native_header java javatest \
 	nodejs nodejstest \
 	python python-debug pytest pytest-debug \
@@ -77,19 +77,19 @@ ifdef SKIP_SINGLE_FILE_HEADER
 endif
 
 ifdef PAGE_SIZE_LOG2
-	CMAKE_FLAGS += -DKUZU_PAGE_SIZE_LOG2=$(PAGE_SIZE_LOG2)
+	CMAKE_FLAGS += -DKOREDB_PAGE_SIZE_LOG2=$(PAGE_SIZE_LOG2)
 endif
 
 ifdef DEFAULT_REL_STORAGE_DIRECTION
-	CMAKE_FLAGS += -DKUZU_DEFAULT_REL_STORAGE_DIRECTION=$(DEFAULT_REL_STORAGE_DIRECTION)
+	CMAKE_FLAGS += -DKOREDB_DEFAULT_REL_STORAGE_DIRECTION=$(DEFAULT_REL_STORAGE_DIRECTION)
 endif
 
 ifdef VECTOR_CAPACITY_LOG2
-	CMAKE_FLAGS += -DKUZU_VECTOR_CAPACITY_LOG2=$(VECTOR_CAPACITY_LOG2)
+	CMAKE_FLAGS += -DKOREDB_VECTOR_CAPACITY_LOG2=$(VECTOR_CAPACITY_LOG2)
 endif
 
 ifdef NODE_GROUP_SIZE_LOG2
-	CMAKE_FLAGS += -DKUZU_NODE_GROUP_SIZE_LOG2=$(NODE_GROUP_SIZE_LOG2)
+	CMAKE_FLAGS += -DKOREDB_NODE_GROUP_SIZE_LOG2=$(NODE_GROUP_SIZE_LOG2)
 endif
 
 ifdef SINGLE_THREADED
@@ -147,15 +147,24 @@ alldebug:
 		-DBUILD_TESTS=TRUE \
 	)
 
+# The test fixtures live in the KoreDB/dataset submodule mounted at dataset/.
+# Check it is populated before a test target buries the user in "no such file".
+check-dataset:
+	@test -f dataset/tinysnb/schema.cypher || { \
+		echo "dataset/ is empty: the test fixtures are a git submodule."; \
+		echo "Populate it with: git submodule update --init dataset"; \
+		exit 1; \
+	}
+
 # Main tests
 test-build:
 	$(call run-cmake-relwithdebinfo, -DBUILD_TESTS=TRUE -DENABLE_BACKTRACES=TRUE)
 
-test: test-build
+test: test-build check-dataset
 	python3 dataset/ldbc-1/download_data.py
 	ctest --test-dir build/$(call get-build-path,RelWithDebInfo)/test --output-on-failure -j ${TEST_JOBS}
 
-lcov:
+lcov: check-dataset
 	python3 dataset/ldbc-1/download_data.py
 	$(call run-cmake-release, -DBUILD_TESTS=TRUE -DBUILD_LCOV=TRUE)
 	ctest --test-dir build/$(call get-build-path,Release)/test --output-on-failure -j ${TEST_JOBS}
@@ -164,7 +173,7 @@ lcov:
 
 # Required for clangd-related tools.
 java_native_header:
-	cmake --build build/$(call get-build-path,Release) --target kuzu_java
+	cmake --build build/$(call get-build-path,Release) --target koredb_java
 
 java:
 	$(call run-cmake-release, -DBUILD_JAVA=TRUE)
@@ -184,7 +193,7 @@ nodejs:
 nodejs-deps:
 	cd tools/nodejs_api && npm install --include=dev
 
-nodejstest: nodejs
+nodejstest: nodejs check-dataset
 	cd tools/nodejs_api && npm test
 
 nodejstest-deps: nodejs-deps nodejstest
@@ -195,7 +204,7 @@ python:
 python-debug:
 	$(call run-cmake-debug, -DBUILD_PYTHON=TRUE)
 
-pytest: python
+pytest: python check-dataset
 	cmake -E env PYTHONPATH=tools/python_api/build python3 -m pytest -vv tools/python_api/test
 
 pytest-venv: python
@@ -209,7 +218,7 @@ wasm:
 	emcmake cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=$(call get-build-type,Release) -DBUILD_WASM=TRUE -DBUILD_BENCHMARK=FALSE -DBUILD_TESTS=FALSE -DBUILD_SHELL=FALSE  ../.. && \
 	cmake --build . --config $(call get-build-type,Release) -j $(NUM_THREADS)
 
-wasmtest:
+wasmtest: check-dataset
 	mkdir -p build/wasm && cd build/wasm &&\
 	emcmake cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=$(call get-build-type,Release) -DBUILD_WASM=TRUE -DBUILD_BENCHMARK=FALSE -DBUILD_TESTS=TRUE -DBUILD_SHELL=FALSE  ../.. && \
 	cmake --build . --config $(call get-build-type,Release) -j $(NUM_THREADS) &&\
@@ -240,7 +249,7 @@ extension-test-build:
 		-DBUILD_TESTS=TRUE \
 	)
 
-extension-test: extension-test-build
+extension-test: extension-test-build check-dataset
 	$(if $(filter Windows_NT,$(OS)),\
 		set "E2E_TEST_FILES_DIRECTORY=extension" &&,\
 		E2E_TEST_FILES_DIRECTORY=extension) \
@@ -283,13 +292,13 @@ extension-lcov: extension-lcov-build
 extension-debug:
 	$(call run-cmake-debug, \
 		-DBUILD_EXTENSIONS="$(EXTENSION_LIST)" \
-		-DBUILD_KUZU=FALSE \
+		-DBUILD_KOREDB=FALSE \
 	)
 
 extension-release:
 	$(call run-cmake-release, \
 		-DBUILD_EXTENSIONS="$(EXTENSION_LIST)" \
-		-DBUILD_KUZU=FALSE \
+		-DBUILD_KOREDB=FALSE \
 		-DBUILD_EXTENSION_RELEASE=TRUE \
 	)
 

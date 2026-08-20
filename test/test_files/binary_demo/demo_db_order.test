@@ -1,4 +1,4 @@
--DATASET KUZU binary-demo
+-DATASET KOREDB binary-demo
 -SKIP_32BIT
 -SKIP_IN_MEM
 --

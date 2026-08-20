@@ -7,7 +7,7 @@
 #include "generated_extension_loader.h"
 #include "storage/wal/local_wal.h"
 
-namespace kuzu {
+namespace koredb {
 namespace extension {
 
 static void executeExtensionLoader(main::ClientContext* context, const std::string& extensionName) {
@@ -113,4 +113,4 @@ bool ExtensionManager::isStaticLinkedExtension(const std::string& extensionName)
 }
 
 } // namespace extension
-} // namespace kuzu
+} // namespace koredb

@@ -1,6 +1,6 @@
 # Contributing
 
-Welcome! We are excited that you are interested in contributing to Kuzu.
+Welcome! We are excited that you are interested in contributing to KoreDB.
 Before submitting your contribution though, please make sure to take a moment and read through the following guidelines.
 
 Join our project's [Discord community](https://discord.gg/VtX2gw9Rug) for real-time communication with the core team and other contributors.
@@ -21,7 +21,8 @@ Whether or not you state this explicitly, by submitting any copyrighted material
 * Do not commit/push directly to the master branch. Instead, create a fork and open a pull request.
 * While you're working on the issue, please merge frequently with the master branch.
 * All pull requests with new features and bug fixes should be covered by proper tests.
+* Test fixtures live in the [KoreDB/dataset](https://github.com/KoreDB/dataset) submodule at `dataset/`. Run `git submodule update --init dataset` before running the test suite, and open a separate pull request there if a change needs new fixture data.
 * Avoid large pull requests - they are much less likely to be merged as they are incredibly hard to review.
 * We reserve full and final discretion over whether or not we will merge a pull request. Adhering to these guidelines is not a complete guarantee that your pull request will be merged.
 
-Thank you for your contribution to Kuzu! We're grateful for your time and effort, and we look forward to working with you.
+Thank you for your contribution to KoreDB! We're grateful for your time and effort, and we look forward to working with you.

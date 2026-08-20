@@ -10,13 +10,13 @@
 #include "main/client_context.h"
 #include "parser/copy.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::parser;
-using namespace kuzu::function;
+using namespace koredb::binder;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::parser;
+using namespace koredb::function;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 static void throwTableNotExist(const std::string& tableName) {
@@ -341,4 +341,4 @@ void bindExpectedRelColumns(const RelGroupCatalogEntry& entry,
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

@@ -8,11 +8,11 @@
 #include "function/table/simple_table_function.h"
 #include "main/client_context.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::main;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::main;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct ShowConnectionBindData final : TableFuncBindData {
@@ -98,4 +98,4 @@ function_set ShowConnectionFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

@@ -6,7 +6,7 @@
 
 #include "common/api.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 inline std::string systemErrMessage(int code) {
@@ -23,7 +23,7 @@ inline std::string posixErrMessage() {
     // LCOV_EXCL_STOP
 }
 
-KUZU_API std::string dlErrMessage();
+KOREDB_API std::string dlErrMessage();
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

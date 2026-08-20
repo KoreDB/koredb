@@ -5,9 +5,9 @@
 #include "common/file_system/virtual_file_system.h"
 #include "storage/buffer_manager/buffer_manager.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 FileHandle::FileHandle(const std::string& path, uint8_t fhFlags, BufferManager* bm,
@@ -175,4 +175,4 @@ void FileHandle::writePagesToFile(const uint8_t* buffer, uint64_t size,
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

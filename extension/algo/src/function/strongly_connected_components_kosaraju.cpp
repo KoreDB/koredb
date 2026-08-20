@@ -9,14 +9,14 @@
 #include "processor/execution_context.h"
 
 using namespace std;
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::processor;
-using namespace kuzu::storage;
-using namespace kuzu::graph;
-using namespace kuzu::function;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::processor;
+using namespace koredb::storage;
+using namespace koredb::graph;
+using namespace koredb::function;
 
-namespace kuzu {
+namespace koredb {
 namespace algo_extension {
 
 // Use the three largest offset_t values as special markers to avoid allocating another array.
@@ -273,4 +273,4 @@ function_set SCCKosarajuFunction::getFunctionSet() {
 }
 
 } // namespace algo_extension
-} // namespace kuzu
+} // namespace koredb

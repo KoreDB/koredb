@@ -4,10 +4,10 @@
 #include "function/table/simple_table_function.h"
 #include "main/client_context.h"
 
-using namespace kuzu::common;
-using namespace kuzu::main;
+using namespace koredb::common;
+using namespace koredb::main;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct CurrentSettingBindData final : TableFuncBindData {
@@ -55,4 +55,4 @@ function_set CurrentSettingFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

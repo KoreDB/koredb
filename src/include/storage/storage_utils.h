@@ -10,7 +10,7 @@
 #include "main/client_context.h"
 #include <concepts>
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 struct PageCursor {
@@ -89,4 +89,4 @@ public:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

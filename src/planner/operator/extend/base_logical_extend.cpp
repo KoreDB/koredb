@@ -1,8 +1,8 @@
 #include "planner/operator/extend/base_logical_extend.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace planner {
 
 static std::string relToString(const binder::RelExpression& rel) {
@@ -52,4 +52,4 @@ std::string BaseLogicalExtend::getExpressionsForPrinting() const {
 }
 
 } // namespace planner
-} // namespace kuzu
+} // namespace koredb

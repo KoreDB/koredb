@@ -2,10 +2,10 @@
 #include "binder/expression_binder.h"
 #include "parser/expression/parsed_parameter_expression.h"
 
-using namespace kuzu::common;
-using namespace kuzu::parser;
+using namespace koredb::common;
+using namespace koredb::parser;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 std::shared_ptr<Expression> ExpressionBinder::bindParameterExpression(
@@ -23,4 +23,4 @@ std::shared_ptr<Expression> ExpressionBinder::bindParameterExpression(
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

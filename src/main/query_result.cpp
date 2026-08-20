@@ -7,10 +7,10 @@
 #include "processor/result/factorized_table.h"
 #include "processor/result/flat_tuple.h"
 
-using namespace kuzu::common;
-using namespace kuzu::processor;
+using namespace koredb::common;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 QueryResult::QueryResult()
@@ -197,4 +197,4 @@ std::unique_ptr<QueryResult> QueryResult::getQueryResultWithError(const std::str
 }
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

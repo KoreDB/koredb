@@ -3,9 +3,9 @@
 #include "common/system_config.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::string UnwindPrintInfo::toString() const {
@@ -75,4 +75,4 @@ bool Unwind::getNextTuplesInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

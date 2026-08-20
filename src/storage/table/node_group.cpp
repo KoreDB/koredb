@@ -13,10 +13,10 @@
 #include "storage/table/node_table.h"
 #include "transaction/transaction.h"
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 row_idx_t NodeGroup::append(const Transaction* transaction,
@@ -722,4 +722,4 @@ row_idx_t NodeGroup::getStartRowIdxInGroup(const common::UniqLock& lock) const {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

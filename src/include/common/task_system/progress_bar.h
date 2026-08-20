@@ -6,7 +6,7 @@
 #include "common/api.h"
 #include "progress_bar_display.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 typedef std::unique_ptr<ProgressBarDisplay> (*progress_bar_display_create_func_t)();
@@ -31,7 +31,7 @@ public:
 
     void toggleProgressBarPrinting(bool enable);
 
-    KUZU_API void updateProgress(uint64_t queryID, double curPipelineProgress);
+    KOREDB_API void updateProgress(uint64_t queryID, double curPipelineProgress);
 
     void setDisplay(std::shared_ptr<ProgressBarDisplay> progressBarDipslay);
 
@@ -53,4 +53,4 @@ private:
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

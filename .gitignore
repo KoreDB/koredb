@@ -26,7 +26,6 @@ __pycache__/
 cmake-build-debug/
 cmake-build-release/
 test/unittest_temp_*
-dataset/parquet_temp_*
 tools/python_api/test/test_PYTHON_CSV.csv
 test.db/
 
@@ -37,9 +36,6 @@ src/antlr4/.antlr/
 
 # macOS
 .DS_Store
-
-# Dataset
-dataset/ldbc-1
 
 ### Node.js
 tools/nodejs_api/node_modules/
@@ -60,7 +56,7 @@ tools/wasm/package/
 *.tar.gz
 scripts/pre-compiled-bins/headers
 scripts/pre-compiled-bins/lib*
-scripts/pre-compiled-bins/kuzu*
+scripts/pre-compiled-bins/koredb*
 
 # Java API
 tools/java_api/build
@@ -70,18 +66,18 @@ tools/java_api/*.class
 tools/java_api/*.log
 tools/java_api/.gradle
 tools/java_api/.idea
-tools/java_api/src/main/resources/libkuzu*
+tools/java_api/src/main/resources/libkoredb*
 tools/java_api/*.iml
 tools/java_api/example/.gradle
 tools/java_api/bin
 
 # Generated docs
-scripts/generate-cpp-docs/c/kuzu.h
+scripts/generate-cpp-docs/c/koredb.h
 scripts/generate-cpp-docs/cpp/headers
 scripts/generate-cpp-docs/cpp/docs
 scripts/generate-cpp-docs/c/docs
 
-# Generated datasets
-dataset/binary-demo
-dataset/databases/tinysnb
-dataset/ldbc-1/csv
+# Claude Code personal config (see .claude/hooks/run-nodejs-tests.sh)
+.claude/settings.local.json
+.claude/hooks/
+.claude/.nodejs-test-sig

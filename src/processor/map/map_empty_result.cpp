@@ -1,9 +1,9 @@
 #include "processor/operator/empty_result.h"
 #include "processor/plan_mapper.h"
 
-using namespace kuzu::planner;
+using namespace koredb::planner;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::unique_ptr<PhysicalOperator> PlanMapper::mapEmptyResult(const LogicalOperator*) {
@@ -12,4 +12,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapEmptyResult(const LogicalOperat
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

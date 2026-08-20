@@ -17,15 +17,15 @@
  * under the License.
  */
 
-#ifndef _KUZU_THRIFT_TRANSPORT_TTRANSPORT_H_
-#define _KUZU_THRIFT_TRANSPORT_TTRANSPORT_H_ 1
+#ifndef _KOREDB_THRIFT_TRANSPORT_TTRANSPORT_H_
+#define _KOREDB_THRIFT_TRANSPORT_TTRANSPORT_H_ 1
 
 #include "Thrift.h"
 #include "transport/TTransportException.h"
 #include <memory>
 #include <string>
 
-namespace kuzu_apache {
+namespace koredb_apache {
 namespace thrift {
 namespace transport {
 
@@ -121,7 +121,7 @@ public:
     return readAll_virt(buf, len);
   }
   virtual uint32_t readAll_virt(uint8_t* buf, uint32_t len) {
-    return kuzu_apache::thrift::transport::readAll(*this, buf, len);
+    return koredb_apache::thrift::transport::readAll(*this, buf, len);
   }
 
   /**
@@ -266,6 +266,6 @@ public:
 };
 }
 }
-} // kuzu_apache::thrift::transport
+} // koredb_apache::thrift::transport
 
-#endif // #ifndef _KUZU_THRIFT_TRANSPORT_TTRANSPORT_H_
+#endif // #ifndef _KOREDB_THRIFT_TRANSPORT_TTRANSPORT_H_

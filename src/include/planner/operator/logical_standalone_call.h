@@ -3,7 +3,7 @@
 #include "main/db_config.h"
 #include "planner/operator/logical_operator.h"
 
-namespace kuzu {
+namespace koredb {
 namespace planner {
 
 class LogicalStandaloneCall final : public LogicalOperator {
@@ -32,4 +32,4 @@ protected:
 };
 
 } // namespace planner
-} // namespace kuzu
+} // namespace koredb

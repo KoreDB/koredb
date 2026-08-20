@@ -14,11 +14,11 @@
 #include "storage/wal/wal_replayer.h"
 #include "transaction/transaction.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 StorageManager::StorageManager(const std::string& databasePath, bool readOnly,
@@ -52,7 +52,7 @@ void StorageManager::initDataFileHandle(VirtualFileSystem* vfs, main::ClientCont
                 auto headerWriter = std::make_shared<InMemFileWriter>(*context->getMemoryManager());
                 Serializer headerSerializer(headerWriter);
                 defaultHeader.serialize(headerSerializer);
-                dataFH->getFileInfo()->writeFile(headerWriter->getPage(0).data(), KUZU_PAGE_SIZE,
+                dataFH->getFileInfo()->writeFile(headerWriter->getPage(0).data(), KOREDB_PAGE_SIZE,
                     StorageConstants::DB_HEADER_PAGE_IDX);
                 dataFH->getFileInfo()->syncFile();
             }
@@ -286,4 +286,4 @@ void StorageManager::deserialize(main::ClientContext* context, const Catalog* ca
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

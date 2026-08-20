@@ -4,7 +4,7 @@
 
 #include "common/types/value/value.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 class Value;
 enum class LogicalTypeID : uint8_t;
@@ -72,8 +72,8 @@ struct DBConfig {
     explicit DBConfig(const SystemConfig& systemConfig);
 
     static ConfigurationOption* getOptionByName(const std::string& optionName);
-    KUZU_API static bool isDBPathInMemory(const std::string& dbPath);
+    KOREDB_API static bool isDBPathInMemory(const std::string& dbPath);
 };
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

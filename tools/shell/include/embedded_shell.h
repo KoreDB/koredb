@@ -1,10 +1,10 @@
 #pragma once
 
 #include "linenoise.h"
-#include "main/kuzu.h"
+#include "main/koredb.h"
 #include "printer/printer.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 const int defaultMaxRows = 20;
@@ -86,4 +86,4 @@ private:
 };
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

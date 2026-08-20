@@ -11,9 +11,9 @@
 #include "function/cast/functions/numeric_limits.h"
 #include "json_type.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace json_extension {
 
 JsonWrapper::~JsonWrapper() {
@@ -652,4 +652,4 @@ uint32_t jsonArraySize(const JsonWrapper& wrapper) {
 }
 
 } // namespace json_extension
-} // namespace kuzu
+} // namespace koredb

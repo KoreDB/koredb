@@ -8,7 +8,7 @@
 #include "pybind_include.h"
 #include <datetime.h>
 
-namespace kuzu {
+namespace koredb {
 
 enum class PythonObjectType : uint8_t {
     None,
@@ -31,4 +31,4 @@ void transformListValue(common::ValueVector* outputVector, uint64_t pos, py::han
 
 void transformPythonValue(common::ValueVector* outputVector, uint64_t pos, py::handle ele);
 
-} // namespace kuzu
+} // namespace koredb

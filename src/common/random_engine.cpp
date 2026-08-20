@@ -2,7 +2,7 @@
 
 #include <random>
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 RandomEngine::RandomEngine() : randomState(RandomState()) {
@@ -24,4 +24,4 @@ uint32_t RandomEngine::nextRandomInteger(uint32_t upper) {
 }
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

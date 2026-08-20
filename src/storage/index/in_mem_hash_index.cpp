@@ -12,9 +12,9 @@
 #include "storage/index/hash_index_utils.h"
 #include "storage/overflow_file.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 template<typename T>
@@ -26,7 +26,7 @@ InMemHashIndex<T>::InMemHashIndex(MemoryManager& memoryManager,
       memoryManager{memoryManager}, numFreeSlots{0} {
     // Match HashIndex in allocating at least one page of slots so that we don't split within the
     // same page
-    allocateSlots(KUZU_PAGE_SIZE / pSlots->getAlignedElementSize());
+    allocateSlots(KOREDB_PAGE_SIZE / pSlots->getAlignedElementSize());
 }
 
 template<typename T>
@@ -34,7 +34,7 @@ void InMemHashIndex<T>::clear() {
     indexHeader = HashIndexHeader();
     pSlots = std::make_unique<BlockVector<InMemSlotType>>(memoryManager);
     oSlots = std::make_unique<BlockVector<InMemSlotType>>(memoryManager);
-    allocateSlots(KUZU_PAGE_SIZE / pSlots->getAlignedElementSize());
+    allocateSlots(KOREDB_PAGE_SIZE / pSlots->getAlignedElementSize());
 }
 
 template<typename T>
@@ -285,4 +285,4 @@ template class InMemHashIndex<int128_t>;
 template class InMemHashIndex<ku_string_t>;
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

@@ -24,12 +24,12 @@
 #include "storage/storage_utils.h"
 #include "transaction/transaction_manager.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::storage;
-using namespace kuzu::transaction;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::storage;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 SystemConfig::SystemConfig(uint64_t bufferPoolSize_, uint64_t maxNumThreads, bool enableCompression,
@@ -236,4 +236,4 @@ uint64_t Database::getNextQueryID() {
 }
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

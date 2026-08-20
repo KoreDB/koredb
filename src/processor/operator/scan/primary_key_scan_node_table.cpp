@@ -3,10 +3,10 @@
 #include "binder/expression/expression_util.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::string PrimaryKeyScanPrintInfo::toString() const {
@@ -72,4 +72,4 @@ bool PrimaryKeyScanNodeTable::getNextTuplesInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

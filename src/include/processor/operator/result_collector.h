@@ -7,7 +7,7 @@
 #include "processor/operator/sink.h"
 #include "processor/result/factorized_table.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 class ResultCollectorSharedState {
@@ -102,4 +102,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

@@ -11,9 +11,9 @@
 #include "storage/table/column_chunk_data.h"
 #include "storage/table/list_column.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 ListChunkData::ListChunkData(MemoryManager& memoryManager, LogicalType dataType, uint64_t capacity,
@@ -449,4 +449,4 @@ void ListChunkData::reclaimStorage(PageAllocator& pageAllocator) {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

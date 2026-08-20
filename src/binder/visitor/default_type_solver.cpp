@@ -1,8 +1,8 @@
 #include "binder/visitor/default_type_solver.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 static void resolveAnyType(Expression& expr) {
@@ -22,4 +22,4 @@ void DefaultTypeSolver::visitProjectionBody(const BoundProjectionBody& projectio
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

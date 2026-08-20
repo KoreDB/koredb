@@ -2,7 +2,7 @@
 
 #include "common/serializer/serializer.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 class RleBpEncoder {
@@ -40,4 +40,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

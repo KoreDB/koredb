@@ -11,7 +11,7 @@
 #include "processor/result/factorized_table.h"
 #include "processor/result/result_set.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 class ClientContext;
 } // namespace main
@@ -22,10 +22,10 @@ class GraceHashJoinExecutor;
 // Test-only: how many times the out-of-core (Grace) hash-join path has been activated in this
 // process. Lets a differential test confirm the spilling path actually ran (rather than silently
 // falling back to the in-memory path and proving nothing).
-KUZU_API uint64_t getGraceHashJoinActivationCount();
+KOREDB_API uint64_t getGraceHashJoinActivationCount();
 // Test-only: activations of specifically the multi-chunk (factorized, flat-streaming output) Grace
 // path -- a subset of getGraceHashJoinActivationCount.
-KUZU_API uint64_t getGraceHashJoinMultiChunkActivationCount();
+KOREDB_API uint64_t getGraceHashJoinMultiChunkActivationCount();
 
 // Static (plan-time) metadata that lets the HASH_JOIN operator run the out-of-core (Grace) path when
 // the `spill_hash_join` setting is on and the join shape is supported. `eligible` is the conservative
@@ -199,4 +199,4 @@ protected:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

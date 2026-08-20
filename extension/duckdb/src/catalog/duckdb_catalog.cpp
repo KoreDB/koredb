@@ -8,7 +8,7 @@
 #include "function/duckdb_scan.h"
 #include "storage/duckdb_storage.h"
 
-namespace kuzu {
+namespace koredb {
 namespace duckdb_extension {
 
 DuckDBCatalog::DuckDBCatalog(std::string dbPath, std::string catalogName,
@@ -157,4 +157,4 @@ std::unique_ptr<binder::BoundCreateTableInfo> DuckDBCatalog::bindCreateTableInfo
 }
 
 } // namespace duckdb_extension
-} // namespace kuzu
+} // namespace koredb

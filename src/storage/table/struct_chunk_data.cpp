@@ -9,9 +9,9 @@
 #include "storage/table/column_chunk_data.h"
 #include "storage/table/struct_column.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 StructChunkData::StructChunkData(MemoryManager& mm, LogicalType dataType, uint64_t capacity,
@@ -239,4 +239,4 @@ bool StructChunkData::numValuesSanityCheck() const {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

@@ -7,11 +7,11 @@
 #include "storage/table/null_column.h"
 #include "storage/table/struct_chunk_data.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 StructColumn::StructColumn(std::string name, LogicalType dataType, FileHandle* dataFH,
@@ -113,4 +113,4 @@ void StructColumn::checkpointColumnChunk(ColumnCheckpointState& checkpointState,
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

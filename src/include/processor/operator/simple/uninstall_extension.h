@@ -3,7 +3,7 @@
 #include "extension_print_info.h"
 #include "processor/operator/sink.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 struct UninstallExtensionPrintInfo final : public ExtensionPrintInfo {
@@ -37,4 +37,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

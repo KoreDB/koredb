@@ -5,11 +5,11 @@
 #include "common/exception/binder.h"
 #include "common/string_format.h"
 
-using namespace kuzu::common;
-using namespace kuzu::catalog;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::catalog;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 // NOLINTNEXTLINE(readability-non-const-parameter): graph is supposed to be modified.
@@ -155,4 +155,4 @@ void QueryGraphLabelAnalyzer::pruneRel(RelExpression& rel) const {
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

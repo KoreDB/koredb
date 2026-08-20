@@ -14,10 +14,10 @@
 #include "parser/expression/parsed_variable_expression.h"
 #include "parser/transformer.h"
 
-using namespace kuzu::common;
-using namespace kuzu::function;
+using namespace koredb::common;
+using namespace koredb::function;
 
-namespace kuzu {
+namespace koredb {
 namespace parser {
 
 std::unique_ptr<ParsedExpression> Transformer::transformExpression(
@@ -688,4 +688,4 @@ std::unique_ptr<ParsedExpression> Transformer::transformDoubleLiteral(
 }
 
 } // namespace parser
-} // namespace kuzu
+} // namespace koredb

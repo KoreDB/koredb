@@ -3,13 +3,13 @@
 #include "function/gds/rec_joins.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::processor;
-using namespace kuzu::common;
-using namespace kuzu::binder;
-using namespace kuzu::storage;
-using namespace kuzu::graph;
+using namespace koredb::processor;
+using namespace koredb::common;
+using namespace koredb::binder;
+using namespace koredb::storage;
+using namespace koredb::graph;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 using multiplicity_t = uint64_t;
@@ -329,4 +329,4 @@ std::unique_ptr<RJAlgorithm> AllSPDestinationsFunction::getAlgorithm() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

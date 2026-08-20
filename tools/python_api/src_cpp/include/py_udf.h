@@ -6,19 +6,19 @@
 #include "function/function.h"
 #include "pybind_include.h"
 
-using kuzu::common::LogicalTypeID;
-using kuzu::function::function_set;
+using koredb::common::LogicalTypeID;
+using koredb::function::function_set;
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 class ClientContext;
 } // namespace main
-} // namespace kuzu
+} // namespace koredb
 
 class PyUDF {
 
 public:
     static function_set toFunctionSet(const std::string& name, const py::function& udf,
         const py::list& paramTypes, const std::string& resultType, bool defaultNull,
-        bool catchExceptions, kuzu::main::ClientContext* context);
+        bool catchExceptions, koredb::main::ClientContext* context);
 };

@@ -10,13 +10,13 @@
 #include "planner/operator/simple/logical_import_db.h"
 #include "planner/planner.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::storage;
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::binder;
+using namespace koredb::storage;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace planner {
 
 std::vector<std::shared_ptr<LogicalOperator>> Planner::planExportTableData(
@@ -73,4 +73,4 @@ LogicalPlan Planner::planImportDatabase(const BoundStatement& statement) {
 }
 
 } // namespace planner
-} // namespace kuzu
+} // namespace koredb

@@ -8,10 +8,10 @@
 #include "parser/expression/parsed_function_expression.h"
 #include "parser/expression/parsed_lambda_expression.h"
 
-using namespace kuzu::common;
-using namespace kuzu::catalog;
+using namespace koredb::common;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace parser {
 
 void ParsedExpressionVisitor::visit(const ParsedExpression* expr) {
@@ -226,4 +226,4 @@ std::unique_ptr<ParsedExpression> MacroParameterReplacer::getReplace(const std::
 }
 
 } // namespace parser
-} // namespace kuzu
+} // namespace koredb

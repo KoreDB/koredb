@@ -2,7 +2,7 @@
 
 #include "function/gds/gds_task.h"
 
-namespace kuzu {
+namespace koredb {
 namespace algo_extension {
 
 class InMemVertexCompute {
@@ -36,4 +36,4 @@ public:
 };
 
 } // namespace algo_extension
-} // namespace kuzu
+} // namespace koredb

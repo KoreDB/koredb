@@ -34,29 +34,29 @@ jobs:
 
       - name: Collect artifacts
         run: |
-          mv install/include/kuzu.h .
-          mv install/include/kuzu.hpp .
-          mv install/lib/libkuzu.dylib .
-          mv install/bin/kuzu .
+          mv install/include/koredb.h .
+          mv install/include/koredb.hpp .
+          mv install/lib/libkoredb.dylib .
+          mv install/bin/koredb .
 
       - name: Verify binary information
         run: |
-          file -b kuzu
-          otool -l kuzu | grep minos
-          file -b libkuzu.dylib
-          otool -l libkuzu.dylib | grep minos
+          file -b koredb
+          otool -l koredb | grep minos
+          file -b libkoredb.dylib
+          otool -l libkoredb.dylib | grep minos
 
       - name: Create tarball
         run: |
-          tar -czvf libkuzu-osx-universal.tar.gz kuzu.h kuzu.hpp libkuzu.dylib
-          tar -czvf kuzu_cli-osx-universal.tar.gz kuzu
+          tar -czvf libkoredb-osx-universal.tar.gz koredb.h koredb.hpp libkoredb.dylib
+          tar -czvf koredb_cli-osx-universal.tar.gz koredb
 
       - uses: actions/upload-artifact@v4
         with:
-          name: libkuzu-osx-universal
-          path: libkuzu-osx-universal.tar.gz
+          name: libkoredb-osx-universal
+          path: libkoredb-osx-universal.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:
-          name: kuzu_cli-osx-universal
-          path: kuzu_cli-osx-universal.tar.gz
+          name: koredb_cli-osx-universal
+          path: koredb_cli-osx-universal.tar.gz

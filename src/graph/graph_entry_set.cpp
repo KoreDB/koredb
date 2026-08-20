@@ -3,9 +3,9 @@
 #include "common/exception/runtime.h"
 #include "common/string_format.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace graph {
 
 void GraphEntrySet::validateGraphNotExist(const std::string& name) const {
@@ -21,4 +21,4 @@ void GraphEntrySet::validateGraphExist(const std::string& name) const {
 }
 
 } // namespace graph
-} // namespace kuzu
+} // namespace koredb

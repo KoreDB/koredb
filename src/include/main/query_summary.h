@@ -1,9 +1,9 @@
 #pragma once
 
 #include "common/api.h"
-#include "kuzu_fwd.h"
+#include "koredb_fwd.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 /**
@@ -25,11 +25,11 @@ public:
     /**
      * @return query compiling time in milliseconds.
      */
-    KUZU_API double getCompilingTime() const;
+    KOREDB_API double getCompilingTime() const;
     /**
      * @return query execution time in milliseconds.
      */
-    KUZU_API double getExecutionTime() const;
+    KOREDB_API double getExecutionTime() const;
 
     void incrementCompilingTime(double increment);
     void incrementExecutionTime(double increment);
@@ -52,4 +52,4 @@ private:
 };
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

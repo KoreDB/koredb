@@ -2,14 +2,14 @@
 
 #include "exception.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
-class KUZU_API ExtensionException : public Exception {
+class KOREDB_API ExtensionException : public Exception {
 public:
     explicit ExtensionException(const std::string& msg)
         : Exception("Extension exception: " + msg) {}
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

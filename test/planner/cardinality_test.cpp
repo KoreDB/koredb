@@ -2,13 +2,13 @@
 #include "planner/operator/logical_plan_util.h"
 #include "test_runner/test_runner.h"
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 class CardinalityTest : public DBTest {
 public:
     std::string getInputDir() override {
-        return TestHelper::appendKuzuRootPath("dataset/tinysnb/");
+        return TestHelper::appendKoreDBRootPath("dataset/tinysnb/");
     }
 
     std::string getEncodedPlan(const std::string& query) {
@@ -122,15 +122,16 @@ TEST_F(CardinalityTest, TestOperators) {
 
     // Load From Parquet
     {
-        auto plan = getRoot(common::stringFormat(
-            "LOAD FROM \"{}/dataset/demo-db/parquet/user.parquet\" RETURN *", KUZU_ROOT_DIRECTORY));
+        auto plan = getRoot(
+            common::stringFormat("LOAD FROM \"{}/dataset/demo-db/parquet/user.parquet\" RETURN *",
+                KOREDB_ROOT_DIRECTORY));
         EXPECT_EQ(4, plan->getCardinality());
     }
 
     // Load From Numpy
     {
         auto plan = getRoot(common::stringFormat(
-            "LOAD FROM \"{}/dataset/npy-1d/one_dim_int64.npy\" RETURN *", KUZU_ROOT_DIRECTORY));
+            "LOAD FROM \"{}/dataset/npy-1d/one_dim_int64.npy\" RETURN *", KOREDB_ROOT_DIRECTORY));
         EXPECT_EQ(3, plan->getCardinality());
     }
 }
@@ -151,4 +152,4 @@ TEST_F(CardinalityTest, TestPopulatedAfterOptimizations) {
 }
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

@@ -1,6 +1,6 @@
 #include "include/node_progress_bar_display.h"
 
-using namespace kuzu;
+using namespace koredb;
 using namespace common;
 
 void NodeProgressBarDisplay::updateProgress(uint64_t queryID, double newPipelineProgress,

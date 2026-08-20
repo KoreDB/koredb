@@ -1,6 +1,6 @@
 def test_version() -> None:
-    import kuzu
+    import koredb
 
-    assert kuzu.version != ""
-    assert kuzu.storage_version > 0
-    assert kuzu.version == kuzu.__version__
+    assert koredb.version != ""
+    assert koredb.storage_version > 0
+    assert koredb.version == koredb.__version__

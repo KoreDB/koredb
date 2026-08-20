@@ -17,12 +17,12 @@
  * under the License.
  */
 
-#ifndef _KUZU_THRIFT_TAPPLICATIONEXCEPTION_H_
-#define _KUZU_THRIFT_TAPPLICATIONEXCEPTION_H_ 1
+#ifndef _KOREDB_THRIFT_TAPPLICATIONEXCEPTION_H_
+#define _KOREDB_THRIFT_TAPPLICATIONEXCEPTION_H_ 1
 
 #include "Thrift.h"
 
-namespace kuzu_apache {
+namespace koredb_apache {
 namespace thrift {
 
 namespace protocol {
@@ -107,6 +107,6 @@ protected:
   TApplicationExceptionType type_;
 };
 }
-} // kuzu_apache::thrift
+} // koredb_apache::thrift
 
-#endif // #ifndef _KUZU_THRIFT_TAPPLICATIONEXCEPTION_H_
+#endif // #ifndef _KOREDB_THRIFT_TAPPLICATIONEXCEPTION_H_

@@ -3,7 +3,7 @@
 #include "bound_statement.h"
 #include "main/client_context.h"
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 // Perform semantic rewrite over bound statement.
@@ -13,4 +13,4 @@ public:
 };
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

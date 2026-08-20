@@ -2,7 +2,7 @@
 
 #include "common/vector/value_vector.h"
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct TernaryFunctionWrapper {
@@ -425,4 +425,4 @@ struct TernaryFunctionExecutor {
 };
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

@@ -2,10 +2,10 @@
 #include "parser/transaction_statement.h"
 #include "parser/transformer.h"
 
-using namespace kuzu::transaction;
-using namespace kuzu::common;
+using namespace koredb::transaction;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace parser {
 
 std::unique_ptr<Statement> Transformer::transformTransaction(
@@ -29,4 +29,4 @@ std::unique_ptr<Statement> Transformer::transformTransaction(
 }
 
 } // namespace parser
-} // namespace kuzu
+} // namespace koredb

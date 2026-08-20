@@ -1,9 +1,9 @@
 #include "function/aggregate/sum.h"
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
 function_set AggregateSumFunction::getFunctionSet() {
     function_set result;
@@ -14,4 +14,4 @@ function_set AggregateSumFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

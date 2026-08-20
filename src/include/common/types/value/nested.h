@@ -4,17 +4,17 @@
 
 #include "common/api.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 class Value;
 
 class NestedVal {
 public:
-    KUZU_API static uint32_t getChildrenSize(const Value* val);
+    KOREDB_API static uint32_t getChildrenSize(const Value* val);
 
-    KUZU_API static Value* getChildVal(const Value* val, uint32_t idx);
+    KOREDB_API static Value* getChildVal(const Value* val, uint32_t idx);
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

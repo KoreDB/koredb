@@ -6,7 +6,7 @@
 #include "function/gds/rec_joins.h"
 #include "node_expression.h"
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 enum class RelDirectionType : uint8_t {
@@ -56,7 +56,7 @@ public:
         return dataType.getLogicalTypeID() == common::LogicalTypeID::RECURSIVE_REL;
     }
 
-    KUZU_API bool isMultiLabeled() const override;
+    KOREDB_API bool isMultiLabeled() const override;
     bool isBoundByMultiLabeledNode() const {
         return srcNode->isMultiLabeled() || dstNode->isMultiLabeled();
     }
@@ -120,4 +120,4 @@ private:
 };
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

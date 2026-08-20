@@ -1,5 +1,5 @@
 name: Feature suggestion
-description: Suggestion a new feature for Kuzu
+description: Suggestion a new feature for KoreDB
 title: "Feature: "
 labels: [feature]
 body:
@@ -16,7 +16,6 @@ body:
       options:
         - Python
         - Node.js
-        - Java
         - Rust
         - C++
         - C

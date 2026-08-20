@@ -5,7 +5,7 @@
 #include "storage/buffer_manager/memory_manager.h"
 #include "yyjson.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 using namespace common;
@@ -62,4 +62,4 @@ std::string JsonPrinter::printBody(QueryResult& queryResult, MemoryManager& mm) 
 }
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

@@ -5,7 +5,7 @@
 #include "storage/page_allocator.h"
 #include "storage/table/table.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 class MemoryManager;
 class ChunkedNodeGroup;
@@ -42,7 +42,7 @@ struct BatchInsertInfo {
     }
 };
 
-struct KUZU_API BatchInsertSharedState {
+struct KOREDB_API BatchInsertSharedState {
     std::mutex mtx;
     std::atomic<common::row_idx_t> numRows;
 
@@ -88,7 +88,7 @@ struct BatchInsertLocalState {
     }
 };
 
-class KUZU_API BatchInsert : public Sink {
+class KOREDB_API BatchInsert : public Sink {
     static constexpr PhysicalOperatorType type_ = PhysicalOperatorType::BATCH_INSERT;
 
 public:
@@ -113,4 +113,4 @@ protected:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

@@ -1,6 +1,6 @@
 "use strict";
 
-const KuzuNative = require("./kuzu_native.js");
+const KoreDBNative = require("./koredb_native.js");
 
 class Database {
   /**
@@ -45,7 +45,7 @@ class Database {
     bufferManagerSize = Math.floor(bufferManagerSize);
     maxDBSize = Math.floor(maxDBSize);
     checkpointThreshold = Math.floor(checkpointThreshold);
-    this._database = new KuzuNative.NodeDatabase(
+    this._database = new KoreDBNative.NodeDatabase(
       databasePath,
       bufferManagerSize,
       enableCompression,
@@ -64,7 +64,7 @@ class Database {
    * @returns {String} the version of the library.
    */
   static getVersion() {
-    return KuzuNative.NodeDatabase.getVersion();
+    return KoreDBNative.NodeDatabase.getVersion();
   }
 
   /**
@@ -72,7 +72,7 @@ class Database {
    * @returns {Number} the storage version of the library.
    */
   static getStorageVersion() {
-    return KuzuNative.NodeDatabase.getStorageVersion();
+    return KoreDBNative.NodeDatabase.getStorageVersion();
   }
 
   /**
@@ -120,7 +120,7 @@ class Database {
 
   /**
    * Internal function to get the underlying native database object.
-   * @returns {KuzuNative.NodeDatabase} the underlying native database.
+   * @returns {KoreDBNative.NodeDatabase} the underlying native database.
    * @throws {Error} if the database is closed.
    */
   async _getDatabase() {
@@ -133,7 +133,7 @@ class Database {
 
   /**
    * Internal function to get the underlying native database object synchronously.
-   * @returns {KuzuNative.NodeDatabase} the underlying native database.
+   * @returns {KoreDBNative.NodeDatabase} the underlying native database.
    * @throws {Error} if the database is closed.
    */
   _getDatabaseSync() {

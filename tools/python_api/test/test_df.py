@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-import kuzu
+import koredb
 import pytz
 from pandas import Timedelta, Timestamp
 from type_aliases import ConnDB
@@ -15,7 +15,7 @@ from type_aliases import ConnDB
 def test_to_df(conn_db_readonly: ConnDB) -> None:
     conn, _ = conn_db_readonly
 
-    def _test_person_to_df(conn: kuzu.Connection) -> None:
+    def _test_person_to_df(conn: koredb.Connection) -> None:
         query = "MATCH (p:person) return p.* ORDER BY p.ID"
         pd = conn.execute(query).get_as_df()
         assert pd["p.ID"].tolist() == [0, 2, 3, 5, 7, 8, 9, 10]
@@ -129,7 +129,7 @@ def test_to_df(conn_db_readonly: ConnDB) -> None:
             assert math.isclose(actual, expected, rel_tol=1e-5)
         assert str(pd["p.height"].dtype) == "float32"
 
-    def _test_study_at_to_df(conn: kuzu.Connection) -> None:
+    def _test_study_at_to_df(conn: koredb.Connection) -> None:
         query = "MATCH (p:person)-[r:studyAt]->(o:organisation) return r.* order by r.length;"
         pd = conn.execute(query).get_as_df()
         assert pd["r.year"].tolist() == [2021, 2020, 2020]
@@ -159,7 +159,7 @@ def test_to_df(conn_db_readonly: ConnDB) -> None:
         ]
         assert str(pd["r.hugedata"].dtype) == "float64"
 
-    def _test_timestamps_to_df(conn: kuzu.Connection) -> None:
+    def _test_timestamps_to_df(conn: koredb.Connection) -> None:
         query = (
             'RETURN cast("2012-01-01 11:12:12.12345", "TIMESTAMP_NS") as A, cast("2012-01-01 11:12:12.12345", '
             '"TIMESTAMP_MS") as B, cast("2012-01-01 11:12:12.12345", "TIMESTAMP_SEC") as C, '
@@ -171,7 +171,7 @@ def test_to_df(conn_db_readonly: ConnDB) -> None:
         assert pd["C"].tolist() == [Timestamp("2012-01-01 11:12:12")]
         assert pd["D"].tolist() == [Timestamp("2012-01-01 11:12:12.123450")]
 
-    def _test_movies_to_df(conn: kuzu.Connection) -> None:
+    def _test_movies_to_df(conn: koredb.Connection) -> None:
         query = "MATCH (m:movies) return m.* order by m.length;"
         pd = conn.execute(query).get_as_df()
         assert pd["m.length"].tolist() == [126, 298, 2544]
@@ -242,7 +242,7 @@ def test_to_df(conn_db_readonly: ConnDB) -> None:
         assert pd["m.grade"].tolist() == [True, 254.0, 8.989]
         assert str(pd["m.grade"].dtype) == "object"
 
-    def _test_serial_to_df(conn: kuzu.Connection) -> None:
+    def _test_serial_to_df(conn: koredb.Connection) -> None:
         df = conn.execute("MATCH (a:moviesSerial) RETURN a.ID AS id").get_as_df()
         assert len(df) == 3
         assert df["id"].tolist() == [0, 1, 2]

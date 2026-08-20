@@ -12,8 +12,8 @@
 #include "datetime.h" // python lib
 #include "include/py_query_result_converter.h"
 
-using namespace kuzu::common;
-using kuzu::importCache;
+using namespace koredb::common;
+using koredb::importCache;
 
 #define PyDateTimeTZ_FromDateAndTime(year, month, day, hour, min, sec, usec, timezone)             \
     PyDateTimeAPI->DateTime_FromDateAndTime(year, month, day, hour, min, sec, usec, timezone,      \
@@ -131,8 +131,8 @@ py::object PyQueryResult::convertValueToPyObject(const Value& value) {
         return py::cast(value.getValue<uint64_t>());
     }
     case LogicalTypeID::INT128: {
-        kuzu::common::int128_t result = value.getValue<kuzu::common::int128_t>();
-        std::string int128_string = kuzu::common::Int128_t::ToString(result);
+        koredb::common::int128_t result = value.getValue<koredb::common::int128_t>();
+        std::string int128_string = koredb::common::Int128_t::ToString(result);
 
         auto Decimal = importCache->decimal.Decimal();
         py::object largeInt = Decimal(int128_string);
@@ -157,8 +157,8 @@ py::object PyQueryResult::convertValueToPyObject(const Value& value) {
         return py::bytes(blobBytesArray, blobStr.size());
     }
     case LogicalTypeID::UUID: {
-        kuzu::common::int128_t result = value.getValue<kuzu::common::int128_t>();
-        std::string uuidString = kuzu::common::UUID::toString(result);
+        koredb::common::int128_t result = value.getValue<koredb::common::int128_t>();
+        std::string uuidString = koredb::common::UUID::toString(result);
         auto UUID = importCache->uuid.UUID();
         return UUID(uuidString);
     }
@@ -288,7 +288,7 @@ py::object PyQueryResult::getAsDF() {
     return QueryResultConverter(queryResult).toDF();
 }
 
-bool PyQueryResult::getNextArrowChunk(const std::vector<kuzu::common::LogicalType>& types,
+bool PyQueryResult::getNextArrowChunk(const std::vector<koredb::common::LogicalType>& types,
     const std::vector<std::string>& names, py::list& batches, std::int64_t chunkSize) {
     if (!queryResult->hasNext()) {
         return false;
@@ -303,14 +303,14 @@ bool PyQueryResult::getNextArrowChunk(const std::vector<kuzu::common::LogicalTyp
     return true;
 }
 
-py::object PyQueryResult::getArrowChunks(const std::vector<kuzu::common::LogicalType>& types,
+py::object PyQueryResult::getArrowChunks(const std::vector<koredb::common::LogicalType>& types,
     const std::vector<std::string>& names, std::int64_t chunkSize) {
     py::list batches;
     while (getNextArrowChunk(types, names, batches, chunkSize)) {}
     return batches;
 }
 
-kuzu::pyarrow::Table PyQueryResult::getAsArrow(std::int64_t chunkSize) {
+koredb::pyarrow::Table PyQueryResult::getAsArrow(std::int64_t chunkSize) {
 
     auto types = queryResult->getColumnDataTypes();
     auto names = queryResult->getColumnNames();
@@ -319,7 +319,7 @@ kuzu::pyarrow::Table PyQueryResult::getAsArrow(std::int64_t chunkSize) {
     auto fromBatchesFunc = importCache->pyarrow.lib.Table.from_batches();
     auto schemaImportFunc = importCache->pyarrow.lib.Schema._import_from_c();
     auto schemaObj = schemaImportFunc((std::uint64_t)schema.get());
-    return py::cast<kuzu::pyarrow::Table>(fromBatchesFunc(batches, schemaObj));
+    return py::cast<koredb::pyarrow::Table>(fromBatchesFunc(batches, schemaObj));
 }
 
 py::list PyQueryResult::getColumnDataTypes() {

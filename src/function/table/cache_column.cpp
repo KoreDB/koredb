@@ -12,13 +12,13 @@
 #include "storage/table/table.h"
 #include "transaction/transaction.h"
 
-namespace kuzu::catalog {
+namespace koredb::catalog {
 class TableCatalogEntry;
 }
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct CacheArrayColumnBindData final : TableFuncBindData {
@@ -206,4 +206,4 @@ function_set LocalCacheArrayColumnFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

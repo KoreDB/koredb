@@ -6,9 +6,9 @@
 #include "common/exception/binder.h"
 #include "common/utils.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 bool RelExpression::isMultiLabeled() const {
@@ -85,4 +85,4 @@ std::vector<table_id_t> RelExpression::getInnerRelTableIDs() const {
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

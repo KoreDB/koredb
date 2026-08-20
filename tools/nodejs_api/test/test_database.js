@@ -10,8 +10,8 @@ const openDatabaseOnSubprocess = (dbPath) => {
     const node = process.argv[0];
     const code = `
       (async() => {
-        const kuzu = require("${kuzuPath}");
-        const db = new kuzu.Database("${dbPath}", 1 << 28);
+        const koredb = require("${koredbPath}");
+        const db = new koredb.Database("${dbPath}", 1 << 28);
         await db.init();
         console.log("Database initialized.");
       })();
@@ -42,7 +42,7 @@ describe("Database constructor", function () {
       });
     });
     const dbPath = path.join(tmpDbPath, "db.kz");
-    const testDb = new kuzu.Database(dbPath, 1 << 28 /* 256MB */);
+    const testDb = new koredb.Database(dbPath, 1 << 28 /* 256MB */);
     assert.exists(testDb);
     assert.equal(testDb.constructor.name, "Database");
     await testDb.init();
@@ -61,7 +61,7 @@ describe("Database constructor", function () {
       });
     });
     const dbPath = path.join(tmpDbPath, "db.kz");
-    const testDb = new kuzu.Database(dbPath);
+    const testDb = new koredb.Database(dbPath);
     assert.exists(testDb);
     assert.equal(testDb.constructor.name, "Database");
     await testDb.init();
@@ -86,14 +86,14 @@ describe("Database constructor", function () {
       });
     });
     const dbPath = path.join(tmpDbPath, "db.kz");
-    const testDb = new kuzu.Database(dbPath,
+    const testDb = new koredb.Database(dbPath,
       1 << 28 /* 256MB */,
       true /* compression */,
       false /* readOnly */,
       1 << 30 /* 1GB */,
       false /* autoCheckpoint */
     );
-    const conn = new kuzu.Connection(testDb);
+    const conn = new koredb.Connection(testDb);
     let res = await conn.query("CALL current_setting('auto_checkpoint') RETURN *");
     assert.equal(res.getNumTuples(), 1);
     const tuple = await res.getNext();
@@ -113,7 +113,7 @@ describe("Database constructor", function () {
       });
     });
     const dbPath = path.join(tmpDbPath, "db.kz");
-    const testDb = new kuzu.Database(dbPath,
+    const testDb = new koredb.Database(dbPath,
       1 << 28 /* 256MB */,
       true /* compression */,
       false /* readOnly */,
@@ -121,7 +121,7 @@ describe("Database constructor", function () {
       true /* autoCheckpoint */,
       1234 /* checkpointThreshold */
     );
-    const conn = new kuzu.Connection(testDb);
+    const conn = new koredb.Connection(testDb);
     let res = await conn.query("CALL current_setting('checkpoint_threshold') RETURN *");
     assert.equal(res.getNumTuples(), 1);
     const tuple = await res.getNext();
@@ -141,7 +141,7 @@ describe("Database constructor", function () {
       });
     });
     const dbPath = path.join(tmpDbPath, "db.kz");
-    const testDb = new kuzu.Database(dbPath, 1 << 28 /* 256MB */);
+    const testDb = new koredb.Database(dbPath, 1 << 28 /* 256MB */);
     assert.exists(testDb);
     assert.equal(testDb.constructor.name, "Database");
     await testDb.init();
@@ -149,7 +149,7 @@ describe("Database constructor", function () {
     assert.isTrue(testDb._isInitialized);
     assert.notExists(testDb._initPromise);
     await testDb.close();
-    const testDbReadOnly = new kuzu.Database(
+    const testDbReadOnly = new koredb.Database(
       dbPath,
       1 << 28 /* 256MB */,
       true /* compression */,
@@ -161,7 +161,7 @@ describe("Database constructor", function () {
     assert.exists(testDbReadOnly._database);
     assert.isTrue(testDbReadOnly._isInitialized);
     assert.notExists(testDbReadOnly._initPromise);
-    const connection = new kuzu.Connection(testDbReadOnly);
+    const connection = new koredb.Connection(testDbReadOnly);
     assert.exists(connection);
     assert.equal(connection.constructor.name, "Connection");
     await connection.init();
@@ -193,7 +193,7 @@ describe("Database constructor", function () {
       });
     });
     const dbPath = path.join(tmpDbPath, "db.kz");
-    const testDb = new kuzu.Database(
+    const testDb = new koredb.Database(
       dbPath,
       1 << 28 /* 256MB */,
       true /* compression */,
@@ -210,7 +210,7 @@ describe("Database constructor", function () {
 
   it("should throw error if the path is invalid", async function () {
     try {
-      const _ = new kuzu.Database({}, 1 << 28 /* 256MB */);
+      const _ = new koredb.Database({}, 1 << 28 /* 256MB */);
       assert.fail("No error thrown when the path is invalid.");
     } catch (e) {
       assert.equal(e.message, "Database path must be a string.");
@@ -219,7 +219,7 @@ describe("Database constructor", function () {
 
   it("should throw error if the buffer size is invalid", async function () {
     try {
-      const _ = new kuzu.Database("", {});
+      const _ = new koredb.Database("", {});
       assert.fail("No error thrown when the buffer size is invalid.");
     } catch (e) {
       assert.equal(
@@ -231,7 +231,7 @@ describe("Database constructor", function () {
 
   it("should throw error if the buffer size is negative", async function () {
     try {
-      const _ = new kuzu.Database("", -1);
+      const _ = new koredb.Database("", -1);
       assert.fail("No error thrown when the buffer size is negative.");
     } catch (e) {
       assert.equal(
@@ -243,7 +243,7 @@ describe("Database constructor", function () {
 
   it("should throw error if the max DB size is invalid", async function () {
     try {
-      const _ = new kuzu.Database("", 1 << 28 /* 256MB */, true, false, {});
+      const _ = new koredb.Database("", 1 << 28 /* 256MB */, true, false, {});
       assert.fail("No error thrown when the max DB size is invalid.");
     } catch (e) {
       assert.equal(e.message, "Max DB size must be a positive integer.");
@@ -251,8 +251,8 @@ describe("Database constructor", function () {
   });
 
   it("should create an in-memory database when no path is provided", async function () {
-    const testDb = new kuzu.Database();
-    const conn = new kuzu.Connection(testDb);
+    const testDb = new koredb.Database();
+    const conn = new koredb.Connection(testDb);
     let res = await conn.query("CREATE NODE TABLE person(name STRING, age INT64, PRIMARY KEY(name));");
     res.close();
     res = await conn.query("CREATE (:person {name: 'Alice', age: 30});");
@@ -272,8 +272,8 @@ describe("Database constructor", function () {
   });
 
   it("should create an in-memory database when empty path is provided", async function () {
-    const testDb = new kuzu.Database("", 1 << 28 /* 256MB */);
-    const conn = new kuzu.Connection(testDb);
+    const testDb = new koredb.Database("", 1 << 28 /* 256MB */);
+    const conn = new koredb.Connection(testDb);
     let res = await conn.query("CREATE NODE TABLE person(name STRING, age INT64, PRIMARY KEY(name));");
     res.close();
     res = await conn.query("CREATE (:person {name: 'Alice', age: 30});");
@@ -308,7 +308,7 @@ describe("Database close", function () {
       });
     });
     const dbPath = path.join(tmpDbPath, "db.kz");
-    const testDb = new kuzu.Database(dbPath, 1 << 28 /* 256MB */);
+    const testDb = new koredb.Database(dbPath, 1 << 28 /* 256MB */);
     await testDb.init();
     // FIXME: doesn't work properly on windows
     let subProcessResult = await openDatabaseOnSubprocess(dbPath);
@@ -334,7 +334,7 @@ describe("Database close", function () {
       });
     });
     const dbPath = path.join(tmpDbPath, "db.kz");
-    const testDb = new kuzu.Database(dbPath, 1 << 28 /* 256MB */);
+    const testDb = new koredb.Database(dbPath, 1 << 28 /* 256MB */);
     await testDb.init();
     await testDb.close();
     try {
@@ -355,7 +355,7 @@ describe("Database close", function () {
       });
     });
     const dbPath = path.join(tmpDbPath, "db.kz");
-    const testDb = new kuzu.Database(dbPath, 1 << 28 /* 256MB */);
+    const testDb = new koredb.Database(dbPath, 1 << 28 /* 256MB */);
     await testDb.init();
     assert.isTrue(testDb._isInitialized);
     assert.exists(testDb._database);
@@ -374,7 +374,7 @@ describe("Database close", function () {
       });
     });
     const dbPath = path.join(tmpDbPath, "db.kz");
-    const testDb = new kuzu.Database(dbPath, 1 << 28 /* 256MB */);
+    const testDb = new koredb.Database(dbPath, 1 << 28 /* 256MB */);
     assert.isFalse(testDb._isInitialized);
     await testDb.close();
     assert.notExists(testDb._database);
@@ -392,7 +392,7 @@ describe("Database close", function () {
       });
     });
     const dbPath = path.join(tmpDbPath, "db.kz");
-    const testDb = new kuzu.Database(dbPath, 1 << 28 /* 256MB */);
+    const testDb = new koredb.Database(dbPath, 1 << 28 /* 256MB */);
     await Promise.all([testDb.init(), testDb.close()]);
     assert.notExists(testDb._database);
     assert.isTrue(testDb._isClosed);
@@ -409,7 +409,7 @@ describe("Database close", function () {
       });
     });
     const dbPath = path.join(tmpDbPath, "db.kz");
-    const testDb = new kuzu.Database(dbPath, 1 << 28 /* 256MB */);
+    const testDb = new koredb.Database(dbPath, 1 << 28 /* 256MB */);
     await testDb.init();
     await Promise.all([testDb.close(), testDb.close(), testDb.close()]);
     assert.notExists(testDb._database);
@@ -418,9 +418,9 @@ describe("Database close", function () {
   });
 
   it("should allow closing a database before closing the connection and query result", async function () {
-    const testDb = new kuzu.Database(":memory:", 1 << 28 /* 256MB */);
+    const testDb = new koredb.Database(":memory:", 1 << 28 /* 256MB */);
     await testDb.init();
-    const conn = new kuzu.Connection(testDb);
+    const conn = new koredb.Connection(testDb);
     await conn.init();
     const res = await conn.query("RETURN 1+1");
     assert.equal(res.getNumTuples(), 1);

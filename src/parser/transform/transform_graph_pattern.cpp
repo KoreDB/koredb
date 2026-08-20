@@ -2,9 +2,9 @@
 #include "parser/query/graph_pattern/pattern_element.h"
 #include "parser/transformer.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace parser {
 
 std::vector<PatternElement> Transformer::transformPattern(CypherParser::OC_PatternContext& ctx) {
@@ -214,4 +214,4 @@ std::string Transformer::transformRelTypeName(CypherParser::OC_RelTypeNameContex
 }
 
 } // namespace parser
-} // namespace kuzu
+} // namespace koredb

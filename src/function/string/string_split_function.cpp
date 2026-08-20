@@ -1,10 +1,10 @@
 #include "common/string_utils.h"
 #include "function/string/vector_string_functions.h"
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
 struct StringSplit {
     static void operation(ku_string_t& strToSplit, ku_string_t& separator, list_entry_t& result,
@@ -35,4 +35,4 @@ function_set StringSplitFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

@@ -6,9 +6,9 @@
 #include "storage/storage_utils.h"
 #include "transaction/transaction.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 struct VectorVersionInfo {
@@ -697,4 +697,4 @@ std::unique_ptr<VersionInfo> VersionInfo::deserialize(Deserializer& deSer) {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

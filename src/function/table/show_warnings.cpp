@@ -5,9 +5,9 @@
 #include "main/client_context.h"
 #include "processor/warning_context.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct ShowWarningsBindData final : TableFuncBindData {
@@ -65,4 +65,4 @@ function_set ShowWarningsFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

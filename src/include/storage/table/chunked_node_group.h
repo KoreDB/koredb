@@ -12,7 +12,7 @@
 #include "storage/table/column_chunk_data.h"
 #include "storage/table/version_info.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 class SelectionVector;
 } // namespace common
@@ -34,7 +34,7 @@ class PageAllocator;
 
 enum class NodeGroupDataFormat : uint8_t { REGULAR = 0, CSR = 1 };
 
-class KUZU_API ChunkedNodeGroup : public SpillableComponent {
+class KOREDB_API ChunkedNodeGroup : public SpillableComponent {
 public:
     ChunkedNodeGroup(std::vector<std::unique_ptr<ColumnChunk>> chunks,
         common::row_idx_t startRowIdx, NodeGroupDataFormat format = NodeGroupDataFormat::REGULAR);
@@ -200,4 +200,4 @@ protected:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

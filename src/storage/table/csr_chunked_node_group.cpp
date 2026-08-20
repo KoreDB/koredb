@@ -7,9 +7,9 @@
 #include "storage/table/csr_node_group.h"
 #include "transaction/transaction.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 CSRRegion::CSRRegion(idx_t regionIdx, idx_t level) : regionIdx{regionIdx}, level{level} {
@@ -323,4 +323,4 @@ std::unique_ptr<ChunkedCSRNodeGroup> ChunkedCSRNodeGroup::deserialize(MemoryMana
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

@@ -5,9 +5,9 @@
 #include "storage/storage_utils.h"
 #include "storage/wal/wal.h"
 
-using namespace kuzu::common;
-using namespace kuzu::testing;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::testing;
+using namespace koredb::transaction;
 
 TEST_F(PrivateApiTest, TransactionModes) {
     // Test initially connections are in AUTO_COMMIT mode.
@@ -71,7 +71,7 @@ TEST_F(PrivateApiTest, CloseConnectionWithActiveTransaction) {
     ASSERT_TRUE(hasActiveTransaction(*conn));
     conn->query("MATCH (a:person) SET a.age=10;");
     conn.reset();
-    conn = std::make_unique<kuzu::main::Connection>(database.get());
+    conn = std::make_unique<koredb::main::Connection>(database.get());
     conn->query("BEGIN TRANSACTION;");
     auto res = conn->query("MATCH (a:person) WHERE a.age=10 RETURN COUNT(*) AS count;");
     ASSERT_TRUE(res->isSuccess());
@@ -116,26 +116,27 @@ TEST_F(EmptyDBTransactionTest, DatabaseFilesAfterCheckpoint) {
     }
     conn->query("CALL auto_checkpoint=false;");
     ASSERT_FALSE(
-        std::filesystem::exists(kuzu::storage::StorageUtils::getTmpFilePath(databasePath)));
+        std::filesystem::exists(koredb::storage::StorageUtils::getTmpFilePath(databasePath)));
     ASSERT_FALSE(
-        std::filesystem::exists(kuzu::storage::StorageUtils::getShadowFilePath(databasePath)));
+        std::filesystem::exists(koredb::storage::StorageUtils::getShadowFilePath(databasePath)));
     ASSERT_FALSE(
-        std::filesystem::exists(kuzu::storage::StorageUtils::getWALFilePath(databasePath)));
+        std::filesystem::exists(koredb::storage::StorageUtils::getWALFilePath(databasePath)));
     conn->query("CREATE NODE TABLE test(id INT64 PRIMARY KEY, name STRING);");
-    ASSERT_TRUE(std::filesystem::exists(kuzu::storage::StorageUtils::getWALFilePath(databasePath)));
+    ASSERT_TRUE(
+        std::filesystem::exists(koredb::storage::StorageUtils::getWALFilePath(databasePath)));
     conn->query("CHECKPOINT;");
     ASSERT_FALSE(
-        std::filesystem::exists(kuzu::storage::StorageUtils::getTmpFilePath(databasePath)));
+        std::filesystem::exists(koredb::storage::StorageUtils::getTmpFilePath(databasePath)));
     ASSERT_FALSE(
-        std::filesystem::exists(kuzu::storage::StorageUtils::getShadowFilePath(databasePath)));
+        std::filesystem::exists(koredb::storage::StorageUtils::getShadowFilePath(databasePath)));
     ASSERT_FALSE(
-        std::filesystem::exists(kuzu::storage::StorageUtils::getWALFilePath(databasePath)));
+        std::filesystem::exists(koredb::storage::StorageUtils::getWALFilePath(databasePath)));
     conn->query("CREATE NODE TABLE test(id INT64 PRIMARY KEY, name STRING);");
 }
 
 #ifndef __SINGLE_THREADED__
-static void insertNodes(uint64_t startID, uint64_t num, kuzu::main::Database& database) {
-    auto conn = std::make_unique<kuzu::main::Connection>(&database);
+static void insertNodes(uint64_t startID, uint64_t num, koredb::main::Database& database) {
+    auto conn = std::make_unique<koredb::main::Connection>(&database);
     for (uint64_t i = 0; i < num; ++i) {
         auto id = startID + i;
         auto res = conn->query(stringFormat("CREATE (:test {id: {}, name: 'Person{}'});", id, id));
@@ -174,8 +175,8 @@ TEST_F(EmptyDBTransactionTest, ConcurrentNodeInsertions) {
 }
 
 static void insertNodesWithMixedTypes(uint64_t startID, uint64_t num,
-    kuzu::main::Database& database) {
-    auto conn = std::make_unique<kuzu::main::Connection>(&database);
+    koredb::main::Database& database) {
+    auto conn = std::make_unique<koredb::main::Connection>(&database);
     for (auto i = 0u; i < num; ++i) {
         auto id = startID + i;
         auto score = 95.5 + (id % 10);
@@ -220,8 +221,8 @@ TEST_F(EmptyDBTransactionTest, ConcurrentNodeInsertionsMixedTypes) {
     ASSERT_EQ(activeCount, numTotalInsertions / 2);
 }
 
-static void insertRelationships(uint64_t startID, uint64_t num, kuzu::main::Database& database) {
-    auto conn = std::make_unique<kuzu::main::Connection>(&database);
+static void insertRelationships(uint64_t startID, uint64_t num, koredb::main::Database& database) {
+    auto conn = std::make_unique<koredb::main::Connection>(&database);
     for (auto i = 0u; i < num; ++i) {
         auto fromID = startID + i;
         auto toID = (startID + i + 1) % (num * 4);
@@ -275,8 +276,8 @@ TEST_F(EmptyDBTransactionTest, ConcurrentRelationshipInsertions) {
 }
 
 static void insertComplexRelationships(uint64_t startID, uint64_t num,
-    kuzu::main::Database& database) {
-    auto conn = std::make_unique<kuzu::main::Connection>(&database);
+    koredb::main::Database& database) {
+    auto conn = std::make_unique<koredb::main::Connection>(&database);
     for (auto i = 0u; i < num; ++i) {
         auto userID = startID + i;
         auto productID = (startID + i) % (num * 2);

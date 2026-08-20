@@ -9,7 +9,7 @@
 #include "json_enums.h"
 #include "yyjson.h"
 
-namespace kuzu {
+namespace koredb {
 namespace json_extension {
 
 class JSONAllocator {
@@ -82,4 +82,4 @@ struct JsonConstant {
 };
 
 } // namespace json_extension
-} // namespace kuzu
+} // namespace koredb

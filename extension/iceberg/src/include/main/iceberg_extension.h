@@ -2,7 +2,7 @@
 
 #include "extension/extension.h"
 
-namespace kuzu {
+namespace koredb {
 namespace iceberg_extension {
 
 class IcebergExtension final : public extension::Extension {
@@ -14,4 +14,4 @@ public:
 };
 
 } // namespace iceberg_extension
-} // namespace kuzu
+} // namespace koredb

@@ -5,9 +5,9 @@
 #include "function/schema/offset_functions.h"
 #include "function/unary_function_executor.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 static void execFunc(const std::vector<std::shared_ptr<common::ValueVector>>& params,
@@ -26,4 +26,4 @@ function_set OffsetFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

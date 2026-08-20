@@ -4,14 +4,14 @@
 
 #include "common/random_engine.h"
 
-using namespace kuzu::parser;
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::planner;
-using namespace kuzu::processor;
-using namespace kuzu::transaction;
+using namespace koredb::parser;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::planner;
+using namespace koredb::processor;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 Connection::Connection(Database* database) {
@@ -100,4 +100,4 @@ void Connection::removeScalarFunction(std::string name) {
 }
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

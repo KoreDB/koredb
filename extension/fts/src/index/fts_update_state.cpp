@@ -1,11 +1,11 @@
 #include "index/fts_update_state.h"
 
-namespace kuzu {
+namespace koredb {
 namespace fts_extension {
 
-using namespace kuzu::storage;
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::storage;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
 FTSUpdateVectors::FTSUpdateVectors(MemoryManager* mm)
     : mm{mm}, dataChunkState{DataChunkState::getSingleValueDataChunkState()},
@@ -89,4 +89,4 @@ FTSUpdateState::FTSUpdateState(main::ClientContext* context, FTSInternalTableInf
 }
 
 } // namespace fts_extension
-} // namespace kuzu
+} // namespace koredb

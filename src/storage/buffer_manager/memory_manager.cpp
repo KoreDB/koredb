@@ -8,9 +8,9 @@
 #include "storage/buffer_manager/buffer_manager.h"
 #include "storage/file_handle.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 MemoryBuffer::MemoryBuffer(MemoryManager* mm, page_idx_t pageIdx, uint8_t* buffer, uint64_t size)
@@ -106,4 +106,4 @@ void MemoryManager::updateUsedMemoryForFreedBlock(page_idx_t pageIdx, std::span<
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

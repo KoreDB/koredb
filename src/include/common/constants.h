@@ -7,10 +7,10 @@
 #include "common/array_utils.h"
 #include "common/types/types.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
-extern const char* KUZU_VERSION;
+extern const char* KOREDB_VERSION;
 
 constexpr double DEFAULT_HT_LOAD_FACTOR = 1.5;
 
@@ -213,11 +213,11 @@ struct WarningConstants {
     static_assert(WARNING_TABLE_COLUMN_DATA_TYPES.size() == WARNING_TABLE_NUM_COLUMNS);
 };
 
-static constexpr char ATTACHED_KUZU_DB_TYPE[] = "KUZU";
+static constexpr char ATTACHED_KOREDB_DB_TYPE[] = "KOREDB";
 
-static constexpr char LOCAL_DB_NAME[] = "local(kuzu)";
+static constexpr char LOCAL_DB_NAME[] = "local(koredb)";
 
 constexpr auto DECIMAL_PRECISION_LIMIT = 38;
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

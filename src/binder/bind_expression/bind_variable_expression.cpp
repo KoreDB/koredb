@@ -6,10 +6,10 @@
 #include "main/client_context.h"
 #include "parser/expression/parsed_variable_expression.h"
 
-using namespace kuzu::common;
-using namespace kuzu::parser;
+using namespace koredb::common;
+using namespace koredb::parser;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 std::shared_ptr<Expression> ExpressionBinder::bindVariableExpression(
@@ -39,4 +39,4 @@ std::shared_ptr<Expression> ExpressionBinder::createVariableExpression(LogicalTy
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

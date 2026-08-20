@@ -7,7 +7,7 @@
 #include "common/types/types.h"
 #include <span>
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 class ValueVector;
@@ -110,8 +110,8 @@ public:
 
     SelectionVector();
 
-    KUZU_API void setToUnfiltered();
-    KUZU_API void setToUnfiltered(sel_t size);
+    KOREDB_API void setToUnfiltered();
+    KOREDB_API void setToUnfiltered(sel_t size);
     void setRange(sel_t startPos, sel_t size) {
         KU_ASSERT(startPos + size <= capacity);
         selectedPositions = selectedPositionsBuffer.get();
@@ -171,4 +171,4 @@ private:
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

@@ -3,9 +3,9 @@
 #include "processor/execution_context.h"
 #include "storage/table/node_table.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 NodeBatchInsertErrorHandler::NodeBatchInsertErrorHandler(ExecutionContext* context,
@@ -33,4 +33,4 @@ void NodeBatchInsertErrorHandler::flushStoredErrors() {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

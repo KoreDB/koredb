@@ -6,7 +6,7 @@
 #include "storage/buffer_manager/memory_manager.h"
 #include "storage/storage_utils.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 void SpillToDiskSetting::setContext(ClientContext* context, const common::Value& parameter) {
@@ -32,4 +32,4 @@ void SpillToDiskSetting::setContext(ClientContext* context, const common::Value&
 }
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

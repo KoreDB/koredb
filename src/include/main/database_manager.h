@@ -2,7 +2,7 @@
 
 #include "attached_database.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 class DatabaseManager {
@@ -11,13 +11,13 @@ public:
 
     void registerAttachedDatabase(std::unique_ptr<AttachedDatabase> attachedDatabase);
     bool hasAttachedDatabase(const std::string& name);
-    KUZU_API AttachedDatabase* getAttachedDatabase(const std::string& name);
+    KOREDB_API AttachedDatabase* getAttachedDatabase(const std::string& name);
     void detachDatabase(const std::string& databaseName);
     std::string getDefaultDatabase() const { return defaultDatabase; }
     bool hasDefaultDatabase() const { return defaultDatabase != ""; }
     void setDefaultDatabase(const std::string& databaseName);
     std::vector<AttachedDatabase*> getAttachedDatabases() const;
-    KUZU_API void invalidateCache();
+    KOREDB_API void invalidateCache();
 
 private:
     std::vector<std::unique_ptr<AttachedDatabase>> attachedDatabases;
@@ -25,4 +25,4 @@ private:
 };
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

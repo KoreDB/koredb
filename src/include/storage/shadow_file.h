@@ -2,7 +2,7 @@
 
 #include "storage/file_handle.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 struct ShadowPageRecord {
@@ -66,4 +66,4 @@ private:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

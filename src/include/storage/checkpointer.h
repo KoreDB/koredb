@@ -3,7 +3,7 @@
 #include "storage/optimistic_allocator.h"
 #include "storage/page_range.h"
 
-namespace kuzu {
+namespace koredb {
 namespace transaction {
 class Transaction;
 }
@@ -17,7 +17,7 @@ namespace testing {
 struct FSMLeakChecker;
 }
 namespace main {
-class AttachedKuzuDatabase;
+class AttachedKoreDBDatabase;
 } // namespace main
 
 namespace storage {
@@ -35,7 +35,7 @@ struct DatabaseHeader {
 };
 
 class Checkpointer {
-    friend class main::AttachedKuzuDatabase;
+    friend class main::AttachedKoreDBDatabase;
     friend struct testing::FSMLeakChecker;
 
 public:
@@ -71,4 +71,4 @@ protected:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

@@ -7,7 +7,7 @@
 #include "test_helper/test_helper.h"
 #include "test_runner/test_group.h"
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 enum class TokenType {
@@ -167,12 +167,12 @@ private:
     const std::string exportDBPath = TestHelper::getTempDir("export_db");
     // Any value here will be replaced inside the .test files
     // in queries/statements and expected error message.
-    // Example: ${KUZU_ROOT_DIRECTORY} will be replaced by
-    // KUZU_ROOT_DIRECTORY
+    // Example: ${KOREDB_ROOT_DIRECTORY} will be replaced by
+    // KOREDB_ROOT_DIRECTORY
     std::unordered_map<std::string, std::string> variableMap = {
-        {"KUZU_ROOT_DIRECTORY", KUZU_ROOT_DIRECTORY}, {"KUZU_VERSION", common::KUZU_VERSION},
-        {"KUZU_EXPORT_DB_DIRECTORY", exportDBPath}};
+        {"KOREDB_ROOT_DIRECTORY", KOREDB_ROOT_DIRECTORY},
+        {"KOREDB_VERSION", common::KOREDB_VERSION}, {"KOREDB_EXPORT_DB_DIRECTORY", exportDBPath}};
 };
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

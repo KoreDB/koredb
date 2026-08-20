@@ -1,5 +1,5 @@
 [project]
-name = "kuzu"
+name = "koredb"
 description = "Highly scalable, extremely fast, easy-to-use embeddable graph database"
 readme = "README.md"
 license = { text = "MIT" }
@@ -27,7 +27,7 @@ disable_error_code = [
 
 [[tool.mypy.overrides]]
 module = [
-  "_kuzu.*",
+  "_koredb.*",
   "networkx.*",
   "pandas.*",
   "pyarrow.*",

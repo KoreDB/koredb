@@ -3,12 +3,12 @@
 #include "extension/extension_manager.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
-using namespace kuzu::extension;
+using namespace koredb::extension;
 
 std::string LoadExtensionPrintInfo::toString() const {
     return "Load " + extensionName;
@@ -20,7 +20,7 @@ void LoadExtension::executeInternal(ExecutionContext* context) {
         clientContext->getExtensionManager()->isStaticLinkedExtension(path)) {
         appendMessage(
             stringFormat(
-                "Extension {} is already statically linked with the kuzu core. No need to LOAD.",
+                "Extension {} is already statically linked with the koredb core. No need to LOAD.",
                 path),
             context->clientContext->getMemoryManager());
         return;
@@ -31,4 +31,4 @@ void LoadExtension::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

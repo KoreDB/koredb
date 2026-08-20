@@ -3,13 +3,13 @@
 #include "common/api.h"
 #include "exception.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
-class KUZU_API InterruptException : public Exception {
+class KOREDB_API InterruptException : public Exception {
 public:
     explicit InterruptException() : Exception("Interrupted."){};
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

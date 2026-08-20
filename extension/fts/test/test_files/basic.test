@@ -351,7 +351,7 @@ Binder exception: Cannot delete node table Documents because it is referenced by
 -SKIP_DYNAMIC_LINK
 -STATEMENT INSTALL fts
 ---- 1
-Extension fts is already statically linked with the kuzu core. No need to INSTALL.
+Extension fts is already statically linked with the koredb core. No need to INSTALL.
 -STATEMENT load fts
 ---- 1
-Extension fts is already statically linked with the kuzu core. No need to LOAD.
+Extension fts is already statically linked with the koredb core. No need to LOAD.

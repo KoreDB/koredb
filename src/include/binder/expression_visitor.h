@@ -2,7 +2,7 @@
 
 #include "binder/expression/expression.h"
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 class ExpressionChildrenCollector {
@@ -98,4 +98,4 @@ private:
 };
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

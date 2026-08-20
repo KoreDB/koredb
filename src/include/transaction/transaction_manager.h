@@ -9,7 +9,7 @@
 #include "storage/wal/wal.h"
 #include "transaction/transaction.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 class ClientContext;
 } // namespace main
@@ -77,4 +77,4 @@ private:
     init_checkpointer_func_t initCheckpointerFunc;
 };
 } // namespace transaction
-} // namespace kuzu
+} // namespace koredb

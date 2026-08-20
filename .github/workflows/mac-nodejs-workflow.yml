@@ -1,4 +1,4 @@
-name: Build Mac Node.js Module
+name: Build macOS Node.js Module
 
 on:
   workflow_dispatch:
@@ -8,90 +8,73 @@ on:
         type: boolean
         required: true
         default: false
+
 env:
   PIP_BREAK_SYSTEM_PACKAGES: 1
 
 jobs:
-  build-mac-nodejs-arm64:
-    runs-on: macos-14
+  build-mac-nodejs:
+    name: macos-nodejs-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+            archflags: "-arch arm64"
+          # macos-15-intel is GitHub's replacement for the retired macos-13
+          # image and is the last x86_64 macOS runner (available until Aug 2027).
+          - runner: macos-15-intel
+            arch: x64
+            archflags: "-arch x86_64"
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Update nightly version
         if: ${{ inputs.isNightly == true }}
         run: |
-          pip3 install packaging
+          python3 -m pip install packaging
           python3 update-nightly-build-version.py
         working-directory: scripts
 
       - name: Create Node.js source distribution
         working-directory: tools/nodejs_api
         run: |
-          rm -rf kuzu-source.tar.gz package *.node
+          rm -rf koredb-source.tar.gz package *.node
           node package
 
       - name: Extract tarball
         working-directory: tools/nodejs_api
-        run: tar -xvzf kuzu-source.tar.gz
+        run: tar -xzf koredb-source.tar.gz
 
-      - name: Build Node.js native module for Apple Silicon
+      - name: Build Node.js native module
         working-directory: tools/nodejs_api/package
         run: npm i
         env:
-          MACOSX_DEPLOYMENT_TARGET: 11.0
-          ARCHFLAGS: "-arch arm64"
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+          ARCHFLAGS: ${{ matrix.archflags }}
 
       - name: Move Node.js native module
-        working-directory: tools/nodejs_api/
-        run: mv package/kuzujs.node kuzujs-darwin-arm64.node
+        working-directory: tools/nodejs_api
+        run: mv package/koredbjs.node koredbjs-darwin-${{ matrix.arch }}.node
 
       - uses: actions/upload-artifact@v4
         with:
-          name: mac-nodejs-module-arm64
-          path: tools/nodejs_api/kuzujs-darwin-*.node
+          name: mac-nodejs-module-${{ matrix.arch }}
+          path: tools/nodejs_api/koredbjs-darwin-${{ matrix.arch }}.node
+          if-no-files-found: error
 
       - name: Clean up
-        working-directory: tools/nodejs_api/
-        run: rm -rf package
-
-  build-mac-nodejs-x86_64:
-    runs-on: self-hosted-mac-x64
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Update nightly version
-        if: ${{ inputs.isNightly == true }}
-        run: |
-          pip3 install packaging
-          python3 update-nightly-build-version.py
-        working-directory: scripts
-
-      - name: Create Node.js source distribution
+        if: always()
         working-directory: tools/nodejs_api
-        run: |
-          rm -rf kuzu-source.tar.gz package *.node
-          node package
-
-      - name: Extract tarball
-        working-directory: tools/nodejs_api
-        run: tar -xvzf kuzu-source.tar.gz
-
-      - name: Build Node.js native module for Intel
-        working-directory: tools/nodejs_api/package
-        run: npm i
-        env:
-          MACOSX_DEPLOYMENT_TARGET: 11.0
-          ARCHFLAGS: "-arch x86_64"
-
-      - name: Move Node.js native module
-        working-directory: tools/nodejs_api/
-        run: mv package/kuzujs.node kuzujs-darwin-x64.node
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mac-nodejs-module-x86_64
-          path: tools/nodejs_api/kuzujs-darwin-*.node
-
-      - name: Clean up
-        working-directory: tools/nodejs_api/
         run: rm -rf package

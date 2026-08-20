@@ -7,10 +7,10 @@
 #include "processor/execution_context.h"
 #include <catalog/catalog_entry/index_catalog_entry.h>
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
+using namespace koredb::catalog;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 void Drop::executeInternal(ExecutionContext* context) {
@@ -96,4 +96,4 @@ void Drop::dropTable(const main::ClientContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

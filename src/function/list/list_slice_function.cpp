@@ -2,9 +2,9 @@
 #include "function/scalar_function.h"
 #include "function/string/functions/substr_function.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 static void normalizeIndices(int64_t& startIdx, int64_t& endIdx, uint64_t size) {
@@ -90,4 +90,4 @@ function_set ListSliceFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

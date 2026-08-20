@@ -6,7 +6,7 @@
 #include "catalog_entry.h"
 #include "common/vector/value_vector.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 class ValueVector;
 }
@@ -44,7 +44,7 @@ struct SequenceData {
 };
 
 class CatalogSet;
-class KUZU_API SequenceCatalogEntry final : public CatalogEntry {
+class KOREDB_API SequenceCatalogEntry final : public CatalogEntry {
 public:
     //===--------------------------------------------------------------------===//
     // constructors
@@ -92,4 +92,4 @@ private:
 };
 
 } // namespace catalog
-} // namespace kuzu
+} // namespace koredb

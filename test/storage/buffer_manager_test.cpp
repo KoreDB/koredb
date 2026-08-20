@@ -26,10 +26,9 @@
 #include "processor/operator/aggregate/hash_aggregate.h"
 #include "processor/operator/aggregate/partitioned_aggregate_executor.h"
 #include "processor/operator/hash_join/grace_hash_join_executor.h"
-#include "processor/operator/order_by/external_merge_sort.h"
-#include "processor/result/factorized_table_util.h"
 #include "processor/operator/hash_join/hash_join_build.h"
 #include "processor/operator/hash_join/join_hash_table.h"
+#include "processor/operator/order_by/external_merge_sort.h"
 #include "processor/result/factorized_table.h"
 #include "processor/result/factorized_table_util.h"
 #include "processor/result/partitioned_factorized_table.h"
@@ -42,16 +41,16 @@
 #include "storage/table/chunked_node_group.h"
 #include "storage/table/column_chunk.h"
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 class BufferManagerTest : public DBTest {
 public:
     std::string getInputDir() override {
-        return TestHelper::appendKuzuRootPath("dataset/tinysnb/");
+        return TestHelper::appendKoreDBRootPath("dataset/tinysnb/");
     }
     void reserveAll() {
         auto* bm = getBufferManager(*database);
@@ -83,7 +82,7 @@ TEST_F(BufferManagerTest, TestBMUsageForIdenticalQueries) {
 // Verifies that a factorized table's rows survive a position-independent serialize/deserialize
 // round-trip (including variable-length string data), which is the basis for spilling to disk.
 TEST_F(BufferManagerTest, FactorizedTableSerializeRoundTrip) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     std::vector<LogicalType> columnTypes;
     columnTypes.push_back(LogicalType::INT64());
@@ -133,12 +132,12 @@ TEST_F(BufferManagerTest, FactorizedTableSerializeRoundTrip) {
 }
 
 // Verifies the factorization-preserving spill format: a factorized table with an UNFLAT (overflow)
-// column round-trips through serializePreservingFactorization/deserializePreservingFactorization with
-// the exact same raw-tuple count and flat-tuple expansion -- i.e. the factorized list payload is NOT
-// flattened into the cross-product (which the plain serialize() would do). This is the basis for
-// spilling `RETURN *`-style factorized build payloads.
+// column round-trips through serializePreservingFactorization/deserializePreservingFactorization
+// with the exact same raw-tuple count and flat-tuple expansion -- i.e. the factorized list payload
+// is NOT flattened into the cross-product (which the plain serialize() would do). This is the basis
+// for spilling `RETURN *`-style factorized build payloads.
 TEST_F(BufferManagerTest, FactorizedTablePreserveFactorizationRoundTrip) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     std::vector<LogicalType> columnTypes;
     columnTypes.push_back(LogicalType::INT64()); // flat key column (group 0)
@@ -182,13 +181,15 @@ TEST_F(BufferManagerTest, FactorizedTablePreserveFactorizationRoundTrip) {
     table.serializePreservingFactorization(serializer, columnTypes);
     auto blob = writer->getData();
     Deserializer deserializer(std::make_unique<BufferReader>(blob.data.get(), blob.size));
-    auto restored = FactorizedTable::deserializePreservingFactorization(deserializer, mm, columnTypes);
+    auto restored =
+        FactorizedTable::deserializePreservingFactorization(deserializer, mm, columnTypes);
 
     // Factorization preserved: same raw-tuple count and same total flat expansion.
     ASSERT_EQ(restored->getNumTuples(), numRawTuples);
     ASSERT_EQ(restored->getTotalNumFlatTuples(), expectedFlatTuples);
 
-    // The flat-tuple expansion must match value-for-value: key i*100 repeated for each list element.
+    // The flat-tuple expansion must match value-for-value: key i*100 repeated for each list
+    // element.
     std::vector<std::unique_ptr<Value>> valueHolders;
     std::vector<Value*> values;
     for (auto& type : columnTypes) {
@@ -208,10 +209,11 @@ TEST_F(BufferManagerTest, FactorizedTablePreserveFactorizationRoundTrip) {
 }
 
 // Verifies PartitionedFactorizedTable preserves factorization across spill+reload when constructed
-// with an unflat schema: a partition holding factorized (flat key + unflat list payload) rows spills
-// and reloads with the same raw-tuple count and flat expansion, instead of the plain path's flattening.
+// with an unflat schema: a partition holding factorized (flat key + unflat list payload) rows
+// spills and reloads with the same raw-tuple count and flat expansion, instead of the plain path's
+// flattening.
 TEST_F(BufferManagerTest, PartitionedFactorizedTablePreserveFactorizationSpillReload) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
     std::vector<LogicalType> columnTypes;
@@ -224,13 +226,13 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTablePreserveFactorizationSpillRe
     schema.appendColumn(
         ColumnSchema(true /*isUnFlat*/, 1 /*groupID*/, sizeof(common::overflow_value_t)));
     const auto spillPath =
-        (std::filesystem::temp_directory_path() / "kuzu_pft_factorized_test.spill").string();
+        (std::filesystem::temp_directory_path() / "koredb_pft_factorized_test.spill").string();
     PartitionedFactorizedTable partitioned(mm, LogicalType::copy(columnTypes), std::move(schema),
         1 /*logNumPartitions*/, fs, spillPath);
     ASSERT_EQ(partitioned.getNumPartitions(), 2u);
 
-    // Populate partition 0 directly with factorized rows (the hash-scatter append is flat-only; this
-    // exercises the spill/reload path, which is what M2 changes).
+    // Populate partition 0 directly with factorized rows (the hash-scatter append is flat-only;
+    // this exercises the spill/reload path, which is what M2 changes).
     auto flatState = DataChunkState::getSingleValueDataChunkState();
     auto unflatState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
     ValueVector keyVector(LogicalType::INT64(), mm);
@@ -288,7 +290,7 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTablePreserveFactorizationSpillRe
 // to disk (position-independent) and reloaded, and appending to a spilled partition transparently
 // reloads it. Covers variable-length (string) data, which is why the serialized spill path is used.
 TEST_F(BufferManagerTest, PartitionedFactorizedTableSpillReload) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
 
@@ -298,7 +300,7 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableSpillReload) {
 
     // logNumPartitions = 1 -> 2 partitions; the top hash bit selects the partition.
     const auto spillPath =
-        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_test.spill").string();
+        (std::filesystem::temp_directory_path() / "koredb_partitioned_ft_test.spill").string();
     PartitionedFactorizedTable partitioned(mm, LogicalType::copy(columnTypes), 1, fs, spillPath);
     ASSERT_EQ(partitioned.getNumPartitions(), 2u);
 
@@ -374,7 +376,7 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableSpillReload) {
 // Verifies the operator-triggered spill driver: spilling the largest resident partitions until the
 // resident tuple bytes fit a budget, without losing tuples, and reloadable afterward.
 TEST_F(BufferManagerTest, PartitionedFactorizedTableBudgetSpill) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
 
@@ -384,7 +386,7 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableBudgetSpill) {
 
     const common::idx_t logNumPartitions = 3; // 8 partitions
     const auto spillPath =
-        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_budget.spill").string();
+        (std::filesystem::temp_directory_path() / "koredb_partitioned_ft_budget.spill").string();
     PartitionedFactorizedTable partitioned(mm, LogicalType::copy(columnTypes), logNumPartitions, fs,
         spillPath);
     ASSERT_EQ(partitioned.getNumPartitions(), 8u);
@@ -438,7 +440,7 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableBudgetSpill) {
 // multi-block FactorizedTable deserialize. Also covers the single-partition (logNumPartitions = 0)
 // edge case where every row routes to partition 0.
 TEST_F(BufferManagerTest, PartitionedFactorizedTableLargeMultiPageSpill) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
 
@@ -449,7 +451,7 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableLargeMultiPageSpill) {
     const common::idx_t logNumPartitions = 2; // 4 partitions
     const uint64_t numPartitions = 4;
     const auto spillPath =
-        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_large.spill").string();
+        (std::filesystem::temp_directory_path() / "koredb_partitioned_ft_large.spill").string();
     PartitionedFactorizedTable partitioned(mm, LogicalType::copy(columnTypes), logNumPartitions, fs,
         spillPath);
 
@@ -512,14 +514,14 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableLargeMultiPageSpill) {
 
 // Single-partition edge case: logNumPartitions = 0 -> everything routes to partition 0.
 TEST_F(BufferManagerTest, PartitionedFactorizedTableSinglePartition) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
 
     std::vector<LogicalType> columnTypes;
     columnTypes.push_back(LogicalType::INT64());
     const auto spillPath =
-        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_single.spill").string();
+        (std::filesystem::temp_directory_path() / "koredb_partitioned_ft_single.spill").string();
     PartitionedFactorizedTable partitioned(mm, LogicalType::copy(columnTypes), 0, fs, spillPath);
     ASSERT_EQ(partitioned.getNumPartitions(), 1u);
     // Any hash maps to partition 0.
@@ -550,7 +552,7 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableSinglePartition) {
 // Verifies partition-wise merge of two per-thread partitioned tables (the parallel-build combine
 // step), including reload of a spilled source partition before merging.
 TEST_F(BufferManagerTest, PartitionedFactorizedTableMerge) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
 
@@ -559,9 +561,9 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableMerge) {
     columnTypes.push_back(LogicalType::STRING());
 
     const auto pathA =
-        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_mergeA.spill").string();
+        (std::filesystem::temp_directory_path() / "koredb_partitioned_ft_mergeA.spill").string();
     const auto pathB =
-        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_mergeB.spill").string();
+        (std::filesystem::temp_directory_path() / "koredb_partitioned_ft_mergeB.spill").string();
     PartitionedFactorizedTable tableA(mm, LogicalType::copy(columnTypes), 1, fs, pathA);
     PartitionedFactorizedTable tableB(mm, LogicalType::copy(columnTypes), 1, fs, pathB);
 
@@ -623,7 +625,7 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableMerge) {
 
 // Verifies null flags and multiple fixed/variable-length types survive scatter + spill + reload.
 TEST_F(BufferManagerTest, PartitionedFactorizedTableTypesAndNulls) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
 
@@ -633,7 +635,7 @@ TEST_F(BufferManagerTest, PartitionedFactorizedTableTypesAndNulls) {
     columnTypes.push_back(LogicalType::DOUBLE());
 
     const auto spillPath =
-        (std::filesystem::temp_directory_path() / "kuzu_partitioned_ft_nulls.spill").string();
+        (std::filesystem::temp_directory_path() / "koredb_partitioned_ft_nulls.spill").string();
     PartitionedFactorizedTable partitioned(mm, LogicalType::copy(columnTypes), 1, fs, spillPath);
 
     const uint64_t numRows = 300;
@@ -714,8 +716,8 @@ static constexpr int64_t GRACE_LEFT_NULL_SENTINEL = std::numeric_limits<int64_t>
 // the eventual out-of-core HASH_JOIN operator will implement, reusing the real JoinHashTable.
 static void runGraceJoinSpillTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
     bool isLeftJoin) {
-    using namespace kuzu::processor;
-    using namespace kuzu::function;
+    using namespace koredb::processor;
+    using namespace koredb::function;
 
     const common::idx_t logNumPartitions = 2; // 4 partitions
     const uint64_t numBuild = 2000;           // key = i % 10  -> 200 build rows per key
@@ -749,9 +751,9 @@ static void runGraceJoinSpillTest(storage::MemoryManager* mm, common::VirtualFil
     ptTypes.push_back(LogicalType::INT64()); // key
     ptTypes.push_back(LogicalType::INT64()); // payload
     PartitionedFactorizedTable buildParts(mm, LogicalType::copy(ptTypes), logNumPartitions, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_grace_build.spill").string());
+        (std::filesystem::temp_directory_path() / "koredb_grace_build.spill").string());
     PartitionedFactorizedTable probeParts(mm, LogicalType::copy(ptTypes), logNumPartitions, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_grace_probe.spill").string());
+        (std::filesystem::temp_directory_path() / "koredb_grace_probe.spill").string());
 
     auto partitionInput = [&](PartitionedFactorizedTable& parts, uint64_t n, auto keyFn) {
         auto state = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
@@ -898,7 +900,7 @@ TEST_F(BufferManagerTest, GraceLeftJoinWithSpilling) {
 // is represented by the sentinel in the multiset.
 static void runGraceExecutorTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
     bool isLeftJoin) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
 
     std::vector<LogicalType> keyTypes;
     keyTypes.push_back(LogicalType::INT64());
@@ -910,8 +912,8 @@ static void runGraceExecutorTest(storage::MemoryManager* mm, common::VirtualFile
     // A 4 KiB budget is far below a partition's size, so spillToReduceResidentBytesTo spills during
     // append -- exercising the out-of-core path.
     GraceHashJoinExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_ghje_build.spill").string(),
-        (std::filesystem::temp_directory_path() / "kuzu_ghje_probe.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghje_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghje_probe.spill").string(),
         LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
         LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, 4096 /*memoryBudgetBytes*/);
 
@@ -1002,14 +1004,14 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorLeftJoin) {
         true /*isLeftJoin*/);
 }
 
-// Exercises GraceHashJoinExecutor::merge: two per-thread build executors accumulate disjoint halves of
-// the build side (each spilling under a tiny budget), are merged into one, then a single probe joins
-// against the merged partitions. This is the multi-threaded build path (parallel per-thread build
-// executors merged before the serial probe). The result must match a brute-force reference over the
-// whole build side, proving co-partitioning survives the merge.
+// Exercises GraceHashJoinExecutor::merge: two per-thread build executors accumulate disjoint halves
+// of the build side (each spilling under a tiny budget), are merged into one, then a single probe
+// joins against the merged partitions. This is the multi-threaded build path (parallel per-thread
+// build executors merged before the serial probe). The result must match a brute-force reference
+// over the whole build side, proving co-partitioning survives the merge.
 static void runGraceMergeTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
     uint64_t budget) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
 
     std::vector<LogicalType> keyTypes;
     keyTypes.push_back(LogicalType::INT64());
@@ -1025,8 +1027,8 @@ static void runGraceMergeTest(storage::MemoryManager* mm, common::VirtualFileSys
             LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
             LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, budget);
     };
-    GraceHashJoinExecutor exec0 = makeExec("kuzu_ghje_merge0");
-    GraceHashJoinExecutor exec1 = makeExec("kuzu_ghje_merge1");
+    GraceHashJoinExecutor exec0 = makeExec("koredb_ghje_merge0");
+    GraceHashJoinExecutor exec1 = makeExec("koredb_ghje_merge1");
 
     const uint64_t numBuild = 2000, numProbe = 1200;
     auto buildKeyFn = [](uint64_t i) { return static_cast<int64_t>(i % 10); };
@@ -1121,15 +1123,16 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorMergeSpill) {
     runGraceMergeTest(getMemoryManager(*database), getFileSystem(*database), 4096 /*forces spill*/);
 }
 
-// Exercises the MARK (EXISTS / semi-join) grace path: for each probe row emit exactly one output row
-// [probeKey, probePayload, mark], where mark == whether the probe key exists in the build side (a
-// NULL probe key never matches -> false). The build side carries keys only (no payload), as a MARK
-// join does. Runs under a supplied memory budget -- a large budget stays in memory, a tiny one forces
-// partitions to spill during append -- and both must agree with the same brute-force reference. The
-// probe payload is the unique row index, so every probe row's mark can be checked independently.
+// Exercises the MARK (EXISTS / semi-join) grace path: for each probe row emit exactly one output
+// row [probeKey, probePayload, mark], where mark == whether the probe key exists in the build side
+// (a NULL probe key never matches -> false). The build side carries keys only (no payload), as a
+// MARK join does. Runs under a supplied memory budget -- a large budget stays in memory, a tiny one
+// forces partitions to spill during append -- and both must agree with the same brute-force
+// reference. The probe payload is the unique row index, so every probe row's mark can be checked
+// independently.
 static void runGraceMarkJoinTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
     uint64_t budget) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
 
     std::vector<LogicalType> keyTypes;
     keyTypes.push_back(LogicalType::INT64());
@@ -1138,8 +1141,8 @@ static void runGraceMarkJoinTest(storage::MemoryManager* mm, common::VirtualFile
     probePayloadTypes.push_back(LogicalType::INT64());
 
     GraceHashJoinExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_ghje_mark_build.spill").string(),
-        (std::filesystem::temp_directory_path() / "kuzu_ghje_mark_probe.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghje_mark_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghje_mark_probe.spill").string(),
         LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
         LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, budget);
 
@@ -1238,12 +1241,12 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorMarkJoinSpill) {
 
 // Exercises the COUNT (size / COUNT{} subquery) grace path: the build side is pre-aggregated to one
 // (key, count) row per key; for each probe row emit exactly one output row [probeKey, probePayload,
-// count], where count is the matched key's stored count or 0 when the key is absent (a NULL probe key
-// counts as absent). Runs under a supplied budget (large == in memory, tiny == forced spill), both
-// checked against the same brute-force reference. The probe payload is the unique row index.
+// count], where count is the matched key's stored count or 0 when the key is absent (a NULL probe
+// key counts as absent). Runs under a supplied budget (large == in memory, tiny == forced spill),
+// both checked against the same brute-force reference. The probe payload is the unique row index.
 static void runGraceCountJoinTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
     uint64_t budget) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
 
     std::vector<LogicalType> keyTypes;
     keyTypes.push_back(LogicalType::INT64());
@@ -1253,15 +1256,15 @@ static void runGraceCountJoinTest(storage::MemoryManager* mm, common::VirtualFil
     probePayloadTypes.push_back(LogicalType::INT64());
 
     GraceHashJoinExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_ghje_count_build.spill").string(),
-        (std::filesystem::temp_directory_path() / "kuzu_ghje_count_probe.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghje_count_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghje_count_probe.spill").string(),
         LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
         LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, budget);
 
     const int64_t numKeys = 800; // build keys 0..799, each with a distinct count
     const uint64_t numProbe = 1200;
     auto countOf = [](int64_t k) { return static_cast<int64_t>((k % 13) + 1); }; // 1..13, never 0
-    auto probeKeyFn = [](uint64_t j) { return static_cast<int64_t>(j % 1000); };  // 800..999 absent
+    auto probeKeyFn = [](uint64_t j) { return static_cast<int64_t>(j % 1000); }; // 800..999 absent
     auto probeKeyIsNull = [](uint64_t j) { return (j % 11) == 0; };
 
     // Build: one (key, count) row per key (pre-aggregated). Feed in vector-sized batches.
@@ -1360,12 +1363,12 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorCountJoinSpill) {
 
 // Same forced-spill scenario as runGraceExecutorTest, but drives the resumable streaming probe
 // (initProbeStream + getNextChunk) instead of materializing the whole join, and checks the streamed
-// output multiset against the same brute-force reference. Each streamed chunk is one probe row (flat)
-// times its matched build payloads (unflat), so we expand the factorized chunk back into rows. This
-// is the exact emission the live HASH_JOIN operator will consume.
+// output multiset against the same brute-force reference. Each streamed chunk is one probe row
+// (flat) times its matched build payloads (unflat), so we expand the factorized chunk back into
+// rows. This is the exact emission the live HASH_JOIN operator will consume.
 static void runGraceStreamTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
     bool isLeftJoin) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
 
     std::vector<LogicalType> keyTypes;
     keyTypes.push_back(LogicalType::INT64());
@@ -1375,8 +1378,8 @@ static void runGraceStreamTest(storage::MemoryManager* mm, common::VirtualFileSy
     probePayloadTypes.push_back(LogicalType::INT64());
 
     GraceHashJoinExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_ghjs_build.spill").string(),
-        (std::filesystem::temp_directory_path() / "kuzu_ghjs_probe.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghjs_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghjs_probe.spill").string(),
         LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
         LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, 4096 /*memoryBudgetBytes*/);
 
@@ -1463,7 +1466,7 @@ static void runGraceStreamTest(storage::MemoryManager* mm, common::VirtualFileSy
 // key and payload), as happens when a query returns the build-side join key. Every output row's
 // key column must equal its duplicated-key payload column.
 TEST_F(BufferManagerTest, GraceHashJoinExecutorKeyAsPayload) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
     std::vector<LogicalType> keyTypes;
@@ -1475,8 +1478,8 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorKeyAsPayload) {
     probePayloadTypes.push_back(LogicalType::INT64());
 
     GraceHashJoinExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_ghjk_build.spill").string(),
-        (std::filesystem::temp_directory_path() / "kuzu_ghjk_probe.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghjk_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghjk_probe.spill").string(),
         LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
         LogicalType::copy(probePayloadTypes), 2, 1u << 30 /*no spill*/);
 
@@ -1546,14 +1549,14 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorStreamLeftJoin) {
 }
 
 // Factorized (RETURN *-style) build side: each build "group" is one flat join key plus an UNFLAT
-// payload list (that key's rows). appendBuildFactorized routes the whole group to a single partition
-// and flattens it into the (flat) build storage; the join must still reconstruct exactly the same
-// result as a fully-flattened build. Verified both materialized (computeInnerJoin) and streamed
-// (getNextChunk -- the operator-facing path that rebuilds the unflat output), no-spill and forced-
-// spill, against a brute-force reference over the flattened (key -> payload list) build.
+// payload list (that key's rows). appendBuildFactorized routes the whole group to a single
+// partition and flattens it into the (flat) build storage; the join must still reconstruct exactly
+// the same result as a fully-flattened build. Verified both materialized (computeInnerJoin) and
+// streamed (getNextChunk -- the operator-facing path that rebuilds the unflat output), no-spill and
+// forced- spill, against a brute-force reference over the flattened (key -> payload list) build.
 static void runGraceFactorizedBuildTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
     uint64_t budget, bool useStream) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
 
     std::vector<LogicalType> keyTypes;
     keyTypes.push_back(LogicalType::INT64());
@@ -1563,8 +1566,8 @@ static void runGraceFactorizedBuildTest(storage::MemoryManager* mm, common::Virt
     probePayloadTypes.push_back(LogicalType::INT64());
 
     GraceHashJoinExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_ghjfb_build.spill").string(),
-        (std::filesystem::temp_directory_path() / "kuzu_ghjfb_probe.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghjfb_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghjfb_probe.spill").string(),
         LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
         LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, budget);
 
@@ -1683,19 +1686,20 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorFactorizedBuildStreamSpill) {
         4096 /*forced spill*/, true /*useStream*/);
 }
 
-// The shape the Kuzu planner actually produces for a factorized hash join (see EXPLAIN evidence in
-// docs/resource-limits-and-spilling.md): the join key is on the UNFLAT (extended) side of the BUILD,
-// while the PROBE is rooted at the (flat) key and carries an unflat payload. Concretely, mirroring
-// `MATCH (a)-[:knows]->(b) MATCH (a)-[:studyAt]->(o) RETURN a.ID, b.ID, o.ID`:
+// The shape the KoreDB planner actually produces for a factorized hash join (see EXPLAIN evidence
+// in docs/resource-limits-and-spilling.md): the join key is on the UNFLAT (extended) side of the
+// BUILD, while the PROBE is rooted at the (flat) key and carries an unflat payload. Concretely,
+// mirroring `MATCH (a)-[:knows]->(b) MATCH (a)-[:studyAt]->(o) RETURN a.ID, b.ID, o.ID`:
 //   - build (studyAt rooted at o): a flat payload `o` + an UNFLAT key group `a` (many a per o);
 //   - probe (knows rooted at a): a flat key `a` + an UNFLAT payload group `b` (many b per a).
 // The append must co-partition by hash(a) in BOTH directions: the build scatters each unflat key
 // element to its partition (flat payload broadcast); the probe routes the whole (flat key + unflat
 // payload) group to hash(key)'s partition (payload flattened). computeInnerJoin must then reproduce
-// the fully-flattened (a, b, o) result. This is the core the (multi-chunk-output) operator will drive.
+// the fully-flattened (a, b, o) result. This is the core the (multi-chunk-output) operator will
+// drive.
 static void runGraceUnflatKeyBuildTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
     uint64_t budget, bool useFlatStream) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
 
     std::vector<LogicalType> keyTypes;
     keyTypes.push_back(LogicalType::INT64()); // a
@@ -1705,8 +1709,8 @@ static void runGraceUnflatKeyBuildTest(storage::MemoryManager* mm, common::Virtu
     probePayloadTypes.push_back(LogicalType::INT64()); // b
 
     GraceHashJoinExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_ghjuk_build.spill").string(),
-        (std::filesystem::temp_directory_path() / "kuzu_ghjuk_probe.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghjuk_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghjuk_probe.spill").string(),
         LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
         LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, budget);
 
@@ -1714,8 +1718,8 @@ static void runGraceUnflatKeyBuildTest(storage::MemoryManager* mm, common::Virtu
     const int64_t numKeys = 10;
     std::unordered_map<int64_t, std::vector<int64_t>> oByKey; // a -> list of o
 
-    // Build: each group is one flat o + an unflat key group of a's (a repeats across groups so a key
-    // can map to several o -> exercises multi-match lookup).
+    // Build: each group is one flat o + an unflat key group of a's (a repeats across groups so a
+    // key can map to several o -> exercises multi-match lookup).
     {
         auto aState = std::make_shared<DataChunkState>(DEFAULT_VECTOR_CAPACITY);
         auto oState = DataChunkState::getSingleValueDataChunkState();
@@ -1777,9 +1781,9 @@ static void runGraceUnflatKeyBuildTest(storage::MemoryManager* mm, common::Virtu
 
     std::map<std::tuple<int64_t, int64_t, int64_t>, int64_t> got;
     if (useFlatStream) {
-        // Drive the row-at-a-time multi-chunk emission the operator uses: each output column lives in
-        // its OWN single-value chunk, filled one flat tuple per getNextFlatTuple() call. Output vector
-        // order is [probeKey a, probePayload b, buildPayload o].
+        // Drive the row-at-a-time multi-chunk emission the operator uses: each output column lives
+        // in its OWN single-value chunk, filled one flat tuple per getNextFlatTuple() call. Output
+        // vector order is [probeKey a, probePayload b, buildPayload o].
         auto sA = DataChunkState::getSingleValueDataChunkState();
         auto sB = DataChunkState::getSingleValueDataChunkState();
         auto sO = DataChunkState::getSingleValueDataChunkState();
@@ -1790,7 +1794,7 @@ static void runGraceUnflatKeyBuildTest(storage::MemoryManager* mm, common::Virtu
         bOut.state = sB;
         oOut.state = sO;
         exec.initFlatStream({&aOut, &bOut, &oOut},
-            kuzu::processor::GraceHashJoinExecutor::FlatStreamMode::INNER);
+            koredb::processor::GraceHashJoinExecutor::FlatStreamMode::INNER);
         while (exec.getNextFlatTuple()) {
             got[{aOut.getValue<int64_t>(sA->getSelVector()[0]),
                 bOut.getValue<int64_t>(sB->getSelVector()[0]),
@@ -1830,8 +1834,8 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorUnflatKeyBuildSpill) {
 }
 
 // Drive the operator-facing row-at-a-time multi-chunk emission (initFlatStream / getNextFlatTuple)
-// directly, under forced spilling -- exercising the per-partition materialize + reload path the live
-// operator uses for a multi-chunk (unflat-key build) join, independent of any planner choice.
+// directly, under forced spilling -- exercising the per-partition materialize + reload path the
+// live operator uses for a multi-chunk (unflat-key build) join, independent of any planner choice.
 TEST_F(BufferManagerTest, GraceHashJoinExecutorUnflatKeyBuildFlatStreamSpill) {
     runGraceUnflatKeyBuildTest(getMemoryManager(*database), getFileSystem(*database),
         4096 /*forced spill*/, true /*useFlatStream*/);
@@ -1841,7 +1845,7 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorUnflatKeyBuildFlatStreamSpill) {
 // Validates multi-key co-partitioning (the routing hash matches JoinHashTable's internal multi-key
 // hash) and that string payloads survive spill/reload/lookup/append.
 TEST_F(BufferManagerTest, GraceHashJoinExecutorCompositeKeyStringPayload) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
 
@@ -1854,8 +1858,8 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorCompositeKeyStringPayload) {
     probePayloadTypes.push_back(LogicalType::INT64());
 
     GraceHashJoinExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_ghje_ck_build.spill").string(),
-        (std::filesystem::temp_directory_path() / "kuzu_ghje_ck_probe.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghje_ck_build.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_ghje_ck_probe.spill").string(),
         LogicalType::copy(keyTypes), LogicalType::copy(buildPayloadTypes),
         LogicalType::copy(probePayloadTypes), 2 /*logNumPartitions*/, 8192 /*memoryBudgetBytes*/);
 
@@ -1957,11 +1961,10 @@ TEST_F(BufferManagerTest, GraceHashJoinExecutorCompositeKeyStringPayload) {
 // needToHandleNulls); SUM(INT64->INT64) is constructed directly from the concrete SumFunction so no
 // type-widening bind step is needed.
 static std::vector<function::AggregateFunction> makeCountSumAggFuncs() {
-    using namespace kuzu::function;
+    using namespace koredb::function;
     std::vector<AggregateFunction> aggFuncs;
     auto countStarSet = CountStarFunction::getFunctionSet();
-    aggFuncs.push_back(
-        common::ku_dynamic_cast<AggregateFunction*>(countStarSet[0].get())->copy());
+    aggFuncs.push_back(common::ku_dynamic_cast<AggregateFunction*>(countStarSet[0].get())->copy());
     aggFuncs.push_back(AggregateFunctionUtils::getAggFunc<SumFunction<int64_t, int64_t>>("SUM",
         common::LogicalTypeID::INT64, common::LogicalTypeID::INT64, false /*isDistinct*/)
                            ->copy());
@@ -1970,13 +1973,13 @@ static std::vector<function::AggregateFunction> makeCountSumAggFuncs() {
 
 // Exercises the out-of-core PartitionedAggregateExecutor: feed rows of (groupKey, value), then
 // GROUP BY groupKey computing COUNT(*) and SUM(value). Runs once with a tiny budget (forcing raw
-// input rows to spill and re-load during append) and once with a large budget (fully in memory), and
-// checks both against the same brute-force reference. A STRING group key additionally exercises
+// input rows to spill and re-load during append) and once with a large budget (fully in memory),
+// and checks both against the same brute-force reference. A STRING group key additionally exercises
 // overflow serialization of the spilled raw rows. `intKey` picks an INT64 vs STRING group key.
 static void runPartitionedAggTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
     uint64_t budget, bool intKey) {
-    using namespace kuzu::processor;
-    using namespace kuzu::function;
+    using namespace koredb::processor;
+    using namespace koredb::function;
 
     const uint64_t numRows = 5000;
     const int64_t numGroups = 20;
@@ -1995,7 +1998,7 @@ static void runPartitionedAggTest(storage::MemoryManager* mm, common::VirtualFil
     aggResultTypes.push_back(LogicalType::INT64());
 
     PartitionedAggregateExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_pae.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_pae.spill").string(),
         LogicalType::copy(keyTypes), std::vector<LogicalType>{} /*dependentKeyTypes*/,
         makeCountSumAggFuncs(), LogicalType::copy(aggInputTypes), LogicalType::copy(aggResultTypes),
         2 /*logNumPartitions*/, budget);
@@ -2050,9 +2053,9 @@ static void runPartitionedAggTest(storage::MemoryManager* mm, common::VirtualFil
     FlatTupleIterator it(*output, values);
     while (it.hasNextFlatTuple()) {
         it.getNextFlatTuple();
-        int64_t g = intKey ?
-                        values[0]->getValue<int64_t>() :
-                        static_cast<int64_t>(std::stoll(values[0]->getValue<std::string>().substr(1)));
+        int64_t g =
+            intKey ? values[0]->getValue<int64_t>() :
+                     static_cast<int64_t>(std::stoll(values[0]->getValue<std::string>().substr(1)));
         got[g] = {values[1]->getValue<int64_t>(), values[2]->getValue<int64_t>()};
     }
 
@@ -2080,36 +2083,40 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorSpillStringKey) {
 }
 
 // Regression: a FLAT group-by input -- one group per append batch, with an UNFLAT aggregate-input
-// column (the shape a correlated subquery aggregate produces, e.g. `RETURN a, COUNT { MATCH (a)-->() }`)
+// column (the shape a correlated subquery aggregate produces, e.g. `RETURN a, COUNT { MATCH
+// (a)-->() }`)
 // -- must route the whole group to hash(key)'s partition instead of asserting in the unflat scatter
 // path (partitioned_factorized_table appendVectors requires an unflat chunk). Feeds each group as a
 // separate flat-key batch of unflat values and checks COUNT/SUM per group against a brute-force
 // reference under a given budget (spilling and in-memory).
 static void runPartitionedAggFlatKeyTest(storage::MemoryManager* mm, common::VirtualFileSystem* fs,
     uint64_t budget) {
-    using namespace kuzu::processor;
-    using namespace kuzu::function;
+    using namespace koredb::processor;
+    using namespace koredb::function;
 
     std::vector<LogicalType> keyTypes;
     keyTypes.push_back(LogicalType::INT64());
     std::vector<LogicalType> aggInputTypes;
     aggInputTypes.push_back(LogicalType::ANY());   // COUNT(*)
-    aggInputTypes.push_back(LogicalType::INT64());  // SUM(value)
+    aggInputTypes.push_back(LogicalType::INT64()); // SUM(value)
     std::vector<LogicalType> aggResultTypes;
     aggResultTypes.push_back(LogicalType::INT64());
     aggResultTypes.push_back(LogicalType::INT64());
 
     PartitionedAggregateExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_pae_flat.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_pae_flat.spill").string(),
         LogicalType::copy(keyTypes), std::vector<LogicalType>{} /*dependentKeyTypes*/,
         makeCountSumAggFuncs(), LogicalType::copy(aggInputTypes), LogicalType::copy(aggResultTypes),
         2 /*logNumPartitions*/, budget);
 
     const int64_t numGroups = 50;
     const uint64_t perGroup = 300; // several vector-sized blocks per group
-    auto valOf = [](int64_t g, uint64_t j) { return static_cast<int64_t>((g * 131 + j * 7) % 100); };
+    auto valOf = [](int64_t g, uint64_t j) {
+        return static_cast<int64_t>((g * 131 + j * 7) % 100);
+    };
 
-    // Flat group-key vector (single value per batch); the aggregate input is a separate unflat vector.
+    // Flat group-key vector (single value per batch); the aggregate input is a separate unflat
+    // vector.
     auto keyState = DataChunkState::getSingleValueDataChunkState();
     ValueVector keyVec(LogicalType::INT64(), mm);
     keyVec.state = keyState;
@@ -2174,11 +2181,11 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorFlatKeyNoSpill) {
         1ull << 30 /*in memory*/);
 }
 
-// Picks the non-distinct MIN(STRING) aggregate function out of its function set. The min/max function
-// set entries are fully concrete (the comparison op is baked in via template), so no bind step is
-// needed.
+// Picks the non-distinct MIN(STRING) aggregate function out of its function set. The min/max
+// function set entries are fully concrete (the comparison op is baked in via template), so no bind
+// step is needed.
 static function::AggregateFunction makeMinStringAggFunc() {
-    using namespace kuzu::function;
+    using namespace koredb::function;
     auto set = AggregateMinFunction::getFunctionSet();
     for (auto& f : set) {
         auto* af = common::ku_dynamic_cast<AggregateFunction*>(f.get());
@@ -2192,10 +2199,10 @@ static function::AggregateFunction makeMinStringAggFunc() {
 
 // Proves the headline correctness claim: a *stateful* aggregate whose state carries an overflow
 // pointer (MIN(STRING)) is computed correctly under forced spilling, because aggregate states never
-// leave memory -- only the raw STRING input column spills (and round-trips via serialization), while
-// each partition is aggregated by a fresh in-memory table.
+// leave memory -- only the raw STRING input column spills (and round-trips via serialization),
+// while each partition is aggregated by a fresh in-memory table.
 TEST_F(BufferManagerTest, PartitionedAggregateExecutorMinStringSpill) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
 
@@ -2214,7 +2221,7 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorMinStringSpill) {
     aggResultTypes.push_back(LogicalType::STRING());
 
     PartitionedAggregateExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_pae_minstr.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_pae_minstr.spill").string(),
         LogicalType::copy(keyTypes), std::vector<LogicalType>{} /*dependentKeyTypes*/,
         std::move(aggFuncs), LogicalType::copy(aggInputTypes), LogicalType::copy(aggResultTypes),
         2 /*logNumPartitions*/, 4096 /*budget forces spill*/);
@@ -2241,7 +2248,7 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorMinStringSpill) {
     auto output = exec.computeAggregates();
 
     // Brute-force reference: per group, lexicographic min string (ASCII, so std::string < matches
-    // Kuzu's byte-wise comparison).
+    // KoreDB's byte-wise comparison).
     std::map<int64_t, std::string> expected;
     for (uint64_t i = 0; i < numRows; i++) {
         auto g = groupOf(i);
@@ -2269,15 +2276,14 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorMinStringSpill) {
     }
 
     ASSERT_EQ(got.size(), static_cast<size_t>(numGroups));
-    ASSERT_TRUE(got == expected)
-        << "MIN(STRING) under spilling differs from brute-force reference";
+    ASSERT_TRUE(got == expected) << "MIN(STRING) under spilling differs from brute-force reference";
 }
 
 // Exercises dependent (payload) keys: GROUP BY an INT64 key while carrying a STRING column that is
-// functionally dependent on the key (same value per group). The dependent key must be stored, spilled
-// with the raw rows, and re-emitted unchanged alongside COUNT(*)/SUM.
+// functionally dependent on the key (same value per group). The dependent key must be stored,
+// spilled with the raw rows, and re-emitted unchanged alongside COUNT(*)/SUM.
 TEST_F(BufferManagerTest, PartitionedAggregateExecutorDependentKeySpill) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
 
@@ -2292,14 +2298,14 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorDependentKeySpill) {
     std::vector<LogicalType> dependentKeyTypes;
     dependentKeyTypes.push_back(LogicalType::STRING());
     std::vector<LogicalType> aggInputTypes;
-    aggInputTypes.push_back(LogicalType::ANY()); // COUNT(*)
+    aggInputTypes.push_back(LogicalType::ANY());   // COUNT(*)
     aggInputTypes.push_back(LogicalType::INT64()); // SUM
     std::vector<LogicalType> aggResultTypes;
     aggResultTypes.push_back(LogicalType::INT64());
     aggResultTypes.push_back(LogicalType::INT64());
 
     PartitionedAggregateExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_pae_dep.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_pae_dep.spill").string(),
         LogicalType::copy(keyTypes), LogicalType::copy(dependentKeyTypes), makeCountSumAggFuncs(),
         LogicalType::copy(aggInputTypes), LogicalType::copy(aggResultTypes), 2 /*logNumPartitions*/,
         4096 /*budget forces spill*/);
@@ -2363,11 +2369,11 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorDependentKeySpill) {
         << "Dependent-key aggregation under spilling differs from brute-force reference";
 }
 
-// Exercises per-row multiplicity: different append batches carry different multiplicities, so within
-// a partition (which preserves append order) rows form contiguous runs of mixed multiplicity that the
-// executor must re-apply. COUNT(*) must sum the multiplicities and SUM must scale by them.
+// Exercises per-row multiplicity: different append batches carry different multiplicities, so
+// within a partition (which preserves append order) rows form contiguous runs of mixed multiplicity
+// that the executor must re-apply. COUNT(*) must sum the multiplicities and SUM must scale by them.
 TEST_F(BufferManagerTest, PartitionedAggregateExecutorMultiplicitySpill) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
 
@@ -2376,19 +2382,21 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorMultiplicitySpill) {
     auto groupOf = [&](uint64_t i) { return static_cast<int64_t>(i % numGroups); };
     auto valOf = [&](uint64_t i) { return static_cast<int64_t>((i * 9) % 50); };
     // Multiplicity alternates per batch so partitions see runs of mixed multiplicity.
-    auto multOf = [&](uint64_t batchIdx) { return static_cast<uint64_t>(batchIdx % 2 == 0 ? 1 : 3); };
+    auto multOf = [&](uint64_t batchIdx) {
+        return static_cast<uint64_t>(batchIdx % 2 == 0 ? 1 : 3);
+    };
 
     std::vector<LogicalType> keyTypes;
     keyTypes.push_back(LogicalType::INT64());
     std::vector<LogicalType> aggInputTypes;
-    aggInputTypes.push_back(LogicalType::ANY()); // COUNT(*)
+    aggInputTypes.push_back(LogicalType::ANY());   // COUNT(*)
     aggInputTypes.push_back(LogicalType::INT64()); // SUM
     std::vector<LogicalType> aggResultTypes;
     aggResultTypes.push_back(LogicalType::INT64());
     aggResultTypes.push_back(LogicalType::INT64());
 
     PartitionedAggregateExecutor exec(mm, fs,
-        (std::filesystem::temp_directory_path() / "kuzu_pae_mult.spill").string(),
+        (std::filesystem::temp_directory_path() / "koredb_pae_mult.spill").string(),
         LogicalType::copy(keyTypes), std::vector<LogicalType>{} /*dependentKeyTypes*/,
         makeCountSumAggFuncs(), LogicalType::copy(aggInputTypes), LogicalType::copy(aggResultTypes),
         2 /*logNumPartitions*/, 4096 /*budget forces spill*/);
@@ -2447,7 +2455,7 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorMultiplicitySpill) {
 // executors, merge one into the other, and check the combined aggregation. This is the primitive a
 // multi-threaded spilling HashAggregate uses to combine per-thread partitions before finalization.
 TEST_F(BufferManagerTest, PartitionedAggregateExecutorMergeSpill) {
-    using namespace kuzu::processor;
+    using namespace koredb::processor;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
 
@@ -2458,7 +2466,7 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorMergeSpill) {
     std::vector<LogicalType> keyTypes;
     keyTypes.push_back(LogicalType::INT64());
     std::vector<LogicalType> aggInputTypes;
-    aggInputTypes.push_back(LogicalType::ANY()); // COUNT(*)
+    aggInputTypes.push_back(LogicalType::ANY());   // COUNT(*)
     aggInputTypes.push_back(LogicalType::INT64()); // SUM
     std::vector<LogicalType> aggResultTypes;
     aggResultTypes.push_back(LogicalType::INT64());
@@ -2468,10 +2476,11 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorMergeSpill) {
         return std::make_unique<PartitionedAggregateExecutor>(mm, fs,
             (std::filesystem::temp_directory_path() / stem).string(), LogicalType::copy(keyTypes),
             std::vector<LogicalType>{}, makeCountSumAggFuncs(), LogicalType::copy(aggInputTypes),
-            LogicalType::copy(aggResultTypes), 2 /*logNumPartitions*/, 4096 /*budget forces spill*/);
+            LogicalType::copy(aggResultTypes), 2 /*logNumPartitions*/,
+            4096 /*budget forces spill*/);
     };
-    auto exec1 = makeExec("kuzu_pae_merge1.spill");
-    auto exec2 = makeExec("kuzu_pae_merge2.spill");
+    auto exec1 = makeExec("koredb_pae_merge1.spill");
+    auto exec2 = makeExec("koredb_pae_merge2.spill");
 
     std::map<int64_t, std::pair<int64_t, int64_t>> expected; // group -> (count, sum)
     auto feed = [&](PartitionedAggregateExecutor& exec, uint64_t base, uint64_t n) {
@@ -2529,7 +2538,7 @@ TEST_F(BufferManagerTest, PartitionedAggregateExecutorMergeSpill) {
 class EmptyBufferManagerTest : public DBTest {
 public:
     std::string getInputDir() override {
-        return TestHelper::appendKuzuRootPath("dataset/empty-db/");
+        return TestHelper::appendKoreDBRootPath("dataset/empty-db/");
     }
 };
 
@@ -2663,10 +2672,10 @@ static std::vector<std::string> collectOrderedRows(main::Connection* conn,
 
 // Differential correctness of the live out-of-core (Grace) HASH_JOIN operator: the same query must
 // produce the same rows with `spill_hash_join` off (in-memory) and on (partitioned). Uses
-// many-to-many self-joins so the probe side is flattened and the join is Grace-eligible, and asserts
-// the Grace path actually activated so the comparison is not vacuous.
+// many-to-many self-joins so the probe side is flattened and the join is Grace-eligible, and
+// asserts the Grace path actually activated so the comparison is not vacuous.
 TEST_F(BufferManagerTest, GraceHashJoinDifferential) {
-    using kuzu::processor::getGraceHashJoinActivationCount;
+    using koredb::processor::getGraceHashJoinActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     const std::vector<std::string> queries = {
         "MATCH (a:person), (b:person) WHERE a.gender = b.gender RETURN a.fName, b.fName",
@@ -2688,7 +2697,7 @@ TEST_F(BufferManagerTest, GraceHashJoinDifferential) {
 // Same differential check, but with a tiny per-operator budget that forces the partitions to spill
 // to disk and reload (the real out-of-core path), over enough generated rows to exceed the budget.
 TEST_F(BufferManagerTest, GraceHashJoinSpillDifferential) {
-    using kuzu::processor::getGraceHashJoinActivationCount;
+    using koredb::processor::getGraceHashJoinActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     ASSERT_TRUE(
         conn->query("CREATE NODE TABLE bench(id INT64, k INT64, v STRING, PRIMARY KEY(id));")
@@ -2713,16 +2722,18 @@ TEST_F(BufferManagerTest, GraceHashJoinSpillDifferential) {
     ASSERT_EQ(inMemory, grace) << "Grace (spilling) vs in-memory result mismatch";
 }
 
-// Differential correctness of the live out-of-core hash join for a LEFT (OPTIONAL MATCH) join: probe
-// rows that find no build match -- including probe rows with a NULL join key, which never match -- must
-// be null-padded, exactly as the in-memory path does. Uses a unique build key so each probe row matches
-// at most one build row (keeping the join single-chunk / Grace-eligible), with three probe populations:
-// matched, unmatched (no build key), and NULL key. The build side (3000 rows) far exceeds the tiny
-// budget, so the partitions actually spill to disk and reload -- exercising the real out-of-core path.
+// Differential correctness of the live out-of-core hash join for a LEFT (OPTIONAL MATCH) join:
+// probe rows that find no build match -- including probe rows with a NULL join key, which never
+// match -- must be null-padded, exactly as the in-memory path does. Uses a unique build key so each
+// probe row matches at most one build row (keeping the join single-chunk / Grace-eligible), with
+// three probe populations: matched, unmatched (no build key), and NULL key. The build side (3000
+// rows) far exceeds the tiny budget, so the partitions actually spill to disk and reload --
+// exercising the real out-of-core path.
 TEST_F(BufferManagerTest, GraceHashJoinLeftDifferential) {
-    using kuzu::processor::getGraceHashJoinActivationCount;
+    using koredb::processor::getGraceHashJoinActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
-    ASSERT_TRUE(conn->query("CREATE NODE TABLE la(id INT64, k INT64, PRIMARY KEY(id));")->isSuccess());
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE la(id INT64, k INT64, PRIMARY KEY(id));")->isSuccess());
     ASSERT_TRUE(
         conn->query("CREATE NODE TABLE lb(k INT64, v STRING, PRIMARY KEY(k));")->isSuccess());
     // Build side lb: 3000 unique keys 0..2999 (large enough to spill at a 4 KiB budget).
@@ -2734,12 +2745,12 @@ TEST_F(BufferManagerTest, GraceHashJoinLeftDifferential) {
     ASSERT_TRUE(
         conn->query("UNWIND range(200, 229) AS i CREATE (:la {id: i, k: 5000 + i});")->isSuccess());
     ASSERT_TRUE(conn->query("UNWIND range(230, 249) AS i CREATE (:la {id: i});")->isSuccess());
-    const std::string q =
-        "MATCH (a:la) OPTIONAL MATCH (b:lb) WHERE b.k = a.k RETURN a.id, b.v";
+    const std::string q = "MATCH (a:la) OPTIONAL MATCH (b:lb) WHERE b.k = a.k RETURN a.id, b.v";
 
     ASSERT_TRUE(conn->query("CALL spill_hash_join=false;")->isSuccess());
     const auto inMemory = collectSortedRows(conn.get(), q);
-    ASSERT_EQ(inMemory.size(), 250u); // every probe row survives a LEFT join (200 matched + 50 padded)
+    ASSERT_EQ(inMemory.size(),
+        250u); // every probe row survives a LEFT join (200 matched + 50 padded)
 
     const auto before = getGraceHashJoinActivationCount();
     ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
@@ -2756,7 +2767,7 @@ TEST_F(BufferManagerTest, GraceHashJoinLeftDifferential) {
 // time. Each query must return the same rows with spill_hash_join off (in-memory) and on, and the
 // multi-chunk Grace path must actually activate (else the check is vacuous).
 TEST_F(BufferManagerTest, GraceHashJoinMultiChunkDifferential) {
-    using kuzu::processor::getGraceHashJoinMultiChunkActivationCount;
+    using koredb::processor::getGraceHashJoinMultiChunkActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     const std::vector<std::string> queries = {
         "MATCH (a:person)-[:knows]->(b:person) MATCH (a)-[:studyAt]->(o:organisation) "
@@ -2781,12 +2792,13 @@ TEST_F(BufferManagerTest, GraceHashJoinMultiChunkDifferential) {
         << "no query activated the multi-chunk (factorized) Grace path; the check is vacuous";
 }
 
-// Differential correctness of the live out-of-core MARK (EXISTS / anti-join) hash join: EXISTS and NOT
-// EXISTS must return the same rows with spill_hash_join off (in-memory) and on (partitioned), and the
-// Grace path must actually activate. A MARK join emits one row per probe row carrying a bool mark; the
-// grace path materializes one partition at a time (single-chunk output) instead of the whole build.
+// Differential correctness of the live out-of-core MARK (EXISTS / anti-join) hash join: EXISTS and
+// NOT EXISTS must return the same rows with spill_hash_join off (in-memory) and on (partitioned),
+// and the Grace path must actually activate. A MARK join emits one row per probe row carrying a
+// bool mark; the grace path materializes one partition at a time (single-chunk output) instead of
+// the whole build.
 TEST_F(BufferManagerTest, GraceHashJoinMarkDifferential) {
-    using kuzu::processor::getGraceHashJoinActivationCount;
+    using koredb::processor::getGraceHashJoinActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     const std::vector<std::string> queries = {
         "MATCH (a:person) WHERE EXISTS { MATCH (a)-[:knows]->(b:person) } RETURN a.ID",
@@ -2805,17 +2817,19 @@ TEST_F(BufferManagerTest, GraceHashJoinMarkDifferential) {
         << "no EXISTS query activated the Grace MARK path; the check is vacuous";
 }
 
-// Same MARK differential, but with a large build side and a tiny per-operator budget so the partitions
-// actually spill to disk and reload (the real out-of-core path). The EXISTS subquery over mb (3000
-// rows) is the build side; every probe row of ma emits exactly one row with its existence mark.
+// Same MARK differential, but with a large build side and a tiny per-operator budget so the
+// partitions actually spill to disk and reload (the real out-of-core path). The EXISTS subquery
+// over mb (3000 rows) is the build side; every probe row of ma emits exactly one row with its
+// existence mark.
 TEST_F(BufferManagerTest, GraceHashJoinMarkSpillDifferential) {
-    using kuzu::processor::getGraceHashJoinActivationCount;
+    using koredb::processor::getGraceHashJoinActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     ASSERT_TRUE(
         conn->query("CREATE NODE TABLE ma(id INT64, k INT64, PRIMARY KEY(id));")->isSuccess());
     ASSERT_TRUE(
         conn->query("CREATE NODE TABLE mb(id INT64, k INT64, PRIMARY KEY(id));")->isSuccess());
-    // Build side mb: 3000 rows over keys 0..999 (each key ~3x) -> exceeds a 4 KiB budget, so spills.
+    // Build side mb: 3000 rows over keys 0..999 (each key ~3x) -> exceeds a 4 KiB budget, so
+    // spills.
     ASSERT_TRUE(
         conn->query("UNWIND range(0, 2999) AS i CREATE (:mb {id: i, k: i % 1000});")->isSuccess());
     // Probe side ma: keys 0..1499; 0..999 exist in mb, 1000..1499 do not.
@@ -2835,12 +2849,13 @@ TEST_F(BufferManagerTest, GraceHashJoinMarkSpillDifferential) {
     ASSERT_EQ(inMemory, grace) << "Grace MARK (spilling) vs in-memory mismatch";
 }
 
-// Differential correctness of the live out-of-core COUNT (size / COUNT{} subquery) hash join: a COUNT
-// subquery must return the same rows with spill_hash_join off (in-memory) and on (partitioned), and the
-// Grace path must actually activate. The build side is pre-aggregated to (key, count); each probe row
-// emits its count (0 when the key is absent), materialized one partition at a time.
+// Differential correctness of the live out-of-core COUNT (size / COUNT{} subquery) hash join: a
+// COUNT subquery must return the same rows with spill_hash_join off (in-memory) and on
+// (partitioned), and the Grace path must actually activate. The build side is pre-aggregated to
+// (key, count); each probe row emits its count (0 when the key is absent), materialized one
+// partition at a time.
 TEST_F(BufferManagerTest, GraceHashJoinCountDifferential) {
-    using kuzu::processor::getGraceHashJoinActivationCount;
+    using koredb::processor::getGraceHashJoinActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     const std::vector<std::string> queries = {
         "MATCH (a:person) RETURN a.ID, COUNT { MATCH (a)-[:knows]->(b:person) }",
@@ -2859,11 +2874,11 @@ TEST_F(BufferManagerTest, GraceHashJoinCountDifferential) {
         << "no COUNT query activated the Grace path; the check is vacuous";
 }
 
-// Same COUNT differential, but with a large pre-aggregated build and a tiny per-operator budget so the
-// build partitions actually spill to disk and reload. 2000 ca nodes each with one cknows out-edge ->
-// a 2000-row (key, count=1) pre-aggregated build; every probe row emits its count.
+// Same COUNT differential, but with a large pre-aggregated build and a tiny per-operator budget so
+// the build partitions actually spill to disk and reload. 2000 ca nodes each with one cknows
+// out-edge -> a 2000-row (key, count=1) pre-aggregated build; every probe row emits its count.
 TEST_F(BufferManagerTest, GraceHashJoinCountSpillDifferential) {
-    using kuzu::processor::getGraceHashJoinActivationCount;
+    using koredb::processor::getGraceHashJoinActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     ASSERT_TRUE(conn->query("CREATE NODE TABLE ca(id INT64, PRIMARY KEY(id));")->isSuccess());
     ASSERT_TRUE(conn->query("CREATE REL TABLE cknows(FROM ca TO ca);")->isSuccess());
@@ -2888,18 +2903,21 @@ TEST_F(BufferManagerTest, GraceHashJoinCountSpillDifferential) {
 }
 
 // Differential correctness of MULTI-CHUNK MARK / COUNT joins: an EXISTS / COUNT{} subquery over a
-// factorized outer (here (a)-[:knows]->(b), so the output spans a's flat chunk and b's unflat chunk)
-// must return the same rows with spill_hash_join off (in-memory) and on, and the multi-chunk Grace path
-// must actually activate -- proving these shapes reach the flat-stream emission rather than falling back.
+// factorized outer (here (a)-[:knows]->(b), so the output spans a's flat chunk and b's unflat
+// chunk) must return the same rows with spill_hash_join off (in-memory) and on, and the multi-chunk
+// Grace path must actually activate -- proving these shapes reach the flat-stream emission rather
+// than falling back.
 TEST_F(BufferManagerTest, GraceHashJoinMarkCountMultiChunkDifferential) {
-    using kuzu::processor::getGraceHashJoinMultiChunkActivationCount;
+    using koredb::processor::getGraceHashJoinMultiChunkActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     const std::vector<std::string> queries = {
         // MARK (EXISTS) over a factorized (a, b) outer.
-        "MATCH (a:person)-[:knows]->(b:person) WHERE EXISTS { MATCH (a)-[:studyAt]->(o:organisation) } "
+        "MATCH (a:person)-[:knows]->(b:person) WHERE EXISTS { MATCH "
+        "(a)-[:studyAt]->(o:organisation) } "
         "RETURN a.ID, b.ID",
         // MARK (NOT EXISTS) over the same outer.
-        "MATCH (a:person)-[:knows]->(b:person) WHERE NOT EXISTS { MATCH (a)-[:workAt]->(o:organisation) } "
+        "MATCH (a:person)-[:knows]->(b:person) WHERE NOT EXISTS { MATCH "
+        "(a)-[:workAt]->(o:organisation) } "
         "RETURN a.ID, b.fName",
         // COUNT over the same factorized outer.
         "MATCH (a:person)-[:knows]->(b:person) "
@@ -2911,7 +2929,8 @@ TEST_F(BufferManagerTest, GraceHashJoinMarkCountMultiChunkDifferential) {
         const auto inMemory = collectSortedRows(conn.get(), q);
         ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
         const auto grace = collectSortedRows(conn.get(), q);
-        ASSERT_EQ(inMemory, grace) << "multi-chunk MARK/COUNT Grace vs in-memory mismatch for: " << q;
+        ASSERT_EQ(inMemory, grace)
+            << "multi-chunk MARK/COUNT Grace vs in-memory mismatch for: " << q;
     }
     ASSERT_GT(getGraceHashJoinMultiChunkActivationCount(), before)
         << "no MARK/COUNT query activated the multi-chunk Grace path; the check is vacuous";
@@ -2919,21 +2938,22 @@ TEST_F(BufferManagerTest, GraceHashJoinMarkCountMultiChunkDifferential) {
 
 // Differential correctness of the out-of-core join under MULTI-THREADED execution (threads=4): the
 // build runs in parallel (per-thread executors merged at the finalize barrier) while the probe is
-// forced single-threaded (HashJoinProbe::isParallel() == false). Every supported join type must return
-// the same rows with spill_hash_join off (in-memory) and on (partitioned), and the Grace path must
-// activate -- proving spilling works by default (multi-thread), not only at threads=1.
+// forced single-threaded (HashJoinProbe::isParallel() == false). Every supported join type must
+// return the same rows with spill_hash_join off (in-memory) and on (partitioned), and the Grace
+// path must activate -- proving spilling works by default (multi-thread), not only at threads=1.
 TEST_F(BufferManagerTest, GraceHashJoinMultiThreadDifferential) {
-    using kuzu::processor::getGraceHashJoinActivationCount;
+    using koredb::processor::getGraceHashJoinActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=4;")->isSuccess());
     // Under multi-threading the Grace path activates only when a memory bound is set (see
     // willActivateGrace); a tiny budget both enables it and forces the per-thread build to spill.
     ASSERT_TRUE(conn->query("CALL spill_hash_join_budget=4096;")->isSuccess());
     const std::vector<std::string> queries = {
-        "MATCH (a:person), (b:person) WHERE a.age = b.age RETURN a.ID, b.ID, b.fName", // INNER
+        "MATCH (a:person), (b:person) WHERE a.age = b.age RETURN a.ID, b.ID, b.fName",  // INNER
         "MATCH (a:person) WHERE EXISTS { MATCH (a)-[:knows]->(b:person) } RETURN a.ID", // MARK
         "MATCH (a:person) RETURN a.ID, COUNT { MATCH (a)-[:knows]->(b:person) }",       // COUNT
         // Multi-chunk MARK over a factorized outer.
-        "MATCH (a:person)-[:knows]->(b:person) WHERE EXISTS { MATCH (a)-[:studyAt]->(o:organisation) } "
+        "MATCH (a:person)-[:knows]->(b:person) WHERE EXISTS { MATCH "
+        "(a)-[:studyAt]->(o:organisation) } "
         "RETURN a.ID, b.ID",
     };
     const auto before = getGraceHashJoinActivationCount();
@@ -2948,15 +2968,14 @@ TEST_F(BufferManagerTest, GraceHashJoinMultiThreadDifferential) {
         << "no query activated the Grace path under multi-threading; the check is vacuous";
 }
 
-// Same, but a large build over a tiny budget so the parallel per-thread build executors actually spill
-// to disk, then merge, then the serial probe reloads and joins -- the real multi-threaded out-of-core
-// path end to end.
+// Same, but a large build over a tiny budget so the parallel per-thread build executors actually
+// spill to disk, then merge, then the serial probe reloads and joins -- the real multi-threaded
+// out-of-core path end to end.
 TEST_F(BufferManagerTest, GraceHashJoinMultiThreadSpillDifferential) {
-    using kuzu::processor::getGraceHashJoinActivationCount;
+    using koredb::processor::getGraceHashJoinActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=4;")->isSuccess());
-    ASSERT_TRUE(
-        conn->query("CREATE NODE TABLE mtb(id INT64, k INT64, v STRING, PRIMARY KEY(id));")
-            ->isSuccess());
+    ASSERT_TRUE(conn->query("CREATE NODE TABLE mtb(id INT64, k INT64, v STRING, PRIMARY KEY(id));")
+                    ->isSuccess());
     // 3000 rows, each key shared by two rows -> a many-to-many self-join with a large build side.
     ASSERT_TRUE(conn->query("UNWIND range(0, 2999) AS i CREATE (:mtb {id: i, k: i % 1500, v: "
                             "cast(i AS STRING)});")
@@ -2976,13 +2995,12 @@ TEST_F(BufferManagerTest, GraceHashJoinMultiThreadSpillDifferential) {
     ASSERT_EQ(inMemory, grace) << "multi-thread Grace (spilling) vs in-memory mismatch";
 }
 
-
 // Differential correctness of the live out-of-core (spilling) hash-aggregation operator: the same
 // GROUP BY must produce the same rows with `spill_aggregate` off (in-memory) and on (partitioned),
 // across a range of aggregates including a stateful LIST aggregate (collect). Asserts the spilling
 // path actually activated so the comparison is not vacuous.
 TEST_F(BufferManagerTest, SpillAggregateDifferential) {
-    using kuzu::processor::getSpillAggregateActivationCount;
+    using koredb::processor::getSpillAggregateActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     const std::vector<std::string> queries = {
         "MATCH (p:person) RETURN p.gender, count(*)",
@@ -3006,7 +3024,7 @@ TEST_F(BufferManagerTest, SpillAggregateDifferential) {
 // Same differential check, but with a tiny per-operator budget that forces the raw input rows to
 // spill to disk and reload during append, over enough generated rows/groups to exceed the budget.
 TEST_F(BufferManagerTest, SpillAggregateSpillDifferential) {
-    using kuzu::processor::getSpillAggregateActivationCount;
+    using koredb::processor::getSpillAggregateActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     ASSERT_TRUE(
         conn->query("CREATE NODE TABLE bench(id INT64, k INT64, v STRING, PRIMARY KEY(id));")
@@ -3015,8 +3033,7 @@ TEST_F(BufferManagerTest, SpillAggregateSpillDifferential) {
     ASSERT_TRUE(conn->query("UNWIND range(0, 4999) AS i CREATE (:bench {id: i, k: i % 50, v: "
                             "cast(i % 7 AS STRING)});")
                     ->isSuccess());
-    const std::string q =
-        "MATCH (b:bench) RETURN b.k, count(*), sum(b.id), min(b.v), collect(b.v)";
+    const std::string q = "MATCH (b:bench) RETURN b.k, count(*), sum(b.id), min(b.v), collect(b.v)";
 
     ASSERT_TRUE(conn->query("CALL spill_aggregate=false;")->isSuccess());
     const auto inMemory = collectSortedRows(conn.get(), q);
@@ -3028,7 +3045,8 @@ TEST_F(BufferManagerTest, SpillAggregateSpillDifferential) {
     ASSERT_TRUE(conn->query("CALL spill_aggregate_budget=4096;")->isSuccess());
     const auto grace = collectSortedRows(conn.get(), q);
 
-    ASSERT_GT(getSpillAggregateActivationCount(), before) << "spilling aggregation did not activate";
+    ASSERT_GT(getSpillAggregateActivationCount(), before)
+        << "spilling aggregation did not activate";
     ASSERT_EQ(inMemory, grace) << "spilling vs in-memory aggregation result mismatch";
 }
 
@@ -3037,7 +3055,7 @@ TEST_F(BufferManagerTest, SpillAggregateSpillDifferential) {
 // in-memory reference. (A passing run does not prove race-freedom — the design is race-free by
 // construction — but it exercises the per-thread-executor + merge path end to end.)
 TEST_F(BufferManagerTest, SpillAggregateMultiThreadDifferential) {
-    using kuzu::processor::getSpillAggregateActivationCount;
+    using koredb::processor::getSpillAggregateActivationCount;
     ASSERT_TRUE(
         conn->query("CREATE NODE TABLE bench(id INT64, k INT64, PRIMARY KEY(id));")->isSuccess());
     ASSERT_TRUE(
@@ -3067,8 +3085,8 @@ TEST_F(BufferManagerTest, SpillAggregateMultiThreadDifferential) {
 // eligible GROUP BY and an eligible INNER equi-join each activate the out-of-core path with no CALL
 // setting.
 TEST_F(BufferManagerTest, SpillDefaults) {
-    using kuzu::processor::getGraceHashJoinActivationCount;
-    using kuzu::processor::getSpillAggregateActivationCount;
+    using koredb::processor::getGraceHashJoinActivationCount;
+    using koredb::processor::getSpillAggregateActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
 
     const auto aggBefore = getSpillAggregateActivationCount();
@@ -3085,10 +3103,11 @@ TEST_F(BufferManagerTest, SpillDefaults) {
 }
 
 // Differential correctness of the Grace join for RETURN-node / multi-column shapes (which activate
-// grace by default): each query must return the same rows with spill_hash_join off (in-memory) and on
-// (partitioned). Guards against the default-on path being wrong for common `RETURN *`-style joins.
+// grace by default): each query must return the same rows with spill_hash_join off (in-memory) and
+// on (partitioned). Guards against the default-on path being wrong for common `RETURN *`-style
+// joins.
 TEST_F(BufferManagerTest, GraceHashJoinReturnNodeDifferential) {
-    using kuzu::processor::getGraceHashJoinActivationCount;
+    using koredb::processor::getGraceHashJoinActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     const std::vector<std::string> queries = {
         "MATCH (a:person),(b:person) WHERE a.ID=b.ID RETURN a, b",
@@ -3104,15 +3123,16 @@ TEST_F(BufferManagerTest, GraceHashJoinReturnNodeDifferential) {
         const auto grace = collectSortedRows(conn.get(), q);
         ASSERT_EQ(inMemory, grace) << "Grace vs in-memory mismatch for: " << q;
     }
-    // At least the all-scalar multi-column query stays Grace-eligible; the nested/NODE ones fall back.
+    // At least the all-scalar multi-column query stays Grace-eligible; the nested/NODE ones fall
+    // back.
     ASSERT_GT(getGraceHashJoinActivationCount(), before)
         << "no RETURN query activated the Grace path; the check is vacuous";
 }
 
 // Audits the spilling aggregation for nested (LIST) group keys / aggregate inputs / results, which
 // the default-on path would otherwise run untested. Each GROUP BY must return the same rows with
-// spill_aggregate off and on. (Whichever the operator deems ineligible simply falls back; either way
-// the result must be correct.)
+// spill_aggregate off and on. (Whichever the operator deems ineligible simply falls back; either
+// way the result must be correct.)
 TEST_F(BufferManagerTest, SpillAggregateNestedDifferential) {
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     const std::vector<std::string> queries = {
@@ -3131,13 +3151,14 @@ TEST_F(BufferManagerTest, SpillAggregateNestedDifferential) {
 }
 
 // Audits the Grace join with NULL join keys: an equi-join must never match NULL = NULL. We verify
-// the Grace result against the *true* answer (computed without a join), which is the strongest check.
-// This NULL-keyed self-join is also what surfaced a pre-existing in-memory hash-join bug: the build
-// side undercounted (returning 10 of the 20 matching rows per key) because ValueVector::discardNull
-// mishandled an already-filtered selection; that is now fixed at the root (see the null_build_key
-// e2e test and docs/resource-limits-and-spilling.md), so in-memory and Grace now both return 20.
+// the Grace result against the *true* answer (computed without a join), which is the strongest
+// check. This NULL-keyed self-join is also what surfaced a pre-existing in-memory hash-join bug:
+// the build side undercounted (returning 10 of the 20 matching rows per key) because
+// ValueVector::discardNull mishandled an already-filtered selection; that is now fixed at the root
+// (see the null_build_key e2e test and docs/resource-limits-and-spilling.md), so in-memory and
+// Grace now both return 20.
 TEST_F(BufferManagerTest, GraceHashJoinNullKeyCorrectness) {
-    using kuzu::processor::getGraceHashJoinActivationCount;
+    using koredb::processor::getGraceHashJoinActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     ASSERT_TRUE(conn->query("CALL spill_hash_join=true;")->isSuccess());
     ASSERT_TRUE(
@@ -3152,7 +3173,8 @@ TEST_F(BufferManagerTest, GraceHashJoinNullKeyCorrectness) {
     // True per-key row count via a scan (no join): 20 rows have k = 1.
     const auto k1rows = count1("MATCH (a:nk) WHERE a.k = 1 RETURN count(*)");
     ASSERT_EQ(k1rows, 20);
-    // a with id 101 has k = 1, so it must join exactly the k1rows rows with k = 1 -- no NULL matches.
+    // a with id 101 has k = 1, so it must join exactly the k1rows rows with k = 1 -- no NULL
+    // matches.
     const auto before = getGraceHashJoinActivationCount();
     const auto a101matches =
         count1("MATCH (a:nk), (b:nk) WHERE a.k = b.k AND a.id = 101 RETURN count(*)");
@@ -3166,7 +3188,7 @@ TEST_F(BufferManagerTest, GraceHashJoinNullKeyCorrectness) {
 // Audits the spilling aggregation with NULL group keys: all NULL-keyed rows must fold into a single
 // NULL group. spill_aggregate off vs on must agree.
 TEST_F(BufferManagerTest, SpillAggregateNullKeyDifferential) {
-    using kuzu::processor::getSpillAggregateActivationCount;
+    using koredb::processor::getSpillAggregateActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     ASSERT_TRUE(
         conn->query("CREATE NODE TABLE nkg(id INT64, k INT64, PRIMARY KEY(id));")->isSuccess());
@@ -3180,7 +3202,8 @@ TEST_F(BufferManagerTest, SpillAggregateNullKeyDifferential) {
     const auto inMemory = collectSortedRows(conn.get(), q);
     ASSERT_TRUE(conn->query("CALL spill_aggregate=true;")->isSuccess());
     const auto grace = collectSortedRows(conn.get(), q);
-    ASSERT_GT(getSpillAggregateActivationCount(), before) << "spilling aggregation did not activate";
+    ASSERT_GT(getSpillAggregateActivationCount(), before)
+        << "spilling aggregation did not activate";
     ASSERT_EQ(inMemory, grace) << "spill_aggregate on vs off mismatch with NULL group keys";
 }
 
@@ -3251,7 +3274,7 @@ std::optional<int64_t> getCol(ValueVector& vec, uint32_t pos) {
 // payload-only column). Multi-column keys, ASC+DESC, NULL keys, and payload round-trip are all
 // exercised.
 TEST_F(BufferManagerTest, ExternalMergeSortDifferential) {
-    using kuzu::processor::ExternalMergeSort;
+    using koredb::processor::ExternalMergeSort;
     auto* mm = getMemoryManager(*database);
     auto* fs = getFileSystem(*database);
 
@@ -3268,8 +3291,8 @@ TEST_F(BufferManagerTest, ExternalMergeSortDifferential) {
         std::vector<processor::DataPos>{processor::DataPos(0, 0), processor::DataPos(0, 1)},
         std::vector<processor::DataPos>{processor::DataPos(0, 0), processor::DataPos(0, 1),
             processor::DataPos(0, 2)},
-        LogicalType::copy(keyTypes),
-        LogicalType::copy(payloadTypes), std::vector<bool>{true, false},
+        LogicalType::copy(keyTypes), LogicalType::copy(payloadTypes),
+        std::vector<bool>{true, false},
         processor::FactorizedTableUtils::createFlatTableSchema(LogicalType::copy(payloadTypes)),
         std::vector<uint32_t>{0, 1});
 
@@ -3289,7 +3312,7 @@ TEST_F(BufferManagerTest, ExternalMergeSortDifferential) {
     }
 
     const auto spillPath =
-        (std::filesystem::temp_directory_path() / "kuzu_external_merge_sort.spill").string();
+        (std::filesystem::temp_directory_path() / "koredb_external_merge_sort.spill").string();
     // 4 KiB budget -> dozens of runs must spill.
     ExternalMergeSort sorter(info, mm, fs, spillPath, 4096);
 
@@ -3348,24 +3371,24 @@ TEST_F(BufferManagerTest, ExternalMergeSortDifferential) {
 
     // (b) Sortedness: the output must be non-decreasing under the key order (c0 ASC, c1 DESC).
     for (auto i = 1u; i < output.size(); i++) {
-        ASSERT_LE(cmpKey(output[i - 1], output[i]), 0)
-            << "output not sorted at position " << i;
+        ASSERT_LE(cmpKey(output[i - 1], output[i]), 0) << "output not sorted at position " << i;
     }
 }
 
-// Differential correctness of the live out-of-core ORDER BY operator: the same query must produce the
-// same ordered rows with spill_order_by off (in-memory) and on (external merge sort). Every query
-// uses a total order (a unique n.id tiebreaker) so tied rows cannot legitimately differ between the
-// two paths, and a tiny budget forces the external path to spill many runs. Asserts the external path
-// actually activated so the comparison is not vacuous.
+// Differential correctness of the live out-of-core ORDER BY operator: the same query must produce
+// the same ordered rows with spill_order_by off (in-memory) and on (external merge sort). Every
+// query uses a total order (a unique n.id tiebreaker) so tied rows cannot legitimately differ
+// between the two paths, and a tiny budget forces the external path to spill many runs. Asserts the
+// external path actually activated so the comparison is not vacuous.
 TEST_F(BufferManagerTest, SpillOrderByDifferential) {
-    using kuzu::processor::getExternalMergeSortActivationCount;
+    using koredb::processor::getExternalMergeSortActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     // `us` is a unique long string with a shared 12-char prefix ("commonprefix"), so ordering by it
     // ties on the encoded 12-byte prefix and must be resolved against the full payload string.
-    ASSERT_TRUE(conn->query("CREATE NODE TABLE ob(id INT64, a INT64, b DOUBLE, s STRING, us STRING, "
-                            "PRIMARY KEY(id));")
-                    ->isSuccess());
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE ob(id INT64, a INT64, b DOUBLE, s STRING, us STRING, "
+                    "PRIMARY KEY(id));")
+            ->isSuccess());
     ASSERT_TRUE(conn->query("UNWIND range(0, 4999) AS i CREATE (:ob {id: i, a: (i * 7) % 50, "
                             "b: (i % 13) * 1.5, s: 'row' + cast(i % 20 AS STRING), "
                             "us: 'commonprefix' + cast(i AS STRING)});")
@@ -3401,16 +3424,17 @@ TEST_F(BufferManagerTest, SpillOrderByDifferential) {
         << "external merge sort path did not activate";
 }
 
-// Multi-threaded run generation for the out-of-core ORDER BY: with threads>1 each thread produces its
-// own spilled runs and the single scan thread k-way merges across all of them. A total order (a unique
-// n.id tiebreaker) makes the result deterministic regardless of thread count, so the multi-threaded
-// external result must equal the single-threaded in-memory result. A tiny budget (split per generator)
-// forces each thread to spill multiple runs, stressing the cross-file merge.
+// Multi-threaded run generation for the out-of-core ORDER BY: with threads>1 each thread produces
+// its own spilled runs and the single scan thread k-way merges across all of them. A total order (a
+// unique n.id tiebreaker) makes the result deterministic regardless of thread count, so the
+// multi-threaded external result must equal the single-threaded in-memory result. A tiny budget
+// (split per generator) forces each thread to spill multiple runs, stressing the cross-file merge.
 TEST_F(BufferManagerTest, SpillOrderByMultiThreadedDifferential) {
-    using kuzu::processor::getExternalMergeSortActivationCount;
-    ASSERT_TRUE(conn->query("CREATE NODE TABLE ob(id INT64, a INT64, b DOUBLE, s STRING, us STRING, "
-                            "PRIMARY KEY(id));")
-                    ->isSuccess());
+    using koredb::processor::getExternalMergeSortActivationCount;
+    ASSERT_TRUE(
+        conn->query("CREATE NODE TABLE ob(id INT64, a INT64, b DOUBLE, s STRING, us STRING, "
+                    "PRIMARY KEY(id));")
+            ->isSuccess());
     ASSERT_TRUE(conn->query("UNWIND range(0, 7999) AS i CREATE (:ob {id: i, a: (i * 7) % 50, "
                             "b: (i % 13) * 1.5, s: 'row' + cast(i % 20 AS STRING), "
                             "us: 'commonprefix' + cast(i AS STRING)});")
@@ -3440,12 +3464,12 @@ TEST_F(BufferManagerTest, SpillOrderByMultiThreadedDifferential) {
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
 }
 
-// Multi-(flat-)group input: a comma cross-product puts `a` and `b` in different factorization groups,
-// so ORDER BY keys/payloads span multiple data chunks (all flattened to flat). The external sort must
-// capture each payload at its own group's position and emit tuple-at-a-time, matching the in-memory
-// sort. Every query uses a total order so the two paths cannot legitimately differ.
+// Multi-(flat-)group input: a comma cross-product puts `a` and `b` in different factorization
+// groups, so ORDER BY keys/payloads span multiple data chunks (all flattened to flat). The external
+// sort must capture each payload at its own group's position and emit tuple-at-a-time, matching the
+// in-memory sort. Every query uses a total order so the two paths cannot legitimately differ.
 TEST_F(BufferManagerTest, SpillOrderByMultiGroupDifferential) {
-    using kuzu::processor::getExternalMergeSortActivationCount;
+    using koredb::processor::getExternalMergeSortActivationCount;
     ASSERT_TRUE(conn->query("CALL threads=1;")->isSuccess());
     ASSERT_TRUE(conn->query("CREATE NODE TABLE ta(id INT64, PRIMARY KEY(id));")->isSuccess());
     ASSERT_TRUE(
@@ -3469,11 +3493,12 @@ TEST_F(BufferManagerTest, SpillOrderByMultiGroupDifferential) {
         ASSERT_TRUE(conn->query("CALL spill_order_by=true;")->isSuccess());
         ASSERT_TRUE(conn->query("CALL spill_order_by_budget=4096;")->isSuccess());
         const auto external = collectOrderedRows(conn.get(), q);
-        ASSERT_EQ(inMemory, external) << "multi-group external sort vs in-memory mismatch for: " << q;
+        ASSERT_EQ(inMemory, external)
+            << "multi-group external sort vs in-memory mismatch for: " << q;
     }
     ASSERT_GT(getExternalMergeSortActivationCount(), before)
         << "external merge sort path did not activate";
 }
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

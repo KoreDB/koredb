@@ -4,7 +4,7 @@
 #include "storage/table/group_collection.h"
 #include "storage/table/node_group.h"
 
-namespace kuzu {
+namespace koredb {
 namespace transaction {
 class Transaction;
 }
@@ -123,4 +123,4 @@ private:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

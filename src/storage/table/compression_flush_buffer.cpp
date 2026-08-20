@@ -4,7 +4,7 @@
 #include "storage/page_manager.h"
 #include "storage/table/column_chunk_data.h"
 
-namespace kuzu::storage {
+namespace koredb::storage {
 using namespace common;
 using namespace transaction;
 
@@ -20,13 +20,13 @@ ColumnChunkMetadata CompressedFlushBuffer::operator()(std::span<const uint8_t> b
     FileHandle* dataFH, const PageRange& entry, const ColumnChunkMetadata& metadata) const {
     auto valuesRemaining = metadata.numValues;
     const uint8_t* bufferStart = buffer.data();
-    const auto compressedBuffer = std::make_unique<uint8_t[]>(KUZU_PAGE_SIZE);
+    const auto compressedBuffer = std::make_unique<uint8_t[]>(KOREDB_PAGE_SIZE);
     auto numPages = 0u;
-    const auto numValuesPerPage = metadata.compMeta.numValues(KUZU_PAGE_SIZE, dataType);
+    const auto numValuesPerPage = metadata.compMeta.numValues(KOREDB_PAGE_SIZE, dataType);
     KU_ASSERT(numValuesPerPage * entry.numPages >= metadata.numValues);
     while (valuesRemaining > 0) {
         const auto compressedSize = alg->compressNextPage(bufferStart, valuesRemaining,
-            compressedBuffer.get(), KUZU_PAGE_SIZE, metadata.compMeta);
+            compressedBuffer.get(), KOREDB_PAGE_SIZE, metadata.compMeta);
         // Avoid underflows (when data is compressed to nothing, numValuesPerPage may be
         // UINT64_MAX)
         if (numValuesPerPage > valuesRemaining) {
@@ -34,8 +34,8 @@ ColumnChunkMetadata CompressedFlushBuffer::operator()(std::span<const uint8_t> b
         } else {
             valuesRemaining -= numValuesPerPage;
         }
-        if (compressedSize < KUZU_PAGE_SIZE) {
-            memset(compressedBuffer.get() + compressedSize, 0, KUZU_PAGE_SIZE - compressedSize);
+        if (compressedSize < KOREDB_PAGE_SIZE) {
+            memset(compressedBuffer.get() + compressedSize, 0, KOREDB_PAGE_SIZE - compressedSize);
         }
         KU_ASSERT(numPages < entry.numPages);
         KU_ASSERT(dataFH->getNumPages() >= entry.startPageIdx + numPages);
@@ -44,7 +44,7 @@ ColumnChunkMetadata CompressedFlushBuffer::operator()(std::span<const uint8_t> b
     }
     // Make sure that the on-disk file is the right length
     if (!dataFH->isInMemoryMode() && numPages < entry.numPages) {
-        memset(compressedBuffer.get(), 0, KUZU_PAGE_SIZE);
+        memset(compressedBuffer.get(), 0, KOREDB_PAGE_SIZE);
         while (numPages < entry.numPages) {
             dataFH->writePageToFile(compressedBuffer.get(), entry.startPageIdx + numPages);
             ++numPages;
@@ -69,14 +69,14 @@ std::pair<std::unique_ptr<uint8_t[]>, uint64_t> flushCompressedFloats(const Comp
 
     const size_t exceptionBufferSize =
         EncodeException<T>::numPagesFromExceptions(floatMetadata->exceptionCapacity) *
-        KUZU_PAGE_SIZE;
+        KOREDB_PAGE_SIZE;
     auto exceptionBuffer = std::make_unique<uint8_t[]>(exceptionBufferSize);
     std::byte* exceptionBufferCursor = reinterpret_cast<std::byte*>(exceptionBuffer.get());
 
-    const auto numValuesPerPage = metadata.compMeta.numValues(KUZU_PAGE_SIZE, dataType);
+    const auto numValuesPerPage = metadata.compMeta.numValues(KOREDB_PAGE_SIZE, dataType);
     KU_ASSERT(numValuesPerPage * metadata.getNumDataPages(dataType) >= metadata.numValues);
 
-    const auto compressedBuffer = std::make_unique<uint8_t[]>(KUZU_PAGE_SIZE);
+    const auto compressedBuffer = std::make_unique<uint8_t[]>(KOREDB_PAGE_SIZE);
     const uint8_t* bufferCursor = buffer.data();
     auto numPages = 0u;
     size_t remainingExceptionBufferSize = exceptionBufferSize;
@@ -86,7 +86,7 @@ std::pair<std::unique_ptr<uint8_t[]>, uint64_t> flushCompressedFloats(const Comp
         uint64_t pageExceptionCount = 0;
         (void)castedAlg.compressNextPageWithExceptions(bufferCursor,
             metadata.numValues - valuesRemaining, valuesRemaining, compressedBuffer.get(),
-            KUZU_PAGE_SIZE, EncodeExceptionView<T>{exceptionBufferCursor},
+            KOREDB_PAGE_SIZE, EncodeExceptionView<T>{exceptionBufferCursor},
             remainingExceptionBufferSize, pageExceptionCount, metadata.compMeta);
 
         exceptionBufferCursor += pageExceptionCount * EncodeException<T>::sizeInBytes();
@@ -166,4 +166,4 @@ ColumnChunkMetadata CompressedFloatFlushBuffer<T>::operator()(std::span<const ui
 template class CompressedFloatFlushBuffer<float>;
 template class CompressedFloatFlushBuffer<double>;
 
-} // namespace kuzu::storage
+} // namespace koredb::storage

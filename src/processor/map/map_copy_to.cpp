@@ -3,11 +3,11 @@
 #include "processor/operator/persistent/copy_to.h"
 #include "processor/plan_mapper.h"
 
-using namespace kuzu::common;
-using namespace kuzu::planner;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::planner;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::unique_ptr<PhysicalOperator> PlanMapper::mapCopyTo(const LogicalOperator* logicalOperator) {
@@ -40,4 +40,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapCopyTo(const LogicalOperator* l
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

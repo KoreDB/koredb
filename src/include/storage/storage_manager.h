@@ -7,7 +7,7 @@
 #include "storage/index/index.h"
 #include "storage/wal/wal.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 class Database;
 } // namespace main
@@ -25,7 +25,7 @@ class NodeTable;
 class RelTable;
 class DiskArrayCollection;
 
-class KUZU_API StorageManager {
+class KOREDB_API StorageManager {
 public:
     StorageManager(const std::string& databasePath, bool readOnly, MemoryManager& memoryManager,
         bool enableCompression, common::VirtualFileSystem* vfs);
@@ -87,4 +87,4 @@ private:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

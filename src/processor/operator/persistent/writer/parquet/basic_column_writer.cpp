@@ -7,14 +7,14 @@
 #include "processor/operator/persistent/writer//parquet/parquet_rle_bp_encoder.h"
 #include "processor/operator/persistent/writer/parquet/parquet_writer.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
-using namespace kuzu_parquet::format;
-using namespace kuzu::common;
+using namespace koredb_parquet::format;
+using namespace koredb::common;
 
 std::unique_ptr<ColumnWriterState> BasicColumnWriter::initializeWriteState(
-    kuzu_parquet::format::RowGroup& rowGroup) {
+    koredb_parquet::format::RowGroup& rowGroup) {
     auto result = std::make_unique<BasicColumnWriterState>(rowGroup, rowGroup.columns.size());
     registerToRowGroup(rowGroup);
     return result;
@@ -268,7 +268,7 @@ void BasicColumnWriter::writeDictionary(BasicColumnWriterState& state,
 }
 
 void BasicColumnWriter::setParquetStatistics(BasicColumnWriterState& state,
-    kuzu_parquet::format::ColumnChunk& column) {
+    koredb_parquet::format::ColumnChunk& column) {
     if (maxRepeat == 0) {
         column.meta_data.statistics.null_count = nullCount;
         column.meta_data.statistics.__isset.null_count = true;
@@ -305,7 +305,7 @@ void BasicColumnWriter::setParquetStatistics(BasicColumnWriterState& state,
     }
 }
 
-void BasicColumnWriter::registerToRowGroup(kuzu_parquet::format::RowGroup& rowGroup) {
+void BasicColumnWriter::registerToRowGroup(koredb_parquet::format::RowGroup& rowGroup) {
     ColumnChunk column_chunk;
     column_chunk.__isset.meta_data = true;
     column_chunk.meta_data.codec = writer.getCodec();
@@ -316,4 +316,4 @@ void BasicColumnWriter::registerToRowGroup(kuzu_parquet::format::RowGroup& rowGr
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

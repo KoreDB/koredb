@@ -3,7 +3,7 @@
 #include "dictionary_chunk.h"
 #include "storage/table/column.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 class DictionaryColumn {
@@ -47,4 +47,4 @@ private:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

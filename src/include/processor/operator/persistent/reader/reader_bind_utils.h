@@ -2,7 +2,7 @@
 
 #include "common/types/types.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 struct ReaderBindUtils {
@@ -19,4 +19,4 @@ struct ReaderBindUtils {
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

@@ -3,31 +3,31 @@ import sys
 from enum import Enum
 from pathlib import Path
 
-KUZU_ROOT = Path(__file__).parent.parent.parent.parent
+KOREDB_ROOT = Path(__file__).parent.parent.parent.parent
 if sys.platform == "win32":
-    # \ in paths is not supported by kuzu's parser
-    KUZU_ROOT = str(KUZU_ROOT).replace("\\", "/")
+    # \ in paths is not supported by koredb's parser
+    KOREDB_ROOT = str(KOREDB_ROOT).replace("\\", "/")
 
-KUZU_EXEC_PATH = os.path.join(
-    KUZU_ROOT,
+KOREDB_EXEC_PATH = os.path.join(
+    KOREDB_ROOT,
     "build",
     "release",
     "tools",
     "shell",
-    "kuzu",
+    "koredb",
 )
 
 
-def _get_kuzu_version():
-    cmake_file = os.path.join(KUZU_ROOT, "CMakeLists.txt")
+def _get_koredb_version():
+    cmake_file = os.path.join(KOREDB_ROOT, "CMakeLists.txt")
     with open(cmake_file) as f:
         for line in f:
-            if line.startswith("project(Kuzu VERSION"):
+            if line.startswith("project(KoreDB VERSION"):
                 return line.split(" ")[2].strip()
         return None
 
 
-KUZU_VERSION = _get_kuzu_version()
+KOREDB_VERSION = _get_koredb_version()
 
 
 class KEY_ACTION(Enum):

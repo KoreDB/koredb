@@ -7,11 +7,11 @@
 #include "processor/operator/hash_join/hash_join_probe.h"
 #include "processor/plan_mapper.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::planner;
-using namespace kuzu::common;
+using namespace koredb::binder;
+using namespace koredb::planner;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 HashJoinBuildInfo PlanMapper::createHashBuildInfo(const Schema& buildSideSchema,
@@ -294,4 +294,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapHashJoin(const LogicalOperator*
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

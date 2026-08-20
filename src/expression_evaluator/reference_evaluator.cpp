@@ -1,9 +1,9 @@
 #include "expression_evaluator/reference_evaluator.h"
 
-using namespace kuzu::common;
-using namespace kuzu::main;
+using namespace koredb::common;
+using namespace koredb::main;
 
-namespace kuzu {
+namespace koredb {
 namespace evaluator {
 
 inline static bool isTrue(ValueVector& vector, uint64_t pos) {
@@ -31,4 +31,4 @@ bool ReferenceExpressionEvaluator::selectInternal(SelectionVector& selVector) {
 }
 
 } // namespace evaluator
-} // namespace kuzu
+} // namespace koredb

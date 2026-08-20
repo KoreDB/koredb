@@ -9,10 +9,10 @@ java {
     withJavadocJar()
 }
 
-group = 'com.kuzudb'
+group = 'com.koredb'
 def projectRoot = projectDir.parentFile.parentFile
 def cmakeFile = new File(projectRoot, 'CMakeLists.txt').text
-def versionLine = cmakeFile.readLines().find { it.startsWith('project(Kuzu VERSION ') }
+def versionLine = cmakeFile.readLines().find { it.startsWith('project(KoreDB VERSION ') }
 def cmakeVersion = versionLine.split(' ')[2]
 def versionParts = cmakeVersion.split('\\.')
 if (versionParts.length > 3) {
@@ -42,8 +42,8 @@ publishing {
     publications {
         mavenJava(MavenPublication) {
             pom {
-                name = 'kuzu'
-                description = 'Kuzu is working on something new! We have archived the KuzuDB project.'
+                name = 'koredb'
+                description = 'KoreDB is working on something new! We have archived the KoreDB project.'
                 url = 'https://github.com/kuzudb/kuzu'
                 inceptionYear = '2020'
                 properties = [
@@ -61,7 +61,7 @@ publishing {
                 }
                 developers {
                     developer {
-                        id = 'kuzudb'
+                        id = 'koredb'
                         name = 'Kùzu Inc.'
                         email = 'contact@kuzudb.com'
                     }
@@ -121,7 +121,7 @@ task cmake {
 
 task copyNativeLibs(type: Copy) {
     from('build') {
-        include 'libkuzu_java_native.*'
+        include 'libkoredb_java_native.*'
     }
     into 'src/main/resources'
     dependsOn 'cmake'

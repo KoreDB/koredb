@@ -10,7 +10,7 @@
 
 struct ArrowSchema;
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 // An Arrow Vector(i.e., Array) is defined by a few pieces of metadata and data:
@@ -79,4 +79,4 @@ private:
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

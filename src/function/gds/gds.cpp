@@ -15,15 +15,15 @@
 #include "processor/operator/table_function_call.h"
 #include "processor/plan_mapper.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::binder;
-using namespace kuzu::main;
-using namespace kuzu::graph;
-using namespace kuzu::processor;
-using namespace kuzu::planner;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::binder;
+using namespace koredb::main;
+using namespace koredb::graph;
+using namespace koredb::processor;
+using namespace koredb::planner;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 void GDSFuncSharedState::setGraphNodeMask(std::unique_ptr<NodeOffsetMaskMap> maskMap) {
@@ -258,4 +258,4 @@ std::unique_ptr<PhysicalOperator> GDSFunction::getPhysicalPlan(PlanMapper* planM
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

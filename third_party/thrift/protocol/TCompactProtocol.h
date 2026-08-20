@@ -17,15 +17,15 @@
  * under the License.
  */
 
-#ifndef _KUZU_THRIFT_PROTOCOL_TCOMPACTPROTOCOL_H_
-#define _KUZU_THRIFT_PROTOCOL_TCOMPACTPROTOCOL_H_ 1
+#ifndef _KOREDB_THRIFT_PROTOCOL_TCOMPACTPROTOCOL_H_
+#define _KOREDB_THRIFT_PROTOCOL_TCOMPACTPROTOCOL_H_ 1
 
 #include "protocol/TVirtualProtocol.h"
 
 #include <stack>
 #include <memory>
 
-namespace kuzu_apache {
+namespace koredb_apache {
 namespace thrift {
 namespace protocol {
 
@@ -259,7 +259,7 @@ private:
 typedef TCompactProtocolFactoryT<TTransport> TCompactProtocolFactory;
 }
 }
-} // kuzu_apache::thrift::protocol
+} // koredb_apache::thrift::protocol
 
 #include "protocol/TCompactProtocol.tcc"
 

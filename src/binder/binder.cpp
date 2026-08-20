@@ -13,13 +13,13 @@
 #include "processor/operator/persistent/reader/npy/npy_reader.h"
 #include "processor/operator/persistent/reader/parquet/parquet_reader.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::function;
-using namespace kuzu::parser;
-using namespace kuzu::processor;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::function;
+using namespace koredb::parser;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 std::unique_ptr<BoundStatement> Binder::bind(const Statement& statement) {
@@ -261,7 +261,7 @@ TableFunction Binder::getScanFunction(const FileTypeInfo& typeInfo,
                                       "set the file format explicitly by (file_format=<type>)."};
             }
             throw BinderException{
-                stringFormat("Cannot load from file type {}. If this file type is part of a kuzu "
+                stringFormat("Cannot load from file type {}. If this file type is part of a koredb "
                              "extension please load the extension then try again.",
                     typeInfo.fileTypeStr)};
         }
@@ -281,4 +281,4 @@ void Binder::validateAllInputParametersParsed() const {
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

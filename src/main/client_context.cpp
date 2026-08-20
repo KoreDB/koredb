@@ -31,15 +31,15 @@
 #include "common/windows_utils.h"
 #endif
 
-using namespace kuzu::parser;
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::catalog;
-using namespace kuzu::planner;
-using namespace kuzu::processor;
-using namespace kuzu::transaction;
+using namespace koredb::parser;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::catalog;
+using namespace koredb::planner;
+using namespace koredb::processor;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 ActiveQuery::ActiveQuery()
@@ -211,8 +211,8 @@ const main::ExtensionOption* ClientContext::getExtensionOption(std::string optio
 }
 
 std::string ClientContext::getExtensionDir() const {
-    return stringFormat("{}/.kuzu/extension/{}/{}/", clientConfig.homeDirectory,
-        KUZU_EXTENSION_VERSION, extension::getPlatform());
+    return stringFormat("{}/.koredb/extension/{}/{}/", clientConfig.homeDirectory,
+        KOREDB_EXTENSION_VERSION, extension::getPlatform());
 }
 
 std::string ClientContext::getDatabasePath() const {
@@ -305,7 +305,7 @@ std::string ClientContext::getUserHomeDir() {
 #endif
 }
 
-void ClientContext::setDefaultDatabase(AttachedKuzuDatabase* defaultDatabase_) {
+void ClientContext::setDefaultDatabase(AttachedKoreDBDatabase* defaultDatabase_) {
     remoteDatabase = defaultDatabase_;
 }
 
@@ -698,11 +698,11 @@ bool ClientContext::canExecuteWriteQuery() const {
     if (getDBConfig()->readOnly) {
         return false;
     }
-    // Note: we can only attach a remote kuzu database in read-only mode and only one
-    // remote kuzu database can be attached.
+    // Note: we can only attach a remote koredb database in read-only mode and only one
+    // remote koredb database can be attached.
     const auto dbManager = getDatabaseManager();
     for (const auto& attachedDB : dbManager->getAttachedDatabases()) {
-        if (attachedDB->getDBType() == ATTACHED_KUZU_DB_TYPE) {
+        if (attachedDB->getDBType() == ATTACHED_KOREDB_DB_TYPE) {
             return false;
         }
     }
@@ -710,4 +710,4 @@ bool ClientContext::canExecuteWriteQuery() const {
 }
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

@@ -1,8 +1,8 @@
 #include "planner/subplans_table.h"
 
-using namespace kuzu::binder;
+using namespace koredb::binder;
 
-namespace kuzu {
+namespace koredb {
 namespace planner {
 
 SubgraphPlans::SubgraphPlans(const SubqueryGraph& subqueryGraph) {
@@ -110,4 +110,4 @@ void SubPlansTable::clear() {
 }
 
 } // namespace planner
-} // namespace kuzu
+} // namespace koredb

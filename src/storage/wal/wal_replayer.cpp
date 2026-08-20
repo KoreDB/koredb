@@ -18,14 +18,14 @@
 #include "storage/table/rel_table.h"
 #include "storage/wal/wal_record.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::processor;
-using namespace kuzu::storage;
-using namespace kuzu::transaction;
+using namespace koredb::binder;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::processor;
+using namespace koredb::storage;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 WALReplayer::WALReplayer(main::ClientContext& clientContext) : clientContext{clientContext} {
@@ -507,4 +507,4 @@ void WALReplayer::truncateWALFile(FileInfo& fileInfo, uint64_t size) const {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

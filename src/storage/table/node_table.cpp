@@ -13,12 +13,12 @@
 #include "storage/wal/local_wal.h"
 #include "transaction/transaction.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::transaction;
-using namespace kuzu::evaluator;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::transaction;
+using namespace koredb::evaluator;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 NodeTableVersionRecordHandler::NodeTableVersionRecordHandler(NodeTable* table) : table(table) {}
@@ -848,4 +848,4 @@ void NodeTable::deserialize(main::ClientContext* context, StorageManager* storag
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

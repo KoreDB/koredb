@@ -4,10 +4,10 @@
 #include "function/table/simple_table_function.h"
 #include "main/client_context.h"
 
-using namespace kuzu::common;
-using namespace kuzu::catalog;
+using namespace koredb::common;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct FunctionInfo {
@@ -81,4 +81,4 @@ function_set ShowFunctionsFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

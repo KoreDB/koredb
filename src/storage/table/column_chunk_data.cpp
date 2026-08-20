@@ -26,11 +26,11 @@
 #include "storage/table/string_chunk_data.h"
 #include "storage/table/struct_chunk_data.h"
 
-using namespace kuzu::common;
-using namespace kuzu::evaluator;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::evaluator;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 void ChunkState::reclaimAllocatedPages(PageAllocator& pageAllocator) const {
@@ -354,7 +354,7 @@ void ColumnChunkData::initializeScanState(ChunkState& state, const Column* colum
     state.column = column;
     if (residencyState == ResidencyState::ON_DISK) {
         state.metadata = metadata;
-        state.numValuesPerPage = state.metadata.compMeta.numValues(KUZU_PAGE_SIZE, dataType);
+        state.numValuesPerPage = state.metadata.compMeta.numValues(KOREDB_PAGE_SIZE, dataType);
 
         state.column->populateExtraChunkState(state);
     }
@@ -1020,4 +1020,4 @@ void ColumnChunkData::reclaimStorage(PageAllocator& pageAllocator) {
 ColumnChunkData::~ColumnChunkData() = default;
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

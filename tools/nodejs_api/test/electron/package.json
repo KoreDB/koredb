@@ -1,0 +1,17 @@
+{
+  "name": "koredb-electron-smoke-test",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Electron smoke test for the published KoreDB Node.js package.",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "electron .",
+    "test": "npm run build && npm start"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "electron": "^31.0.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -12,12 +12,12 @@
 #include "parser/expression/parsed_expression_visitor.h"
 #include "parser/expression/parsed_function_expression.h"
 
-using namespace kuzu::common;
-using namespace kuzu::parser;
-using namespace kuzu::function;
-using namespace kuzu::catalog;
+using namespace koredb::common;
+using namespace koredb::parser;
+using namespace koredb::function;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 std::shared_ptr<Expression> ExpressionBinder::bindFunctionExpression(const ParsedExpression& expr) {
@@ -207,4 +207,4 @@ std::shared_ptr<Expression> ExpressionBinder::bindMacroExpression(
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

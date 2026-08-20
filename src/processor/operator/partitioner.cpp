@@ -6,10 +6,10 @@
 #include "storage/table/node_table.h"
 #include "storage/table/rel_table.h"
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::string PartitionerPrintInfo::toString() const {
@@ -182,4 +182,4 @@ void Partitioner::copyDataToPartitions(MemoryManager& memoryManager,
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

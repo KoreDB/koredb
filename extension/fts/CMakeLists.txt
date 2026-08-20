@@ -15,7 +15,7 @@ add_subdirectory(third_party/snowball)
 
 build_extension_lib(${BUILD_STATIC_EXTENSION} "fts")
 
-target_link_libraries(kuzu_${EXTENSION_LIB_NAME}_extension
+target_link_libraries(koredb_${EXTENSION_LIB_NAME}_extension
         PRIVATE
         snowball
         re2)

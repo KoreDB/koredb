@@ -4,11 +4,11 @@
 #include "common/task_system/task_scheduler.h"
 #include "function/gds/gds_task.h"
 
-using namespace kuzu::processor;
-using namespace kuzu::graph;
-using namespace kuzu::function;
+using namespace koredb::processor;
+using namespace koredb::graph;
+using namespace koredb::function;
 
-namespace kuzu {
+namespace koredb {
 namespace algo_extension {
 
 void InMemVertexComputeTask::run() {
@@ -33,4 +33,4 @@ void InMemGDSUtils::runVertexCompute(InMemVertexCompute& vc, common::offset_t ma
 }
 
 } // namespace algo_extension
-} // namespace kuzu
+} // namespace koredb

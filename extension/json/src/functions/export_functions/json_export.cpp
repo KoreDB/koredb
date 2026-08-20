@@ -6,10 +6,10 @@
 #include "json_utils.h"
 #include "main/client_context.h"
 
-using namespace kuzu::function;
-using namespace kuzu::common;
+using namespace koredb::function;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace json_extension {
 
 struct ExportJSONBindData : public ExportFuncBindData {
@@ -109,4 +109,4 @@ function_set JsonExportFunction::getFunctionSet() {
 }
 
 } // namespace json_extension
-} // namespace kuzu
+} // namespace koredb

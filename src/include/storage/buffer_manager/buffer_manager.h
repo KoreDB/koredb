@@ -12,7 +12,7 @@
 #include "storage/enums/page_read_policy.h"
 #include "storage/file_handle.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 struct DBConfig;
 };
@@ -298,4 +298,4 @@ private:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

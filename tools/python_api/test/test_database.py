@@ -5,7 +5,7 @@ import sys
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
-import kuzu
+import koredb
 import pytest
 
 from conftest import get_db_file_path
@@ -20,8 +20,8 @@ def open_database_on_subprocess(tmp_path: Path, build_dir: Path) -> None:
         import sys
         sys.path.append(r"{build_dir!s}")
 
-        import kuzu
-        db = kuzu.Database(r"{tmp_path!s}")
+        import koredb
+        db = koredb.Database(r"{tmp_path!s}")
         print(r"{tmp_path!s}")
     """
     )
@@ -31,8 +31,8 @@ def open_database_on_subprocess(tmp_path: Path, build_dir: Path) -> None:
 
 
 def test_database_close(tmp_path: Path, build_dir: Path) -> None:
-    db_path = tmp_path / "test_database_close.kuzu"
-    db = kuzu.Database(database_path=db_path, read_only=False)
+    db_path = tmp_path / "test_database_close.koredb"
+    db = koredb.Database(database_path=db_path, read_only=False)
     assert not db.is_closed
     assert db._database is not None
 
@@ -59,8 +59,8 @@ def test_database_close(tmp_path: Path, build_dir: Path) -> None:
 
 
 def test_database_context_manager(tmp_path: Path, build_dir: Path) -> None:
-    db_path = tmp_path / "test_database_context_manager.kuzu"
-    with kuzu.Database(database_path=db_path, read_only=False) as db:
+    db_path = tmp_path / "test_database_context_manager.koredb"
+    with koredb.Database(database_path=db_path, read_only=False) as db:
         assert not db.is_closed
         assert db._database is not None
 
@@ -80,12 +80,12 @@ def test_database_context_manager(tmp_path: Path, build_dir: Path) -> None:
 
 
 def test_in_mem_database_memory_db_path() -> None:
-    db = kuzu.Database(database_path=":memory:")
+    db = koredb.Database(database_path=":memory:")
     assert not db.is_closed
     assert db._database is not None
 
     # Open the database on a subprocess. It should raise an exception.
-    conn = kuzu.Connection(db)
+    conn = koredb.Connection(db)
     conn.execute("CREATE NODE TABLE person(name STRING, age INT64, PRIMARY KEY(name));")
     conn.execute("CREATE (:person {name: 'Alice', age: 30});")
     conn.execute("CREATE (:person {name: 'Bob', age: 40});")
@@ -94,12 +94,12 @@ def test_in_mem_database_memory_db_path() -> None:
 
 
 def test_in_mem_database_empty_db_path() -> None:
-    db = kuzu.Database()
+    db = koredb.Database()
     assert not db.is_closed
     assert db._database is not None
 
     # Open the database on a subprocess. It should raise an exception.
-    conn = kuzu.Connection(db)
+    conn = koredb.Connection(db)
     conn.execute("CREATE NODE TABLE person(name STRING, age INT64, PRIMARY KEY(name));")
     conn.execute("CREATE (:person {name: 'Alice', age: 30});")
     conn.execute("CREATE (:person {name: 'Bob', age: 40});")
@@ -108,12 +108,12 @@ def test_in_mem_database_empty_db_path() -> None:
 
 
 def test_in_mem_database_no_db_path() -> None:
-    with kuzu.Database(database_path="") as db:
+    with koredb.Database(database_path="") as db:
         assert not db.is_closed
         assert db._database is not None
 
         # Open the database on a subprocess. It should raise an exception.
-        conn = kuzu.Connection(db)
+        conn = koredb.Connection(db)
         conn.execute("CREATE NODE TABLE person(name STRING, age INT64, PRIMARY KEY(name));")
         conn.execute("CREATE (:person {name: 'Alice', age: 30});")
         conn.execute("CREATE (:person {name: 'Bob', age: 40});")
@@ -122,33 +122,33 @@ def test_in_mem_database_no_db_path() -> None:
 
 
 def test_database_auto_checkpoint_config(tmp_path: Path) -> None:
-    with kuzu.Database(database_path=get_db_file_path(tmp_path), auto_checkpoint=False) as db:
+    with koredb.Database(database_path=get_db_file_path(tmp_path), auto_checkpoint=False) as db:
         assert not db.is_closed
         assert db._database is not None
 
-        conn = kuzu.Connection(db)
+        conn = koredb.Connection(db)
         with conn.execute("CALL current_setting('auto_checkpoint') RETURN *") as result:
             assert result.get_num_tuples() == 1
             assert result.get_next()[0] == "False"
 
 
 def test_database_checkpoint_threshold_config(tmp_path: Path) -> None:
-    with kuzu.Database(database_path=get_db_file_path(tmp_path), checkpoint_threshold=1234) as db:
+    with koredb.Database(database_path=get_db_file_path(tmp_path), checkpoint_threshold=1234) as db:
         assert not db.is_closed
         assert db._database is not None
 
-        conn = kuzu.Connection(db)
+        conn = koredb.Connection(db)
         with conn.execute("CALL current_setting('checkpoint_threshold') RETURN *") as result:
             assert result.get_num_tuples() == 1
             assert result.get_next()[0] == "1234"
 
 
 def test_database_close_order() -> None:
-    in_mem_db = kuzu.Database(database_path=":memory:", buffer_pool_size=1024 * 1024 * 10)
+    in_mem_db = koredb.Database(database_path=":memory:", buffer_pool_size=1024 * 1024 * 10)
     assert not in_mem_db.is_closed
     assert in_mem_db._database is not None
 
-    in_mem_conn = kuzu.Connection(in_mem_db)
+    in_mem_conn = koredb.Connection(in_mem_db)
     assert not in_mem_conn.is_closed
     assert in_mem_conn._connection is not None
 

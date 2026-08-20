@@ -8,10 +8,10 @@
 #include "function/cast/functions/numeric_limits.h"
 #include <span>
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
-class KUZU_API StringUtils {
+class KOREDB_API StringUtils {
 public:
     static std::vector<std::string> splitComma(const std::string& input);
 
@@ -124,4 +124,4 @@ public:
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

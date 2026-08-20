@@ -4,7 +4,7 @@
 
 #include "extension.h"
 
-namespace kuzu {
+namespace koredb {
 namespace extension {
 
 class LoadedExtension {
@@ -28,4 +28,4 @@ private:
 };
 
 } // namespace extension
-} // namespace kuzu
+} // namespace koredb

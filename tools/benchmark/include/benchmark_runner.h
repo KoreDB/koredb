@@ -2,7 +2,7 @@
 
 #include "benchmark.h"
 
-namespace kuzu {
+namespace koredb {
 namespace benchmark {
 
 // Class stores information of a benchmark
@@ -31,4 +31,4 @@ public:
 };
 
 } // namespace benchmark
-} // namespace kuzu
+} // namespace koredb

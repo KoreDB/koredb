@@ -8,10 +8,10 @@
 #include "utf8proc.h"
 #include "utf8proc_wrapper.h"
 
-using namespace kuzu::utf8proc;
-using namespace kuzu::common;
+using namespace koredb::utf8proc;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 void FlatTuple::addValue(std::unique_ptr<Value> value) {
@@ -80,4 +80,4 @@ std::string FlatTuple::toString(const std::vector<uint32_t>& colsWidth,
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

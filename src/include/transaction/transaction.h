@@ -5,7 +5,7 @@
 
 #include "common/types/types.h"
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 struct BoundAlterInfo;
 }
@@ -35,7 +35,7 @@ class TransactionManager;
 enum class TransactionType : uint8_t { READ_ONLY, WRITE, CHECKPOINT, DUMMY, RECOVERY };
 
 class LocalCacheManager;
-class KUZU_API LocalCacheObject {
+class KOREDB_API LocalCacheObject {
 public:
     explicit LocalCacheObject(std::string key) : key{std::move(key)} {}
 
@@ -74,7 +74,7 @@ private:
     std::mutex mtx;
 };
 
-class KUZU_API Transaction {
+class KOREDB_API Transaction {
     friend class TransactionManager;
 
 public:
@@ -162,8 +162,8 @@ private:
 };
 
 // TODO(bmwinger): These shouldn't need to be exported
-extern KUZU_API Transaction DUMMY_TRANSACTION;
-extern KUZU_API Transaction DUMMY_CHECKPOINT_TRANSACTION;
+extern KOREDB_API Transaction DUMMY_TRANSACTION;
+extern KOREDB_API Transaction DUMMY_CHECKPOINT_TRANSACTION;
 
 } // namespace transaction
-} // namespace kuzu
+} // namespace koredb

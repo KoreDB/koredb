@@ -1,11 +1,11 @@
 #pragma once
 
 #include "cached_import/py_cached_import.h"
-#include "main/kuzu.h"
+#include "main/koredb.h"
 #include "main/storage_driver.h"
 #include "pybind_include.h" // IWYU pragma: keep (used for py:: namespace)
 #define PYBIND11_DETAILED_ERROR_MESSAGES
-using namespace kuzu::main;
+using namespace koredb::main;
 
 class PyDatabase {
     friend class PyConnection;

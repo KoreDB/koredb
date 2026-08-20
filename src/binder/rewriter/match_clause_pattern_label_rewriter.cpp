@@ -2,9 +2,9 @@
 
 #include "binder/query/reading_clause/bound_match_clause.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 void MatchClausePatternLabelRewriter::visitMatchUnsafe(BoundReadingClause& readingClause) {
@@ -19,4 +19,4 @@ void MatchClausePatternLabelRewriter::visitMatchUnsafe(BoundReadingClause& readi
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

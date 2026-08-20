@@ -11,10 +11,10 @@
 #include "storage/file_handle.h"
 #include "storage/storage_manager.h"
 
-using namespace kuzu::common;
-using namespace kuzu::main;
+using namespace koredb::common;
+using namespace koredb::main;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 void ShadowPageRecord::serialize(Serializer& serializer) const {
@@ -61,14 +61,14 @@ page_idx_t ShadowFile::getShadowPage(file_idx_t originalFile, page_idx_t origina
 }
 
 void ShadowFile::applyShadowPages(ClientContext& context) const {
-    const auto pageBuffer = std::make_unique<uint8_t[]>(KUZU_PAGE_SIZE);
+    const auto pageBuffer = std::make_unique<uint8_t[]>(KOREDB_PAGE_SIZE);
     page_idx_t shadowPageIdx = 1; // Skip header page.
     auto dataFileInfo = context.getStorageManager()->getDataFH()->getFileInfo();
     KU_ASSERT(shadowingFH);
     for (const auto& record : shadowPageRecords) {
         shadowingFH->readPageFromDisk(pageBuffer.get(), shadowPageIdx++);
-        dataFileInfo->writeFile(pageBuffer.get(), KUZU_PAGE_SIZE,
-            record.originalPageIdx * KUZU_PAGE_SIZE);
+        dataFileInfo->writeFile(pageBuffer.get(), KOREDB_PAGE_SIZE,
+            record.originalPageIdx * KOREDB_PAGE_SIZE);
         // NOTE: We're not taking lock here, as we assume this is only called with a single thread.
         context.getMemoryManager()->getBufferManager()->updateFrameIfPageIsInFrameWithoutLock(
             record.originalFileIdx, pageBuffer.get(), record.originalPageIdx);
@@ -85,24 +85,24 @@ void ShadowFile::replayShadowPageRecords(ClientContext& context) {
     auto shadowFilePath = StorageUtils::getShadowFilePath(context.getDatabasePath());
     auto shadowFileInfo = vfs->openFile(shadowFilePath, FileOpenFlags(FileFlags::READ_ONLY));
     ShadowFileHeader header;
-    const auto headerBuffer = std::make_unique<uint8_t[]>(KUZU_PAGE_SIZE);
-    shadowFileInfo->readFromFile(headerBuffer.get(), KUZU_PAGE_SIZE, 0);
+    const auto headerBuffer = std::make_unique<uint8_t[]>(KOREDB_PAGE_SIZE);
+    shadowFileInfo->readFromFile(headerBuffer.get(), KOREDB_PAGE_SIZE, 0);
     memcpy(&header, headerBuffer.get(), sizeof(ShadowFileHeader));
     std::vector<ShadowPageRecord> shadowPageRecords;
     shadowPageRecords.reserve(header.numShadowPages);
     auto reader = std::make_unique<BufferedFileReader>(*shadowFileInfo);
-    reader->resetReadOffset((header.numShadowPages + 1) * KUZU_PAGE_SIZE);
+    reader->resetReadOffset((header.numShadowPages + 1) * KOREDB_PAGE_SIZE);
     Deserializer deSer(std::move(reader));
     deSer.deserializeVector(shadowPageRecords);
     auto dataFileInfo = vfs->openFile(context.getDatabasePath(),
         FileOpenFlags{FileFlags::WRITE | FileFlags::READ_ONLY, FileLockType::WRITE_LOCK});
-    const auto pageBuffer = std::make_unique<uint8_t[]>(KUZU_PAGE_SIZE);
+    const auto pageBuffer = std::make_unique<uint8_t[]>(KOREDB_PAGE_SIZE);
     page_idx_t shadowPageIdx = 1;
     for (const auto& record : shadowPageRecords) {
-        shadowFileInfo->readFromFile(pageBuffer.get(), KUZU_PAGE_SIZE,
-            shadowPageIdx * KUZU_PAGE_SIZE);
-        dataFileInfo->writeFile(pageBuffer.get(), KUZU_PAGE_SIZE,
-            record.originalPageIdx * KUZU_PAGE_SIZE);
+        shadowFileInfo->readFromFile(pageBuffer.get(), KOREDB_PAGE_SIZE,
+            shadowPageIdx * KOREDB_PAGE_SIZE);
+        dataFileInfo->writeFile(pageBuffer.get(), KOREDB_PAGE_SIZE,
+            record.originalPageIdx * KOREDB_PAGE_SIZE);
         shadowPageIdx++;
     }
 }
@@ -111,7 +111,7 @@ void ShadowFile::flushAll() const {
     // Write header page to file.
     ShadowFileHeader header;
     header.numShadowPages = shadowPageRecords.size();
-    const auto headerBuffer = std::make_unique<uint8_t[]>(KUZU_PAGE_SIZE);
+    const auto headerBuffer = std::make_unique<uint8_t[]>(KOREDB_PAGE_SIZE);
     memcpy(headerBuffer.get(), &header, sizeof(ShadowFileHeader));
     KU_ASSERT(shadowingFH && !shadowingFH->isInMemoryMode());
     shadowingFH->writePageToFile(headerBuffer.get(), 0);
@@ -119,7 +119,7 @@ void ShadowFile::flushAll() const {
     shadowingFH->flushAllDirtyPagesInFrames();
     // Append shadow page records to the end of the file.
     const auto writer = std::make_shared<BufferedFileWriter>(*shadowingFH->getFileInfo());
-    writer->setFileOffset(shadowingFH->getNumPages() * KUZU_PAGE_SIZE);
+    writer->setFileOffset(shadowingFH->getNumPages() * KOREDB_PAGE_SIZE);
     Serializer ser(writer);
     KU_ASSERT(shadowPageRecords.size() + 1 == shadowingFH->getNumPages());
     ser.serializeVector(shadowPageRecords);
@@ -160,4 +160,4 @@ FileHandle* ShadowFile::getOrCreateShadowingFH() {
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

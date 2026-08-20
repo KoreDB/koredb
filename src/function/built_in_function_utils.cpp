@@ -7,11 +7,11 @@
 #include "function/aggregate_function.h"
 #include "function/arithmetic/vector_arithmetic_functions.h"
 
-using namespace kuzu::common;
-using namespace kuzu::catalog;
-using namespace kuzu::processor;
+using namespace koredb::common;
+using namespace koredb::catalog;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 static void validateNonEmptyCandidateFunctions(std::vector<AggregateFunction*>& candidateFunctions,
@@ -551,4 +551,4 @@ void validateNonEmptyCandidateFunctions(std::vector<Function*>& candidateFunctio
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

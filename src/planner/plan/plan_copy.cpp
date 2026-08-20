@@ -9,13 +9,13 @@
 #include "planner/operator/scan/logical_index_look_up.h"
 #include "planner/planner.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::storage;
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::function;
+using namespace koredb::binder;
+using namespace koredb::storage;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::function;
 
-namespace kuzu {
+namespace koredb {
 namespace planner {
 
 static void appendIndexScan(const ExtraBoundCopyRelInfo& extraInfo, LogicalPlan& plan) {
@@ -138,4 +138,4 @@ LogicalPlan Planner::planCopyTo(const BoundStatement& statement) {
 }
 
 } // namespace planner
-} // namespace kuzu
+} // namespace koredb

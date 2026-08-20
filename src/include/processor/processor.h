@@ -4,7 +4,7 @@
 #include "processor/physical_plan.h"
 #include "processor/result/factorized_table.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 class QueryProcessor {
@@ -30,4 +30,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

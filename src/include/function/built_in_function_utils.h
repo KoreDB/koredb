@@ -3,7 +3,7 @@
 #include "aggregate_function.h"
 #include "function.h"
 
-namespace kuzu {
+namespace koredb {
 namespace transaction {
 class Transaction;
 } // namespace transaction
@@ -18,11 +18,11 @@ class BuiltInFunctionsUtils {
 public:
     // TODO(Ziyi): We should have a unified interface for matching table, aggregate and scalar
     // functions.
-    static KUZU_API Function* matchFunction(const std::string& name,
+    static KOREDB_API Function* matchFunction(const std::string& name,
         const catalog::FunctionCatalogEntry* catalogEntry) {
         return matchFunction(name, {}, catalogEntry);
     }
-    static KUZU_API Function* matchFunction(const std::string& name,
+    static KOREDB_API Function* matchFunction(const std::string& name,
         const std::vector<common::LogicalType>& inputTypes,
         const catalog::FunctionCatalogEntry* functionEntry);
 
@@ -30,10 +30,10 @@ public:
         const std::vector<common::LogicalType>& inputTypes, bool isDistinct,
         const catalog::FunctionCatalogEntry* functionEntry);
 
-    static KUZU_API uint32_t getCastCost(common::LogicalTypeID inputTypeID,
+    static KOREDB_API uint32_t getCastCost(common::LogicalTypeID inputTypeID,
         common::LogicalTypeID targetTypeID);
 
-    static KUZU_API std::string getFunctionMatchFailureMsg(const std::string name,
+    static KOREDB_API std::string getFunctionMatchFailureMsg(const std::string name,
         const std::vector<common::LogicalType>& inputTypes, const std::string& supportedInputs,
         bool isDistinct = false);
 
@@ -96,4 +96,4 @@ private:
 };
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

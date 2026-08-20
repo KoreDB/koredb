@@ -12,14 +12,14 @@
 #include "parser/port_db.h"
 #include "parser/query/regular_query.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::parser;
-using namespace kuzu::catalog;
-using namespace kuzu::transaction;
-using namespace kuzu::storage;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::parser;
+using namespace koredb::catalog;
+using namespace koredb::transaction;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 FileTypeInfo getFileType(case_insensitive_map_t<Value>& options) {
@@ -165,4 +165,4 @@ std::unique_ptr<BoundStatement> Binder::bindExportDatabaseClause(const Statement
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

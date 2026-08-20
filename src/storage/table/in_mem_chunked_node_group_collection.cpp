@@ -3,10 +3,10 @@
 #include "storage/buffer_manager/memory_manager.h"
 #include "transaction/transaction.h"
 
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 void InMemChunkedNodeGroupCollection::append(MemoryManager& memoryManager,
@@ -50,4 +50,4 @@ void InMemChunkedNodeGroupCollection::merge(InMemChunkedNodeGroupCollection& oth
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

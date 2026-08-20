@@ -1,4 +1,4 @@
-add_library(kuzu_storage_wal
+add_library(koredb_storage_wal
         OBJECT
         local_wal.cpp
         wal.cpp
@@ -6,5 +6,5 @@ add_library(kuzu_storage_wal
         wal_replayer.cpp)
 
 set(ALL_OBJECT_FILES
-        ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:kuzu_storage_wal>
+        ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:koredb_storage_wal>
         PARENT_SCOPE)

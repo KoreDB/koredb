@@ -2,7 +2,7 @@
 
 #include <mutex>
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 struct UniqLock {
@@ -24,4 +24,4 @@ private:
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

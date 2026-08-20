@@ -1,19 +1,19 @@
 """
-# Kuzu Python API bindings.
+# KoreDB Python API bindings.
 
-This package provides a Python API for Kuzu graph database management system.
+This package provides a Python API for KoreDB graph database management system.
 
 To install the package, run:
 ```
-python3 -m pip install kuzu
+python3 -m pip install koredb
 ```
 
 Example usage:
 ```python
-import kuzu
+import koredb
 
-db = kuzu.Database("./test")
-conn = kuzu.Connection(db)
+db = koredb.Database("./test")
+conn = koredb.Connection(db)
 
 # Define the schema
 conn.execute("CREATE NODE TABLE User(name STRING, age INT64, PRIMARY KEY (name))")

@@ -10,10 +10,10 @@
 #include "planner/operator/scan/logical_scan_node_table.h"
 #include "planner/planner.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
+using namespace koredb::binder;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace planner {
 
 LogicalPlan Planner::planQueryGraphCollectionInNewContext(
@@ -624,4 +624,4 @@ expression_vector Planner::getNewlyMatchedExprs(const SubqueryGraph& leftPrev,
 }
 
 } // namespace planner
-} // namespace kuzu
+} // namespace koredb

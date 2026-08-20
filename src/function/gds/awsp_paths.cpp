@@ -7,11 +7,11 @@
 #include "processor/execution_context.h"
 #include "wsp_utils.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::processor;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::processor;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 template<typename T>
@@ -179,4 +179,4 @@ std::unique_ptr<RJAlgorithm> AllWeightedSPPathsFunction::getAlgorithm() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

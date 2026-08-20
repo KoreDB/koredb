@@ -7,14 +7,14 @@
 #include "main/client_context.h"
 #include "protocol/TCompactProtocol.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
-using namespace kuzu_parquet::format;
-using namespace kuzu::common;
+using namespace koredb_parquet::format;
+using namespace koredb::common;
 
 ParquetWriter::ParquetWriter(std::string fileName, std::vector<common::LogicalType> types,
-    std::vector<std::string> columnNames, kuzu_parquet::format::CompressionCodec::type codec,
+    std::vector<std::string> columnNames, koredb_parquet::format::CompressionCodec::type codec,
     main::ClientContext* context)
     : fileName{std::move(fileName)}, types{std::move(types)}, columnNames{std::move(columnNames)},
       codec{codec}, fileOffset{0}, mm{context->getMemoryManager()} {
@@ -24,7 +24,7 @@ ParquetWriter::ParquetWriter(std::string fileName, std::vector<common::LogicalTy
     fileInfo->writeFile(reinterpret_cast<const uint8_t*>(ParquetConstants::PARQUET_MAGIC_WORDS),
         strlen(ParquetConstants::PARQUET_MAGIC_WORDS), fileOffset);
     fileOffset += strlen(ParquetConstants::PARQUET_MAGIC_WORDS);
-    kuzu_apache::thrift::protocol::TCompactProtocolFactoryT<ParquetWriterTransport> tprotoFactory;
+    koredb_apache::thrift::protocol::TCompactProtocolFactoryT<ParquetWriterTransport> tprotoFactory;
     protocol = tprotoFactory.getProtocol(
         std::make_shared<ParquetWriterTransport>(fileInfo.get(), fileOffset));
 
@@ -32,15 +32,15 @@ ParquetWriter::ParquetWriter(std::string fileName, std::vector<common::LogicalTy
     fileMetaData.version = 1;
 
     fileMetaData.__isset.created_by = true;
-    fileMetaData.created_by = "KUZU";
+    fileMetaData.created_by = "KOREDB";
 
     fileMetaData.schema.resize(1);
 
     // populate root schema object
-    fileMetaData.schema[0].name = "kuzu_schema";
+    fileMetaData.schema[0].name = "koredb_schema";
     fileMetaData.schema[0].num_children = this->types.size();
     fileMetaData.schema[0].__isset.num_children = true;
-    fileMetaData.schema[0].repetition_type = kuzu_parquet::format::FieldRepetitionType::REQUIRED;
+    fileMetaData.schema[0].repetition_type = koredb_parquet::format::FieldRepetitionType::REQUIRED;
     fileMetaData.schema[0].__isset.repetition_type = true;
 
     std::vector<std::string> schemaPath;
@@ -299,4 +299,4 @@ void ParquetWriter::finalize() {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

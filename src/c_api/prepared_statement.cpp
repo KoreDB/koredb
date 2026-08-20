@@ -1,13 +1,13 @@
 #include "main/prepared_statement.h"
 
 #include "c_api/helpers.h"
-#include "c_api/kuzu.h"
+#include "c_api/koredb.h"
 #include "common/types/value/value.h"
 
-using namespace kuzu::common;
-using namespace kuzu::main;
+using namespace koredb::common;
+using namespace koredb::main;
 
-void kuzu_prepared_statement_bind_cpp_value(kuzu_prepared_statement* prepared_statement,
+void koredb_prepared_statement_bind_cpp_value(koredb_prepared_statement* prepared_statement,
     const char* param_name, std::unique_ptr<Value> value) {
     auto* bound_values = static_cast<std::unordered_map<std::string, std::unique_ptr<Value>>*>(
         prepared_statement->_bound_values);
@@ -15,7 +15,7 @@ void kuzu_prepared_statement_bind_cpp_value(kuzu_prepared_statement* prepared_st
     bound_values->insert({param_name, std::move(value)});
 }
 
-void kuzu_prepared_statement_destroy(kuzu_prepared_statement* prepared_statement) {
+void koredb_prepared_statement_destroy(koredb_prepared_statement* prepared_statement) {
     if (prepared_statement == nullptr) {
         return;
     }
@@ -28,11 +28,11 @@ void kuzu_prepared_statement_destroy(kuzu_prepared_statement* prepared_statement
     }
 }
 
-bool kuzu_prepared_statement_is_success(kuzu_prepared_statement* prepared_statement) {
+bool koredb_prepared_statement_is_success(koredb_prepared_statement* prepared_statement) {
     return static_cast<PreparedStatement*>(prepared_statement->_prepared_statement)->isSuccess();
 }
 
-char* kuzu_prepared_statement_get_error_message(kuzu_prepared_statement* prepared_statement) {
+char* koredb_prepared_statement_get_error_message(koredb_prepared_statement* prepared_statement) {
     auto error_message =
         static_cast<PreparedStatement*>(prepared_statement->_prepared_statement)->getErrorMessage();
     if (error_message.empty()) {
@@ -41,243 +41,247 @@ char* kuzu_prepared_statement_get_error_message(kuzu_prepared_statement* prepare
     return convertToOwnedCString(error_message);
 }
 
-kuzu_state kuzu_prepared_statement_bind_bool(kuzu_prepared_statement* prepared_statement,
+koredb_state koredb_prepared_statement_bind_bool(koredb_prepared_statement* prepared_statement,
     const char* param_name, bool value) {
     try {
         auto value_ptr = std::make_unique<Value>(value);
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_int64(kuzu_prepared_statement* prepared_statement,
+koredb_state koredb_prepared_statement_bind_int64(koredb_prepared_statement* prepared_statement,
     const char* param_name, int64_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(value);
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_int32(kuzu_prepared_statement* prepared_statement,
+koredb_state koredb_prepared_statement_bind_int32(koredb_prepared_statement* prepared_statement,
     const char* param_name, int32_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(value);
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_int16(kuzu_prepared_statement* prepared_statement,
+koredb_state koredb_prepared_statement_bind_int16(koredb_prepared_statement* prepared_statement,
     const char* param_name, int16_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(value);
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_int8(kuzu_prepared_statement* prepared_statement,
+koredb_state koredb_prepared_statement_bind_int8(koredb_prepared_statement* prepared_statement,
     const char* param_name, int8_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(value);
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_uint64(kuzu_prepared_statement* prepared_statement,
+koredb_state koredb_prepared_statement_bind_uint64(koredb_prepared_statement* prepared_statement,
     const char* param_name, uint64_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(value);
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_uint32(kuzu_prepared_statement* prepared_statement,
+koredb_state koredb_prepared_statement_bind_uint32(koredb_prepared_statement* prepared_statement,
     const char* param_name, uint32_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(value);
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_uint16(kuzu_prepared_statement* prepared_statement,
+koredb_state koredb_prepared_statement_bind_uint16(koredb_prepared_statement* prepared_statement,
     const char* param_name, uint16_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(value);
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_uint8(kuzu_prepared_statement* prepared_statement,
+koredb_state koredb_prepared_statement_bind_uint8(koredb_prepared_statement* prepared_statement,
     const char* param_name, uint8_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(value);
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_double(kuzu_prepared_statement* prepared_statement,
+koredb_state koredb_prepared_statement_bind_double(koredb_prepared_statement* prepared_statement,
     const char* param_name, double value) {
     try {
         auto value_ptr = std::make_unique<Value>(value);
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_float(kuzu_prepared_statement* prepared_statement,
+koredb_state koredb_prepared_statement_bind_float(koredb_prepared_statement* prepared_statement,
     const char* param_name, float value) {
     try {
         auto value_ptr = std::make_unique<Value>(value);
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_date(kuzu_prepared_statement* prepared_statement,
-    const char* param_name, kuzu_date_t value) {
+koredb_state koredb_prepared_statement_bind_date(koredb_prepared_statement* prepared_statement,
+    const char* param_name, koredb_date_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(date_t(value.days));
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_timestamp_ns(kuzu_prepared_statement* prepared_statement,
-    const char* param_name, kuzu_timestamp_ns_t value) {
+koredb_state koredb_prepared_statement_bind_timestamp_ns(
+    koredb_prepared_statement* prepared_statement, const char* param_name,
+    koredb_timestamp_ns_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(timestamp_ns_t(value.value));
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_timestamp_ms(kuzu_prepared_statement* prepared_statement,
-    const char* param_name, kuzu_timestamp_ms_t value) {
+koredb_state koredb_prepared_statement_bind_timestamp_ms(
+    koredb_prepared_statement* prepared_statement, const char* param_name,
+    koredb_timestamp_ms_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(timestamp_ms_t(value.value));
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_timestamp_sec(kuzu_prepared_statement* prepared_statement,
-    const char* param_name, kuzu_timestamp_sec_t value) {
+koredb_state koredb_prepared_statement_bind_timestamp_sec(
+    koredb_prepared_statement* prepared_statement, const char* param_name,
+    koredb_timestamp_sec_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(timestamp_sec_t(value.value));
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_timestamp_tz(kuzu_prepared_statement* prepared_statement,
-    const char* param_name, kuzu_timestamp_tz_t value) {
+koredb_state koredb_prepared_statement_bind_timestamp_tz(
+    koredb_prepared_statement* prepared_statement, const char* param_name,
+    koredb_timestamp_tz_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(timestamp_tz_t(value.value));
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_timestamp(kuzu_prepared_statement* prepared_statement,
-    const char* param_name, kuzu_timestamp_t value) {
+koredb_state koredb_prepared_statement_bind_timestamp(koredb_prepared_statement* prepared_statement,
+    const char* param_name, koredb_timestamp_t value) {
     try {
         auto value_ptr = std::make_unique<Value>(timestamp_t(value.value));
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_interval(kuzu_prepared_statement* prepared_statement,
-    const char* param_name, kuzu_interval_t value) {
+koredb_state koredb_prepared_statement_bind_interval(koredb_prepared_statement* prepared_statement,
+    const char* param_name, koredb_interval_t value) {
     try {
         auto value_ptr =
             std::make_unique<Value>(interval_t(value.months, value.days, value.micros));
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_string(kuzu_prepared_statement* prepared_statement,
+koredb_state koredb_prepared_statement_bind_string(koredb_prepared_statement* prepared_statement,
     const char* param_name, const char* value) {
     try {
         auto value_ptr = std::make_unique<Value>(std::string(value));
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }
 
-kuzu_state kuzu_prepared_statement_bind_value(kuzu_prepared_statement* prepared_statement,
-    const char* param_name, kuzu_value* value) {
+koredb_state koredb_prepared_statement_bind_value(koredb_prepared_statement* prepared_statement,
+    const char* param_name, koredb_value* value) {
     try {
         auto value_ptr = std::make_unique<Value>(*static_cast<Value*>(value->_value));
-        kuzu_prepared_statement_bind_cpp_value(prepared_statement, param_name,
+        koredb_prepared_statement_bind_cpp_value(prepared_statement, param_name,
             std::move(value_ptr));
-        return KuzuSuccess;
+        return KoreDBSuccess;
     } catch (Exception& e) {
-        return KuzuError;
+        return KoreDBError;
     }
 }

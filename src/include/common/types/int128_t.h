@@ -11,10 +11,10 @@
 
 #include "common/api.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
-struct KUZU_API int128_t;
+struct KOREDB_API int128_t;
 
 // System representation for int128_t.
 struct int128_t {
@@ -62,25 +62,25 @@ struct int128_t {
 };
 
 // arithmetic operators
-KUZU_API int128_t operator+(const int128_t& lhs, const int128_t& rhs);
-KUZU_API int128_t operator-(const int128_t& lhs, const int128_t& rhs);
-KUZU_API int128_t operator*(const int128_t& lhs, const int128_t& rhs);
-KUZU_API int128_t operator/(const int128_t& lhs, const int128_t& rhs);
-KUZU_API int128_t operator%(const int128_t& lhs, const int128_t& rhs);
-KUZU_API int128_t operator^(const int128_t& lhs, const int128_t& rhs);
-KUZU_API int128_t operator&(const int128_t& lhs, const int128_t& rhs);
-KUZU_API int128_t operator~(const int128_t& val);
-KUZU_API int128_t operator|(const int128_t& lhs, const int128_t& rhs);
-KUZU_API int128_t operator<<(const int128_t& lhs, int amount);
-KUZU_API int128_t operator>>(const int128_t& lhs, int amount);
+KOREDB_API int128_t operator+(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API int128_t operator-(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API int128_t operator*(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API int128_t operator/(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API int128_t operator%(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API int128_t operator^(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API int128_t operator&(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API int128_t operator~(const int128_t& val);
+KOREDB_API int128_t operator|(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API int128_t operator<<(const int128_t& lhs, int amount);
+KOREDB_API int128_t operator>>(const int128_t& lhs, int amount);
 
 // comparison operators
-KUZU_API bool operator==(const int128_t& lhs, const int128_t& rhs);
-KUZU_API bool operator!=(const int128_t& lhs, const int128_t& rhs);
-KUZU_API bool operator>(const int128_t& lhs, const int128_t& rhs);
-KUZU_API bool operator>=(const int128_t& lhs, const int128_t& rhs);
-KUZU_API bool operator<(const int128_t& lhs, const int128_t& rhs);
-KUZU_API bool operator<=(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API bool operator==(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API bool operator!=(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API bool operator>(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API bool operator>=(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API bool operator<(const int128_t& lhs, const int128_t& rhs);
+KOREDB_API bool operator<=(const int128_t& lhs, const int128_t& rhs);
 
 class Int128_t {
 public:
@@ -220,9 +220,9 @@ bool Int128_t::tryCastTo(long double value, int128_t& result);
 // TODO: const char to int128
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb
 
 template<>
-struct std::hash<kuzu::common::int128_t> {
-    std::size_t operator()(const kuzu::common::int128_t& v) const noexcept;
+struct std::hash<koredb::common::int128_t> {
+    std::size_t operator()(const koredb::common::int128_t& v) const noexcept;
 };

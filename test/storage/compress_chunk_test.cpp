@@ -11,10 +11,10 @@
 #include "storage/table/compression_flush_buffer.h"
 #include <ranges>
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 using check_func_t = std::function<void(ColumnReadWriter*, ChunkState&, const LogicalType&)>;
@@ -27,7 +27,7 @@ public:
     }
 
     std::string getInputDir() override {
-        return TestHelper::appendKuzuRootPath("dataset/tinysnb/");
+        return TestHelper::appendKoreDBRootPath("dataset/tinysnb/");
     }
 
     template<std::floating_point T>
@@ -145,7 +145,7 @@ void CompressChunkTest::testCompressChunk(const std::vector<T>& bufferToCompress
 
     ChunkState state;
     state.metadata = chunkMetadata;
-    state.numValuesPerPage = state.metadata.compMeta.numValues(KUZU_PAGE_SIZE, dataType);
+    state.numValuesPerPage = state.metadata.compMeta.numValues(KOREDB_PAGE_SIZE, dataType);
     if (chunkMetadata.compMeta.compression == CompressionType::ALP) {
         state.alpExceptionChunk = std::make_unique<InMemoryExceptionChunk<T>>(state, dataFH, mm,
             &storageManager->getShadowFile());
@@ -660,4 +660,4 @@ TEST_F(CompressChunkTest, TestFloatBeforeInPlaceUpdateManyExceptionsNoCompress) 
 }
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

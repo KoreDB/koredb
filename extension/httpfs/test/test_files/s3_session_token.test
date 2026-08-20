@@ -15,7 +15,7 @@ Zhang|50
 ---- ok
 -STATEMENT CREATE NODE TABLE City(name STRING, population INT64, PRIMARY KEY (name))
 ---- ok
--STATEMENT copy City from 's3://kuzu-dataset-eu/city.csv';
+-STATEMENT copy City from 's3://koredb-dataset-eu/city.csv';
 ---- ok
 -STATEMENT match (c:City) return c.name, c.population;
 ---- 3

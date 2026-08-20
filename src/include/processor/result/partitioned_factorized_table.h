@@ -8,7 +8,7 @@
 #include "common/types/types.h"
 #include "processor/result/factorized_table.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 class VirtualFileSystem;
 struct FileInfo;
@@ -36,7 +36,7 @@ namespace processor {
 //
 // Threading: not thread-safe. Intended to be used per-thread and merged, mirroring how
 // JoinHashTable local/global tables are used.
-class KUZU_API PartitionedFactorizedTable {
+class KOREDB_API PartitionedFactorizedTable {
 public:
     PartitionedFactorizedTable(storage::MemoryManager* mm,
         std::vector<common::LogicalType> columnTypes, common::idx_t logNumPartitions,
@@ -147,4 +147,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

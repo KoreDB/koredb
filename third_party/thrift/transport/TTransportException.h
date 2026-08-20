@@ -17,13 +17,13 @@
  * under the License.
  */
 
-#ifndef _KUZU_THRIFT_TRANSPORT_TTRANSPORTEXCEPTION_H_
-#define _KUZU_THRIFT_TRANSPORT_TTRANSPORTEXCEPTION_H_ 1
+#ifndef _KOREDB_THRIFT_TRANSPORT_TTRANSPORTEXCEPTION_H_
+#define _KOREDB_THRIFT_TRANSPORT_TTRANSPORTEXCEPTION_H_ 1
 
 #include <string>
 #include "Thrift.h"
 
-namespace kuzu_apache {
+namespace koredb_apache {
 namespace thrift {
 namespace transport {
 
@@ -35,7 +35,7 @@ namespace transport {
  * pipes etc.
  *
  */
-class TTransportException : public kuzu_apache::thrift::TException {
+class TTransportException : public koredb_apache::thrift::TException {
 public:
   /**
    * Error codes for the various types of exceptions.
@@ -51,15 +51,15 @@ public:
     INTERNAL_ERROR = 7
   };
 
-  TTransportException() : kuzu_apache::thrift::TException(), type_(UNKNOWN) {}
+  TTransportException() : koredb_apache::thrift::TException(), type_(UNKNOWN) {}
 
-  TTransportException(TTransportExceptionType type) : kuzu_apache::thrift::TException(), type_(type) {}
+  TTransportException(TTransportExceptionType type) : koredb_apache::thrift::TException(), type_(type) {}
 
   TTransportException(const std::string& message)
-    : kuzu_apache::thrift::TException(message), type_(UNKNOWN) {}
+    : koredb_apache::thrift::TException(message), type_(UNKNOWN) {}
 
   TTransportException(TTransportExceptionType type, const std::string& message)
-    : kuzu_apache::thrift::TException(message), type_(type) {}
+    : koredb_apache::thrift::TException(message), type_(type) {}
 
   ~TTransportException() noexcept override = default;
 
@@ -97,6 +97,6 @@ protected:
 
 }
 }
-} // kuzu_apache::thrift::transport
+} // koredb_apache::thrift::transport
 
-#endif // #ifndef _KUZU_THRIFT_TRANSPORT_TTRANSPORTEXCEPTION_H_
+#endif // #ifndef _KOREDB_THRIFT_TRANSPORT_TTRANSPORTEXCEPTION_H_

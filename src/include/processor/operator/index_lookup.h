@@ -4,7 +4,7 @@
 #include "processor/operator/persistent/batch_insert_error_handler.h"
 #include "processor/operator/physical_operator.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 class NodeTable;
 } // namespace storage
@@ -82,4 +82,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

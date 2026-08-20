@@ -6,10 +6,10 @@
 #include "common/arrow/arrow.h"
 #include "common/database_lifecycle_manager.h"
 #include "common/types/types.h"
-#include "kuzu_fwd.h"
+#include "koredb_fwd.h"
 #include "processor/result/flat_tuple.h"
 #include "query_summary.h"
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 /**
@@ -44,66 +44,66 @@ public:
     /**
      * @brief Used to create a QueryResult object for the failing query.
      */
-    KUZU_API QueryResult();
+    KOREDB_API QueryResult();
 
     explicit QueryResult(const PreparedSummary& preparedSummary);
     /**
      * @brief Deconstructs the QueryResult object.
      */
-    KUZU_API ~QueryResult();
+    KOREDB_API ~QueryResult();
     /**
      * @return query is executed successfully or not.
      */
-    KUZU_API bool isSuccess() const;
+    KOREDB_API bool isSuccess() const;
     /**
      * @return whether the result is partial because the query hit its timeout before finishing.
      * When true, the tuples in this result are a valid prefix of the full result; the caller may
      * re-run the query (e.g. with a larger timeout, or paginating with SKIP/LIMIT) to obtain more.
      * Only ever true when partial-result-on-timeout was enabled for a read-only query.
      */
-    KUZU_API bool isTruncated() const;
+    KOREDB_API bool isTruncated() const;
     /**
      * @return why the result was truncated: "timeout" if the query hit its timeout, "memory_limit"
      * if it hit its per-query memory limit, or an empty string if the result is complete.
      */
-    KUZU_API std::string getTruncationReason() const;
+    KOREDB_API std::string getTruncationReason() const;
     /**
      * @return error message of the query execution if the query fails.
      */
-    KUZU_API std::string getErrorMessage() const;
+    KOREDB_API std::string getErrorMessage() const;
     /**
      * @return number of columns in query result.
      */
-    KUZU_API size_t getNumColumns() const;
+    KOREDB_API size_t getNumColumns() const;
     /**
      * @return name of each column in query result.
      */
-    KUZU_API std::vector<std::string> getColumnNames() const;
+    KOREDB_API std::vector<std::string> getColumnNames() const;
     /**
      * @return dataType of each column in query result.
      */
-    KUZU_API std::vector<common::LogicalType> getColumnDataTypes() const;
+    KOREDB_API std::vector<common::LogicalType> getColumnDataTypes() const;
     /**
      * @return num of tuples in query result.
      */
-    KUZU_API uint64_t getNumTuples() const;
+    KOREDB_API uint64_t getNumTuples() const;
     /**
      * @return query summary which stores the execution time, compiling time, plan and query
      * options.
      */
-    KUZU_API QuerySummary* getQuerySummary() const;
+    KOREDB_API QuerySummary* getQuerySummary() const;
     /**
      * @return whether there are more tuples to read.
      */
-    KUZU_API bool hasNext() const;
+    KOREDB_API bool hasNext() const;
     /**
      * @return whether there are more query results to read.
      */
-    KUZU_API bool hasNextQueryResult() const;
+    KOREDB_API bool hasNextQueryResult() const;
     /**
      * @return get next query result to read (for multiple query statements).
      */
-    KUZU_API QueryResult* getNextQueryResult();
+    KOREDB_API QueryResult* getNextQueryResult();
 
     std::unique_ptr<QueryResult> nextQueryResult;
     /**
@@ -112,16 +112,16 @@ public:
      * please complete processing a FlatTuple or make a copy of its data before calling getNext()
      * again.
      */
-    KUZU_API std::shared_ptr<processor::FlatTuple> getNext();
+    KOREDB_API std::shared_ptr<processor::FlatTuple> getNext();
     /**
      * @return string of first query result.
      */
-    KUZU_API std::string toString() const;
+    KOREDB_API std::string toString() const;
 
     /**
      * @brief Resets the result tuple iterator.
      */
-    KUZU_API void resetIterator();
+    KOREDB_API void resetIterator();
 
     /**
      * @brief Returns the arrow schema of the query result.
@@ -130,7 +130,7 @@ public:
      * It is the caller's responsibility to call the release function to release the underlying data
      * If converting to another arrow type, this this is usually handled automatically.
      */
-    KUZU_API std::unique_ptr<ArrowSchema> getArrowSchema() const;
+    KOREDB_API std::unique_ptr<ArrowSchema> getArrowSchema() const;
 
     /**
      * @brief Returns the next chunk of the query result as an arrow array.
@@ -143,7 +143,7 @@ public:
      * It is the caller's responsibility to call the release function to release the underlying data
      * If converting to another arrow type, this this is usually handled automatically.
      */
-    KUZU_API std::unique_ptr<ArrowArray> getNextArrowChunk(int64_t chunkSize);
+    KOREDB_API std::unique_ptr<ArrowArray> getNextArrowChunk(int64_t chunkSize);
 
     processor::FactorizedTable* getTable() { return factorizedTable.get(); }
 
@@ -186,4 +186,4 @@ private:
 };
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

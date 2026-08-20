@@ -4,9 +4,9 @@
 #include "common/uniq_lock.h"
 #include "processor/execution_context.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 BatchInsertCachedError::BatchInsertCachedError(std::string message,
@@ -87,4 +87,4 @@ row_idx_t BatchInsertErrorHandler::getNumErrors() const {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

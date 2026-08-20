@@ -7,7 +7,7 @@
 #include "common/copy_constructors.h"
 #include "processor/operator/order_by/order_by_data_info.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 class Value;
 class ValueVector;
@@ -158,4 +158,4 @@ private:
 uint64_t getExternalMergeSortActivationCount();
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

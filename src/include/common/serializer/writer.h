@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 class Writer {
@@ -27,4 +27,4 @@ public:
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

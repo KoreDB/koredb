@@ -1,11 +1,11 @@
 #include "processor/operator/persistent/reader/parquet/boolean_column_reader.h"
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 void BooleanColumnReader::initializeRead(uint64_t rowGroupIdx,
-    const std::vector<kuzu_parquet::format::ColumnChunk>& columns,
-    kuzu_apache::thrift::protocol::TProtocol& protocol) {
+    const std::vector<koredb_parquet::format::ColumnChunk>& columns,
+    koredb_apache::thrift::protocol::TProtocol& protocol) {
     bytePos = 0;
     TemplatedColumnReader<bool, BooleanParquetValueConversion>::initializeRead(rowGroupIdx, columns,
         protocol);
@@ -24,4 +24,4 @@ bool BooleanParquetValueConversion::plainRead(ByteBuffer& plainData, ColumnReade
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

@@ -72,7 +72,7 @@
 -CASE DeleteLocalNodeAtLargeOffset
 -STATEMENT create node table Comment (id int64, creationDate INT64, locationIP STRING, browserUsed STRING, content STRING, length INT32, PRIMARY KEY (id));
 ---- ok
--STATEMENT COPY Comment FROM "${KUZU_ROOT_DIRECTORY}/dataset/ldbc-sf01/Comment.csv";
+-STATEMENT COPY Comment FROM "${KOREDB_ROOT_DIRECTORY}/dataset/ldbc-sf01/Comment.csv";
 ---- ok
 -STATEMENT BEGIN TRANSACTION
 ---- ok
@@ -99,7 +99,7 @@
 # table used to store some intermediate results
 -STATEMENT create node table stats(id SERIAL, numPages INT64, PRIMARY KEY(id))
 ---- ok
--STATEMENT COPY Post FROM "${KUZU_ROOT_DIRECTORY}/dataset/ldbc-sf01/Post.csv"(parallel=false)
+-STATEMENT COPY Post FROM "${KOREDB_ROOT_DIRECTORY}/dataset/ldbc-sf01/Post.csv"(parallel=false)
 -PARALLELISM 1
 ---- ok
 # preallocate rows for other table so that hash index storage isn't allocated later
@@ -141,7 +141,7 @@ True
 # table used to store some intermediate results
 -STATEMENT create node table stats(startPageIdx INT64, numPages INT64, PRIMARY KEY(startPageIdx))
 ---- ok
--STATEMENT COPY Post FROM "${KUZU_ROOT_DIRECTORY}/dataset/ldbc-sf01/Post.csv"(parallel=false)
+-STATEMENT COPY Post FROM "${KOREDB_ROOT_DIRECTORY}/dataset/ldbc-sf01/Post.csv"(parallel=false)
 -PARALLELISM 1
 ---- ok
 -STATEMENT match (p:Post) delete p
@@ -154,7 +154,7 @@ True
 ---- ok
 # copy again, the storage pages should be reallocated
 # the number of pages in the DB can still increase because of the hash index
--STATEMENT COPY Post FROM "${KUZU_ROOT_DIRECTORY}/dataset/ldbc-sf01/Post.csv"(parallel=false)
+-STATEMENT COPY Post FROM "${KOREDB_ROOT_DIRECTORY}/dataset/ldbc-sf01/Post.csv"(parallel=false)
 -PARALLELISM 1
 ---- ok
 -STATEMENT match (s:stats) with sum(s.num_pages) as original_num_pages

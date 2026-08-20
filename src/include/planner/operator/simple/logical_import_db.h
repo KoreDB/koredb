@@ -2,7 +2,7 @@
 
 #include "logical_simple.h"
 
-namespace kuzu {
+namespace koredb {
 namespace planner {
 
 class LogicalImportDatabase : public LogicalSimple {
@@ -29,4 +29,4 @@ private:
 };
 
 } // namespace planner
-} // namespace kuzu
+} // namespace koredb

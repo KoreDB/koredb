@@ -1,9 +1,9 @@
 #pragma once
 
 #include "storage/compression/compression.h"
-namespace kuzu::storage {
+namespace koredb::storage {
 
-struct KUZU_API ColumnChunkStats {
+struct KOREDB_API ColumnChunkStats {
     std::optional<StorageValue> max;
     std::optional<StorageValue> min;
 
@@ -27,4 +27,4 @@ struct MergedColumnChunkStats {
     void merge(const MergedColumnChunkStats& o, common::PhysicalTypeID dataType);
 };
 
-} // namespace kuzu::storage
+} // namespace koredb::storage

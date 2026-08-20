@@ -8,7 +8,7 @@
 #include "storage/table/group_collection.h"
 #include "storage/table/version_record_handler.h"
 
-namespace kuzu {
+namespace koredb {
 namespace transaction {
 class Transaction;
 } // namespace transaction
@@ -255,4 +255,4 @@ protected:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

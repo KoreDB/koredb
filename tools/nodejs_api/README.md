@@ -1,14 +1,14 @@
 
-# Kuzu Node.js API
+# KoreDB Node.js API
 
-A high-performance graph database for knowledge-intensive applications. This Node.js wrapper enables interaction with the Kuzu database via JavaScript or TypeScript using either **CommonJS** or **ES Modules**.
+A high-performance graph database for knowledge-intensive applications. This Node.js wrapper enables interaction with the KoreDB database via JavaScript or TypeScript using either **CommonJS** or **ES Modules**.
 
 ---
 
 ## 📦 Installation
 
 ```bash
-npm install kuzu
+npm install koredb
 ```
 
 ---
@@ -18,8 +18,8 @@ npm install kuzu
 ### Example (ES Modules)
 
 ```js
-// Import the Kùzu module (ESM)
-import { Database, Connection } from "kuzu";
+// Import the KoreDB module (ESM)
+import { Database, Connection } from "koredb";
 
 const main = async () => {
   // Initialize database and connection
@@ -60,13 +60,77 @@ const main = async () => {
 
 main().catch(console.error);
 ```
- ✅ The dataset used in this example can be found in the [official Kuzu repository](https://github.com/kuzudb/kuzu/tree/master/dataset/demo-db/csv).
+ ✅ The dataset used in this example can be found in the [official KoreDB repository](https://github.com/kuzudb/kuzu/tree/master/dataset/demo-db/csv).
+
+---
+
+## ⚡ Electron
+
+The native addon is built against **Node-API (`NAPI_VERSION=6`)**, which is ABI-stable
+across both Node.js and Electron. The prebuilt binaries shipped in the npm package are
+therefore loaded as-is by Electron &ge; 11 — there is **no** `electron-rebuild` step and
+no separate Electron build.
+
+Prebuilt binaries are published for all six supported targets:
+
+| Platform | amd64 | arm64 |
+| -------- | ----- | ----- |
+| Windows  | ✅    | ✅    |
+| macOS    | ✅    | ✅    |
+| Linux    | ✅    | ✅    |
+
+### Packaging an Electron app
+
+Native addons cannot be loaded from inside an `asar` archive, so unpack them when
+bundling with `electron-builder`:
+
+```json
+{
+  "build": {
+    "asarUnpack": ["**/node_modules/koredb/**"]
+  }
+}
+```
+
+With `electron-forge`, add the equivalent `packagerConfig.asar.unpack` entry.
+
+### Running the Electron smoke test
+
+`test/electron` is a minimal Electron app that loads the published package and runs a
+query in the main process. CI runs it on every platform/architecture before publishing:
+
+```bash
+cd test/electron
+npm install
+npm install <path-to>/koredb-source.tar.gz
+npm test
+```
+
+On headless Linux, run it under `xvfb-run -a npm test`.
+
+---
+
+## 📈 Benchmarking
+
+```bash
+npm install --include=dev
+npm run build          # build the addon into ../build
+npm run bench:gen      # generate bench/bench.koredb (KOREDB_BENCH_SCALE=1 by default)
+KOREDB_BENCH_DB=bench/bench.koredb npm run bench -- --isolated
+```
+
+`--isolated` forks one process per query so each query gets a clean RSS baseline;
+omit it to reuse a single process. Add `--materialize` to measure full `getAll()`
+client-side materialization instead of streaming.
+
+The `Node.js Benchmark` GitHub Actions workflow runs exactly this sequence and uploads
+the report as an artifact.
 
 ---
 
 ## 📚 API Overview
 
-The `kuzu` package exposes the following primary classes:
+The `koredb` package exposes the following primary classes:
 
 * `Database` – Initializes a database from a file path.
 * `Connection` – Executes queries on a connected database.
@@ -118,7 +182,7 @@ If a prebuilt binary is unavailable for your platform, the module will be built 
 2. Name them using the format:
 
    ```
-   kuzujs-${platform}-${arch}.node
+   koredbjs-${platform}-${arch}.node
    ```
 3. Run the packaging script:
 
@@ -144,6 +208,6 @@ Refer to the [npm documentation](https://docs.npmjs.com/cli/v9/commands/npm-publ
 
 ## 🔗 Resources
 
-* [Kuzu GitHub](https://github.com/kuzudb/kuzu)
-* [Kuzu Documentation](https://docs.kuzudb.com)
+* [KoreDB GitHub](https://github.com/kuzudb/kuzu)
+* [KoreDB Documentation](https://docs.kuzudb.com)
 * [Issue Tracker](https://github.com/kuzudb/kuzu/issues)

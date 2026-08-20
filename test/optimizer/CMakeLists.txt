@@ -1,1 +1,1 @@
-add_kuzu_test(optimizer_test optimizer_test.cpp)
+add_koredb_test(optimizer_test optimizer_test.cpp)

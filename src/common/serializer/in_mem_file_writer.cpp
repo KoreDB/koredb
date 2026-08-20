@@ -5,7 +5,7 @@
 #include "storage/shadow_file.h"
 #include "storage/shadow_utils.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 InMemFileWriter::InMemFileWriter(storage::MemoryManager& mm) : mm{mm}, pageOffset{0} {}
@@ -16,14 +16,14 @@ void InMemFileWriter::write(const uint8_t* data, uint64_t size) {
         if (needNewBuffer(size)) {
             const auto lastPage = pages.empty() ? nullptr : pages.back().get();
             if (lastPage) {
-                auto toCopy = std::min(size, KUZU_PAGE_SIZE - pageOffset);
+                auto toCopy = std::min(size, KOREDB_PAGE_SIZE - pageOffset);
                 memcpy(lastPage->getData() + pageOffset, data + (size - remaining), toCopy);
                 remaining -= toCopy;
             }
-            pages.push_back(mm.allocateBuffer(false, KUZU_PAGE_SIZE));
+            pages.push_back(mm.allocateBuffer(false, KOREDB_PAGE_SIZE));
             pageOffset = 0;
         }
-        auto toCopy = std::min(remaining, KUZU_PAGE_SIZE - pageOffset);
+        auto toCopy = std::min(remaining, KOREDB_PAGE_SIZE - pageOffset);
         memcpy(pages.back()->getData() + pageOffset, data + (size - remaining), toCopy);
         pageOffset += toCopy;
         remaining -= toCopy;
@@ -48,7 +48,7 @@ void InMemFileWriter::flush(storage::PageRange allocatedPageRange, storage::File
         auto insertingNewPage = pageIdx >= numPagesBeforeAllocate;
         auto shadowPageAndFrame = storage::ShadowUtils::createShadowVersionIfNecessaryAndPinPage(
             pageIdx, insertingNewPage, *fileHandle, shadowFile);
-        memcpy(shadowPageAndFrame.frame, pages[i]->getData(), KUZU_PAGE_SIZE);
+        memcpy(shadowPageAndFrame.frame, pages[i]->getData(), KOREDB_PAGE_SIZE);
         shadowFile.getShadowingFH().unpinPage(shadowPageAndFrame.shadowPage);
     }
 
@@ -60,25 +60,25 @@ void InMemFileWriter::flush(storage::PageRange allocatedPageRange, storage::File
         auto insertingNewPage = pageIdx >= numPagesBeforeAllocate;
         auto shadowPageAndFrame = storage::ShadowUtils::createShadowVersionIfNecessaryAndPinPage(
             pageIdx, insertingNewPage, *fileHandle, shadowFile);
-        memset(shadowPageAndFrame.frame, 0u, KUZU_PAGE_SIZE);
+        memset(shadowPageAndFrame.frame, 0u, KOREDB_PAGE_SIZE);
         shadowFile.getShadowingFH().unpinPage(shadowPageAndFrame.shadowPage);
     }
 }
 
 void InMemFileWriter::flush(BufferedFileWriter& writer) const {
     for (auto i = 0u; i < pages.size(); i++) {
-        auto sizeToFlush = (i == pages.size() - 1) ? pageOffset : KUZU_PAGE_SIZE;
+        auto sizeToFlush = (i == pages.size() - 1) ? pageOffset : KOREDB_PAGE_SIZE;
         writer.write(pages[i]->getData(), sizeToFlush);
     }
 }
 
 bool InMemFileWriter::needNewBuffer(uint64_t size) const {
-    return pages.empty() || pageOffset + size > KUZU_PAGE_SIZE;
+    return pages.empty() || pageOffset + size > KOREDB_PAGE_SIZE;
 }
 
 uint64_t InMemFileWriter::getPageSize() {
-    return KUZU_PAGE_SIZE;
+    return KOREDB_PAGE_SIZE;
 }
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

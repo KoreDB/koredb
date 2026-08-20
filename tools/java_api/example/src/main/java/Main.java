@@ -1,4 +1,4 @@
-import com.kuzudb.*;
+import com.koredb.*;
 
 public class Main {
     public static void main(String[] args) {

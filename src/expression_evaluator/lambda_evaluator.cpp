@@ -7,12 +7,12 @@
 #include "function/list/vector_list_functions.h"
 #include "parser/expression/parsed_lambda_expression.h"
 
-using namespace kuzu::common;
-using namespace kuzu::processor;
-using namespace kuzu::main;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::processor;
+using namespace koredb::main;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace evaluator {
 
 void ListLambdaEvaluator::init(const ResultSet& resultSet, ClientContext* clientContext) {
@@ -115,4 +115,4 @@ ListLambdaType ListLambdaEvaluator::checkListLambdaTypeWithFunctionName(std::str
 }
 
 } // namespace evaluator
-} // namespace kuzu
+} // namespace koredb

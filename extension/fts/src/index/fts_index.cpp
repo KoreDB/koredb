@@ -6,12 +6,12 @@
 #include "re2.h"
 #include "utils/fts_utils.h"
 
-namespace kuzu {
+namespace koredb {
 namespace fts_extension {
 
-using namespace kuzu::storage;
-using namespace kuzu::common;
-using namespace kuzu::transaction;
+using namespace koredb::storage;
+using namespace koredb::common;
+using namespace koredb::transaction;
 
 FTSIndex::FTSIndex(IndexInfo indexInfo, std::unique_ptr<IndexStorageInfo> storageInfo,
     FTSConfig config, main::ClientContext* context)
@@ -350,4 +350,4 @@ void FTSIndex::deleteFromAppearsInTable(Transaction* transaction, FTSDeleteState
 }
 
 } // namespace fts_extension
-} // namespace kuzu
+} // namespace koredb

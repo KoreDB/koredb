@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     import pyarrow as pa
     import torch_geometric.data as geo
 
-    from . import _kuzu
+    from . import _koredb
 
     if sys.version_info >= (3, 11):
         from typing import Self
@@ -28,14 +28,14 @@ if TYPE_CHECKING:
 class QueryResult:
     """QueryResult stores the result of a query execution."""
 
-    def __init__(self, connection: _kuzu.Connection, query_result: _kuzu.QueryResult):  # type: ignore[name-defined]
+    def __init__(self, connection: _koredb.Connection, query_result: _koredb.QueryResult):  # type: ignore[name-defined]
         """
         Parameters
         ----------
-        connection : _kuzu.Connection
+        connection : _koredb.Connection
             The underlying C++ connection object from pybind11.
 
-        query_result : _kuzu.QueryResult
+        query_result : _koredb.QueryResult
             The underlying C++ query result object from pybind11.
 
         """

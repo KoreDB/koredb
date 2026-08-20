@@ -3,12 +3,12 @@
 #include "main/client_context.h"
 #include "main/database.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::binder;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace planner {
 
 bool QueryGraphPlanningInfo::containsCorrExpr(const Expression& expr) const {
@@ -126,4 +126,4 @@ LogicalPlan Planner::planStatement(const BoundStatement& statement) {
 }
 
 } // namespace planner
-} // namespace kuzu
+} // namespace koredb

@@ -23,7 +23,7 @@
 #include "storage/table/node_table.h"
 #include "utils/fts_utils.h"
 
-namespace kuzu {
+namespace koredb {
 namespace fts_extension {
 
 using namespace storage;
@@ -537,4 +537,4 @@ function_set QueryFTSFunction::getFunctionSet() {
 }
 
 } // namespace fts_extension
-} // namespace kuzu
+} // namespace koredb

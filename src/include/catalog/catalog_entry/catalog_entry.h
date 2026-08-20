@@ -8,14 +8,14 @@
 #include "common/serializer/serializer.h"
 #include "common/types/types.h"
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 class ClientContext;
 } // namespace main
 
 namespace catalog {
 
-struct KUZU_API ToCypherInfo {
+struct KOREDB_API ToCypherInfo {
     virtual ~ToCypherInfo() = default;
 
     template<class TARGET>
@@ -24,7 +24,7 @@ struct KUZU_API ToCypherInfo {
     }
 };
 
-class KUZU_API CatalogEntry {
+class KOREDB_API CatalogEntry {
 public:
     //===--------------------------------------------------------------------===//
     // constructor & destructor
@@ -111,4 +111,4 @@ protected:
 };
 
 } // namespace catalog
-} // namespace kuzu
+} // namespace koredb

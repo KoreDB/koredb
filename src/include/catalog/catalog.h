@@ -5,13 +5,13 @@
 #include "common/cast.h"
 #include "function/function.h"
 
-namespace kuzu::main {
+namespace koredb::main {
 struct DBConfig;
-} // namespace kuzu::main
+} // namespace koredb::main
 
-namespace kuzu {
+namespace koredb {
 namespace main {
-class AttachedKuzuDatabase;
+class AttachedKoreDBDatabase;
 } // namespace main
 
 namespace binder {
@@ -48,8 +48,8 @@ template<typename T>
 concept TableCatalogEntryType =
     std::is_same_v<T, NodeTableCatalogEntry> || std::is_same_v<T, RelGroupCatalogEntry>;
 
-class KUZU_API Catalog {
-    friend class main::AttachedKuzuDatabase;
+class KOREDB_API Catalog {
+    friend class main::AttachedKoreDBDatabase;
 
 public:
     Catalog();
@@ -233,4 +233,4 @@ private:
 };
 
 } // namespace catalog
-} // namespace kuzu
+} // namespace koredb

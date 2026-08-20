@@ -7,15 +7,15 @@
 
 #include "common/api.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 struct CaseInsensitiveStringHashFunction {
-    KUZU_API uint64_t operator()(const std::string& str) const;
+    KOREDB_API uint64_t operator()(const std::string& str) const;
 };
 
 struct CaseInsensitiveStringEquality {
-    KUZU_API bool operator()(const std::string& lhs, const std::string& rhs) const;
+    KOREDB_API bool operator()(const std::string& lhs, const std::string& rhs) const;
 };
 
 template<typename T>
@@ -26,4 +26,4 @@ using case_insensitve_set_t = std::unordered_set<std::string, CaseInsensitiveStr
     CaseInsensitiveStringEquality>;
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

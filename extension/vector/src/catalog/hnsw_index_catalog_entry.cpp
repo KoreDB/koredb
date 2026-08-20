@@ -8,9 +8,9 @@
 #include "index/hnsw_config.h"
 #include "main/client_context.h"
 
-using namespace kuzu::catalog;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace vector_extension {
 
 std::shared_ptr<common::BufferWriter> HNSWIndexAuxInfo::serialize() const {
@@ -46,4 +46,4 @@ std::string HNSWIndexAuxInfo::toCypher(const IndexCatalogEntry& indexEntry,
 }
 
 } // namespace vector_extension
-} // namespace kuzu
+} // namespace koredb

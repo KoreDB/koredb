@@ -6,9 +6,9 @@
 #include "common/system_config.h"
 #include "processor/operator/order_by/external_merge_sort.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 SortSharedState::SortSharedState() : nextTableIdx{0}, numBytesPerTuple{0} {
@@ -111,7 +111,7 @@ void SortLocalState::append(const std::vector<common::ValueVector*>& keyVectors,
     payloadTable->append(payloadVectors);
 }
 
-void SortLocalState::finalize(kuzu::processor::SortSharedState& sharedState) {
+void SortLocalState::finalize(koredb::processor::SortSharedState& sharedState) {
     for (auto& keyBlock : orderByKeyEncoder->getKeyBlocks()) {
         if (keyBlock->numTuples > 0) {
             radixSorter->sortSingleKeyBlock(*keyBlock);
@@ -231,4 +231,4 @@ void PayloadScanner::applyLimitOnResultVectors(std::vector<common::ValueVector*>
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

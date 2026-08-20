@@ -12,11 +12,11 @@
 #include "storage/table/chunked_node_group.h"
 #include "storage/table/node_table.h"
 
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::string NodeBatchInsertPrintInfo::toString() const {
@@ -307,4 +307,4 @@ void NodeBatchInsert::finalizeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

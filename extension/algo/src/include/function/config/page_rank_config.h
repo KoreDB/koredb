@@ -6,7 +6,7 @@
 #include "common/types/types.h"
 #include "function/gds/gds.h"
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct DampingFactor {
@@ -38,4 +38,4 @@ struct NormalizeInitial {
 };
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

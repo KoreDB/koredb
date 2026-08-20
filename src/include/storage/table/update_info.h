@@ -5,7 +5,7 @@
 #include "column_chunk_data.h"
 #include "common/types/types.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 class ValueVector;
 } // namespace common
@@ -75,4 +75,4 @@ private:
 };
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

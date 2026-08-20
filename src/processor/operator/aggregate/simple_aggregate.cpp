@@ -20,10 +20,10 @@
 #include "processor/result/factorized_table_schema.h"
 #include "storage/buffer_manager/memory_manager.h"
 
-using namespace kuzu::common;
-using namespace kuzu::function;
+using namespace koredb::common;
+using namespace koredb::function;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::string SimpleAggregatePrintInfo::toString() const {
@@ -270,4 +270,4 @@ void SimpleAggregateFinalize::executeInternal(ExecutionContext* context) {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

@@ -15,10 +15,10 @@
 #include "processor/result/factorized_table_util.h"
 #include "storage/buffer_manager/memory_manager.h"
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 static bool schemaHasUnflatColumn(const FactorizedTableSchema& schema) {
@@ -283,4 +283,4 @@ idx_t PartitionedFactorizedTable::spillToReduceResidentBytesTo(uint64_t maxResid
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

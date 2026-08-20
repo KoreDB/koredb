@@ -3,10 +3,10 @@
 #include "binder/query/reading_clause/bound_unwind_clause.h"
 #include "parser/query/reading_clause/unwind_clause.h"
 
-using namespace kuzu::parser;
-using namespace kuzu::common;
+using namespace koredb::parser;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 // E.g. UNWIND $1. We cannot validate $1 has data type LIST until we see the actual parameter.
@@ -52,4 +52,4 @@ std::unique_ptr<BoundReadingClause> Binder::bindUnwindClause(const ReadingClause
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

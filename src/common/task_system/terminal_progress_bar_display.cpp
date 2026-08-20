@@ -1,6 +1,6 @@
 #include "common/task_system/terminal_progress_bar_display.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 void TerminalProgressBarDisplay::updateProgress(uint64_t /*queryID*/, double newPipelineProgress,
@@ -60,4 +60,4 @@ void TerminalProgressBarDisplay::printProgressBar() {
 }
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

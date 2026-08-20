@@ -11,7 +11,7 @@
 #include "storage/table/column_chunk_metadata.h"
 #include <concepts>
 
-namespace kuzu::storage {
+namespace koredb::storage {
 
 using namespace common;
 using namespace transaction;
@@ -463,4 +463,4 @@ std::pair<offset_t, PageCursor> ColumnReadWriter::getOffsetAndCursor(offset_t no
     return {offsetInChunk, cursor};
 }
 
-} // namespace kuzu::storage
+} // namespace koredb::storage

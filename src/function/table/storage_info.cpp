@@ -20,12 +20,12 @@
 #include "storage/table/struct_column.h"
 #include <concepts>
 
-using namespace kuzu::common;
-using namespace kuzu::catalog;
-using namespace kuzu::storage;
-using namespace kuzu::main;
+using namespace koredb::common;
+using namespace koredb::catalog;
+using namespace koredb::storage;
+using namespace koredb::main;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct StorageInfoLocalState final : TableFuncLocalState {
@@ -371,4 +371,4 @@ function_set StorageInfoFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

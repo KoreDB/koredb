@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-#include "main/kuzu.h"
+#include "main/koredb.h"
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 // Convert an entire CSV dataset directory to some specified output.
@@ -62,4 +62,4 @@ private:
 };
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

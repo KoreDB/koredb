@@ -1,10 +1,10 @@
-import kuzu from "./index.js";
+import koredb from "./index.js";
 
 // Re-export everything from the CommonJS module
-export const Database = kuzu.Database;
-export const Connection = kuzu.Connection;
-export const PreparedStatement = kuzu.PreparedStatement;
-export const QueryResult = kuzu.QueryResult;
-export const VERSION = kuzu.VERSION;
-export const STORAGE_VERSION = kuzu.STORAGE_VERSION;
-export default kuzu;
+export const Database = koredb.Database;
+export const Connection = koredb.Connection;
+export const PreparedStatement = koredb.PreparedStatement;
+export const QueryResult = koredb.QueryResult;
+export const VERSION = koredb.VERSION;
+export const STORAGE_VERSION = koredb.STORAGE_VERSION;
+export default koredb;

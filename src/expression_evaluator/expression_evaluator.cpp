@@ -2,9 +2,9 @@
 
 #include "common/exception/runtime.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace evaluator {
 
 void ExpressionEvaluator::init(const processor::ResultSet& resultSet,
@@ -54,4 +54,4 @@ bool ExpressionEvaluator::select(common::SelectionVector& selVector,
 }
 
 } // namespace evaluator
-} // namespace kuzu
+} // namespace koredb

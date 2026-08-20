@@ -7,12 +7,12 @@
 #include "common/cast.h"
 #include "function/table/table_function.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
 class FileSystem;
 
-struct KUZU_API FileInfo {
+struct KOREDB_API FileInfo {
     FileInfo(std::string path, FileSystem* fileSystem)
         : path{std::move(path)}, fileSystem{fileSystem} {}
 
@@ -64,4 +64,4 @@ struct KUZU_API FileInfo {
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

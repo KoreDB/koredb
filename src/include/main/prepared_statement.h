@@ -8,7 +8,7 @@
 #include "common/api.h"
 #include "query_summary.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 class LogicalType;
 }
@@ -43,19 +43,19 @@ class PreparedStatement {
     friend class testing::TestRunner;
 
 public:
-    KUZU_API ~PreparedStatement();
+    KOREDB_API ~PreparedStatement();
     /**
      * @return the query is prepared successfully or not.
      */
-    KUZU_API bool isSuccess() const;
+    KOREDB_API bool isSuccess() const;
     /**
      * @return the error message if the query is not prepared successfully.
      */
-    KUZU_API std::string getErrorMessage() const;
+    KOREDB_API std::string getErrorMessage() const;
     /**
      * @return the prepared statement is read-only or not.
      */
-    KUZU_API bool isReadOnly() const;
+    KOREDB_API bool isReadOnly() const;
 
     std::unordered_map<std::string, std::shared_ptr<common::Value>>& getParameterMapUnsafe() {
         return parameterMap;
@@ -80,4 +80,4 @@ private:
 };
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

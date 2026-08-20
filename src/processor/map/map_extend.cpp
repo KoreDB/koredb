@@ -8,13 +8,13 @@
 #include "processor/plan_mapper.h"
 #include "storage/storage_manager.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::common;
-using namespace kuzu::planner;
-using namespace kuzu::storage;
-using namespace kuzu::catalog;
+using namespace koredb::binder;
+using namespace koredb::common;
+using namespace koredb::planner;
+using namespace koredb::storage;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 static ScanRelTableInfo getRelTableScanInfo(const TableCatalogEntry& tableEntry,
@@ -183,4 +183,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapExtend(const LogicalOperator* l
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

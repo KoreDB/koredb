@@ -1,9 +1,9 @@
 #include "api_test/api_test.h"
 
-using namespace kuzu::common;
-using namespace kuzu::testing;
+using namespace koredb::common;
+using namespace koredb::testing;
 
-static void checkTuple(kuzu::processor::FlatTuple* tuple, const std::string& groundTruth) {
+static void checkTuple(koredb::processor::FlatTuple* tuple, const std::string& groundTruth) {
     ASSERT_STREQ(tuple->toString().c_str(), groundTruth.c_str());
 }
 

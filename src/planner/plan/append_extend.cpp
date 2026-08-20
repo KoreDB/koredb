@@ -12,13 +12,13 @@
 #include "planner/operator/logical_path_property_probe.h"
 #include "planner/planner.h"
 
-using namespace kuzu::common;
-using namespace kuzu::binder;
-using namespace kuzu::catalog;
-using namespace kuzu::transaction;
-using namespace kuzu::function;
+using namespace koredb::common;
+using namespace koredb::binder;
+using namespace koredb::catalog;
+using namespace koredb::transaction;
+using namespace koredb::function;
 
-namespace kuzu {
+namespace koredb {
 namespace planner {
 
 static std::unordered_set<table_id_t> getBoundNodeTableIDSet(const RelExpression& rel,
@@ -188,4 +188,4 @@ void Planner::appendNodeLabelFilter(std::shared_ptr<Expression> nodeID,
 }
 
 } // namespace planner
-} // namespace kuzu
+} // namespace koredb

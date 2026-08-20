@@ -13,7 +13,7 @@ jobs:
       NUM_THREADS: 128
       GEN: Ninja
       EXTENSION_LIST: "algo"
-    runs-on: kuzu-self-hosted-benchmarking-xl
+    runs-on: koredb-self-hosted-benchmarking-xl
     steps:
       - uses: actions/checkout@v4
 

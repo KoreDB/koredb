@@ -3,10 +3,10 @@
 #include "processor/operator/result_collector.h"
 #include "processor/plan_mapper.h"
 
-using namespace kuzu::planner;
-using namespace kuzu::common;
+using namespace koredb::planner;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::unique_ptr<PhysicalOperator> PlanMapper::mapAccumulate(
@@ -30,4 +30,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapAccumulate(
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

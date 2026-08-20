@@ -2,7 +2,7 @@
 
 #include "function/function.h"
 
-namespace kuzu {
+namespace koredb {
 namespace algo_extension {
 
 struct SCCFunction {
@@ -72,4 +72,4 @@ struct LouvainFunction {
 };
 
 } // namespace algo_extension
-} // namespace kuzu
+} // namespace koredb

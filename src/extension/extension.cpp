@@ -17,7 +17,7 @@
 #include <dlfcn.h>
 #endif
 
-namespace kuzu {
+namespace koredb {
 namespace extension {
 
 std::string getOS() {
@@ -74,7 +74,7 @@ std::string ExtensionSourceUtils::toString(ExtensionSource source) {
 static ExtensionRepoInfo getExtensionFilePath(const std::string& extensionName,
     const std::string& extensionRepo, const std::string& fileName) {
     auto extensionURL = common::stringFormat(ExtensionUtils::EXTENSION_FILE_REPO_PATH,
-        extensionRepo, KUZU_EXTENSION_VERSION, getPlatform(), extensionName, fileName);
+        extensionRepo, KOREDB_EXTENSION_VERSION, getPlatform(), extensionName, fileName);
     return getExtensionRepoInfo(extensionURL);
 }
 
@@ -97,8 +97,8 @@ ExtensionRepoInfo ExtensionUtils::getExtensionInstallerRepoInfo(const std::strin
 
 ExtensionRepoInfo ExtensionUtils::getSharedLibRepoInfo(const std::string& fileName,
     const std::string& extensionRepo) {
-    auto extensionURL = common::stringFormat(SHARED_LIB_REPO, extensionRepo, KUZU_EXTENSION_VERSION,
-        getPlatform(), fileName);
+    auto extensionURL = common::stringFormat(SHARED_LIB_REPO, extensionRepo,
+        KOREDB_EXTENSION_VERSION, getPlatform(), fileName);
     return getExtensionRepoInfo(extensionURL);
 }
 
@@ -243,4 +243,4 @@ void dlclose(void* handle) {
 #endif
 
 } // namespace extension
-} // namespace kuzu
+} // namespace koredb

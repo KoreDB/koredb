@@ -2,10 +2,10 @@
 
 #include "catalog/catalog.h"
 
-namespace kuzu {
+namespace koredb {
 namespace extension {
 
-class KUZU_API CatalogExtension : public catalog::Catalog {
+class KOREDB_API CatalogExtension : public catalog::Catalog {
 public:
     CatalogExtension() : Catalog() {}
 
@@ -15,4 +15,4 @@ public:
 };
 
 } // namespace extension
-} // namespace kuzu
+} // namespace koredb

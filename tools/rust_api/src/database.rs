@@ -6,7 +6,7 @@ use std::path::Path;
 use crate::error::Error;
 use crate::ffi::ffi;
 
-/// The Database class is the main class of `KuzuDB`. It manages all database components.
+/// The Database class is the main class of `KoreDB`. It manages all database components.
 pub struct Database {
     pub(crate) db: UnsafeCell<UniquePtr<ffi::Database>>,
 }
@@ -255,7 +255,7 @@ mod tests {
     fn test_database_in_memory() -> Result<()> {
         use crate::Value;
         let db = Database::in_memory(SYSTEM_CONFIG_FOR_TESTS)?;
-        // If the special name is ever changed (or removed) kuzu is likely to just create a db directory with that name
+        // If the special name is ever changed (or removed) koredb is likely to just create a db directory with that name
         assert!(!std::path::Path::new(crate::database::IN_MEMORY_DB_NAME).exists());
 
         let conn = Connection::new(&db)?;

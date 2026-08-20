@@ -4,7 +4,7 @@
 #include "storage/compression/compression.h"
 #include "storage/page_range.h"
 
-namespace kuzu::storage {
+namespace koredb::storage {
 struct ColumnChunkMetadata {
     PageRange pageRange;
     uint64_t numValues;
@@ -79,4 +79,4 @@ ColumnChunkMetadata uncompressedGetMetadata(std::span<const uint8_t> buffer, uin
 
 ColumnChunkMetadata booleanGetMetadata(std::span<const uint8_t> buffer, uint64_t capacity,
     uint64_t numValues, StorageValue min, StorageValue max);
-} // namespace kuzu::storage
+} // namespace koredb::storage

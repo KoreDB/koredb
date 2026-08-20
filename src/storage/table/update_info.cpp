@@ -8,10 +8,10 @@
 #include "storage/table/column_chunk_data.h"
 #include "transaction/transaction.h"
 
-using namespace kuzu::transaction;
-using namespace kuzu::common;
+using namespace koredb::transaction;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 
 VectorUpdateInfo* UpdateInfo::update(MemoryManager& memoryManager, const Transaction* transaction,
@@ -142,4 +142,4 @@ VectorUpdateInfo& UpdateInfo::getOrCreateVectorInfo(MemoryManager& memoryManager
 }
 
 } // namespace storage
-} // namespace kuzu
+} // namespace koredb

@@ -10,14 +10,14 @@
 #include "transaction/transaction_manager.h"
 
 using ::testing::Test;
-using namespace kuzu::binder;
-using namespace kuzu::catalog;
-using namespace kuzu::common;
-using namespace kuzu::planner;
-using namespace kuzu::storage;
-using namespace kuzu::transaction;
+using namespace koredb::binder;
+using namespace koredb::catalog;
+using namespace koredb::common;
+using namespace koredb::planner;
+using namespace koredb::storage;
+using namespace koredb::transaction;
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 void DBTest::createDB(uint64_t checkpointWaitTimeout) {
@@ -105,7 +105,7 @@ void DBTest::runTest(const std::vector<std::unique_ptr<TestStatement>>& statemen
             continue;
         }
         if (statement->manualUseDataset == ManualUseDatasetFlag::SCHEMA) {
-            auto dataset = TestHelper::appendKuzuRootPath("dataset/" + statement->dataset);
+            auto dataset = TestHelper::appendKoreDBRootPath("dataset/" + statement->dataset);
             if (conn) {
                 TestHelper::executeScript(dataset + "/" + TestHelper::SCHEMA_FILE_NAME, *conn);
             } else {
@@ -153,4 +153,4 @@ void ConcurrentTestExecutor::runStatements() {
 }
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

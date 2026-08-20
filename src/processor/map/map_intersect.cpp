@@ -5,11 +5,11 @@
 #include "processor/operator/intersect/intersect_build.h"
 #include "processor/plan_mapper.h"
 
-using namespace kuzu::binder;
-using namespace kuzu::planner;
-using namespace kuzu::common;
+using namespace koredb::binder;
+using namespace koredb::planner;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 std::unique_ptr<PhysicalOperator> PlanMapper::mapIntersect(const LogicalOperator* logicalOperator) {
@@ -65,4 +65,4 @@ std::unique_ptr<PhysicalOperator> PlanMapper::mapIntersect(const LogicalOperator
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

@@ -9,7 +9,7 @@
 #include "function/aggregate_function.h"
 #include "processor/result/partitioned_factorized_table.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 class ValueVector;
 class VirtualFileSystem;
@@ -48,7 +48,7 @@ class AggregateHashTable;
 // Scope (v1): non-distinct aggregates; group keys stored flat and sharing one input state with the
 // dependent-key and aggregate-input columns. Not thread-safe; intended to be driven by a single
 // thread. Per-row input multiplicity is supported (stored and re-applied).
-class KUZU_API PartitionedAggregateExecutor {
+class KOREDB_API PartitionedAggregateExecutor {
 public:
     // aggInputTypes[i] is the input column type of aggregate function i, or ANY() when the function
     // takes no input (e.g. COUNT(*)). aggResultTypes[i] is function i's finalized result type. Both
@@ -125,4 +125,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

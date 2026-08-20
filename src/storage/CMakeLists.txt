@@ -7,7 +7,7 @@ add_subdirectory(stats)
 add_subdirectory(table)
 add_subdirectory(wal)
 
-add_library(kuzu_storage
+add_library(koredb_storage
         OBJECT
         checkpointer.cpp
         disk_array.cpp
@@ -25,5 +25,5 @@ add_library(kuzu_storage
         undo_buffer.cpp)
 
 set(ALL_OBJECT_FILES
-        ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:kuzu_storage>
+        ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:koredb_storage>
         PARENT_SCOPE)

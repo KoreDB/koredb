@@ -2,7 +2,7 @@
 
 #include "processor/operator/persistent/rel_batch_insert.h"
 
-namespace kuzu {
+namespace koredb {
 namespace storage {
 class CSRNodeGroup;
 struct ChunkedCSRHeader;
@@ -45,4 +45,4 @@ private:
 };
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

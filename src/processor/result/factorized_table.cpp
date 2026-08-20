@@ -12,10 +12,10 @@
 #include "processor/result/factorized_table_util.h"
 #include "storage/buffer_manager/memory_manager.h"
 
-using namespace kuzu::common;
-using namespace kuzu::storage;
+using namespace koredb::common;
+using namespace koredb::storage;
 
-namespace kuzu {
+namespace koredb {
 namespace processor {
 
 DataBlock::DataBlock(storage::MemoryManager* mm, uint64_t size) : numTuples{0}, freeSize{size} {
@@ -929,4 +929,4 @@ void FlatTupleIterator::updateFlatTuplePositionsInDataChunk() {
 }
 
 } // namespace processor
-} // namespace kuzu
+} // namespace koredb

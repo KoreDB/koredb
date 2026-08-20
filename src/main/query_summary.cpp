@@ -2,9 +2,9 @@
 
 #include "common/enums/statement_type.h"
 
-using namespace kuzu::common;
+using namespace koredb::common;
 
-namespace kuzu {
+namespace koredb {
 namespace main {
 
 double QuerySummary::getCompilingTime() const {
@@ -36,4 +36,4 @@ common::StatementType QuerySummary::getStatementType() const {
 }
 
 } // namespace main
-} // namespace kuzu
+} // namespace koredb

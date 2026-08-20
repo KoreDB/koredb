@@ -25,7 +25,7 @@
 
 using std::string;
 
-namespace kuzu_apache {
+namespace koredb_apache {
 namespace thrift {
 namespace transport {
 
@@ -136,4 +136,4 @@ const uint8_t* TMemoryBuffer::borrowSlow(uint8_t* buf, uint32_t* len) {
 }
 }
 }
-} // kuzu_apache::thrift::transport
+} // koredb_apache::thrift::transport

@@ -9,11 +9,11 @@
 #include "main/client_context.h"
 #include "parser/expression/parsed_subquery_expression.h"
 
-using namespace kuzu::parser;
-using namespace kuzu::common;
-using namespace kuzu::function;
+using namespace koredb::parser;
+using namespace koredb::common;
+using namespace koredb::function;
 
-namespace kuzu {
+namespace koredb {
 namespace binder {
 
 std::shared_ptr<Expression> ExpressionBinder::bindSubqueryExpression(
@@ -71,4 +71,4 @@ std::shared_ptr<Expression> ExpressionBinder::bindSubqueryExpression(
 }
 
 } // namespace binder
-} // namespace kuzu
+} // namespace koredb

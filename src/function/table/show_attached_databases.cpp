@@ -4,10 +4,10 @@
 #include "main/client_context.h"
 #include "main/database_manager.h"
 
-using namespace kuzu::common;
-using namespace kuzu::catalog;
+using namespace koredb::common;
+using namespace koredb::catalog;
 
-namespace kuzu {
+namespace koredb {
 namespace function {
 
 struct ShowAttachedDatabasesBindData final : TableFuncBindData {
@@ -63,4 +63,4 @@ function_set ShowAttachedDatabasesFunction::getFunctionSet() {
 }
 
 } // namespace function
-} // namespace kuzu
+} // namespace koredb

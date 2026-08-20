@@ -9,7 +9,7 @@
 
 #include "common/constants.h"
 
-namespace kuzu {
+namespace koredb {
 namespace testing {
 
 enum class ConcurrentStatusFlag {
@@ -89,7 +89,7 @@ struct TestGroup {
     std::unordered_map<std::string, std::set<std::string>> testCasesConnNames;
     bool testFwdOnly;
 
-    enum class DatasetType { CSV, PARQUET, NPY, CSV_TO_PARQUET, TURTLE, KUZU, JSON, CSV_TO_JSON };
+    enum class DatasetType { CSV, PARQUET, NPY, CSV_TO_PARQUET, TURTLE, KOREDB, JSON, CSV_TO_JSON };
     DatasetType datasetType;
 
     bool isValid() const { return !group.empty() && !dataset.empty(); }
@@ -97,4 +97,4 @@ struct TestGroup {
 };
 
 } // namespace testing
-} // namespace kuzu
+} // namespace koredb

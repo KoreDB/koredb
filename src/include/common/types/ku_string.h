@@ -6,10 +6,10 @@
 
 #include "common/api.h"
 
-namespace kuzu {
+namespace koredb {
 namespace common {
 
-struct KUZU_API ku_string_t {
+struct KOREDB_API ku_string_t {
 
     static constexpr uint64_t PREFIX_LENGTH = 4;
     static constexpr uint64_t INLINED_SUFFIX_LENGTH = 8;
@@ -88,4 +88,4 @@ struct KUZU_API ku_string_t {
 };
 
 } // namespace common
-} // namespace kuzu
+} // namespace koredb

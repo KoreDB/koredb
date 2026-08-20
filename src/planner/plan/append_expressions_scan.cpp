@@ -1,9 +1,9 @@
 #include "planner/operator/scan/logical_expressions_scan.h"
 #include "planner/planner.h"
 
-using namespace kuzu::binder;
+using namespace koredb::binder;
 
-namespace kuzu {
+namespace koredb {
 namespace planner {
 
 void Planner::appendExpressionsScan(const expression_vector& expressions, LogicalPlan& plan) {
@@ -13,4 +13,4 @@ void Planner::appendExpressionsScan(const expression_vector& expressions, Logica
 }
 
 } // namespace planner
-} // namespace kuzu
+} // namespace koredb
