@@ -61,25 +61,6 @@ env:
   PIP_BREAK_SYSTEM_PACKAGES: 1
 
 jobs:
-  get-nightly-version:
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.isNightly == 'true' }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Update nightly version
-        run: |
-          python3 -m pip install packaging
-          python3 update-nightly-build-version.py | grep "New Python dev version:" | awk -F'New Python dev version: ' '{print $2}' | sed 's/\.$//' > version.txt
-          cat version.txt
-        working-directory: scripts
-
-      - name: Upload version
-        uses: actions/upload-artifact@v4
-        with:
-          name: version
-          path: scripts/version.txt
-
   # ---------------------------------------------------------------- Node.js --
 
   build-nodejs-mac:
@@ -147,6 +128,7 @@ jobs:
           name: koredb-deploy-nodejs
           path: tools/nodejs_api/dist
           if-no-files-found: error
+          retention-days: 1
 
   test-nodejs-electron:
     if: ${{ github.event_name == 'schedule' || github.event.inputs.skipNodejs != 'true' }}
@@ -240,6 +222,7 @@ jobs:
           name: python-sdist
           path: scripts/pip-package/*.tar.gz
           if-no-files-found: error
+          retention-days: 1
 
   deploy-python:
     permissions:
@@ -270,13 +253,6 @@ jobs:
       - name: List wheels
         run: ls -l
         working-directory: dist
-
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: koredb-deploy-wheels
-          path: dist/*
-          if-no-files-found: error
 
       - name: Deploy to PyPI test
         if: ${{ github.event_name != 'schedule' && github.event.inputs.isDeploy != 'true' }}
@@ -371,15 +347,11 @@ jobs:
         if: ${{ github.event.inputs.isDeploy != 'true' }}
         working-directory: tools/rust_api
 
-      - name: Upload crate
-        uses: actions/upload-artifact@v4
-        with:
-          name: koredb-deploy-crate
-          path: tools/rust_api/target/package/*.crate
-
   build-precompiled-bin-mac:
     if: ${{ github.event.inputs.includeBinaries == 'true' }}
     uses: ./.github/workflows/mac-precompiled-bin-workflow.yml
+    permissions:
+      contents: write
     with:
       isNightly: ${{ github.event.inputs.isNightly == 'true' }}
     secrets: inherit
@@ -387,6 +359,8 @@ jobs:
   build-precompiled-bin-linux:
     if: ${{ github.event.inputs.includeBinaries == 'true' }}
     uses: ./.github/workflows/linux-precompiled-bin-workflow.yml
+    permissions:
+      contents: write
     with:
       isNightly: ${{ github.event.inputs.isNightly == 'true' }}
     secrets: inherit
@@ -394,6 +368,8 @@ jobs:
   build-precompiled-bin-windows:
     if: ${{ github.event.inputs.includeBinaries == 'true' }}
     uses: ./.github/workflows/windows-precompiled-bin-workflow.yml
+    permissions:
+      contents: write
     with:
       isNightly: ${{ github.event.inputs.isNightly == 'true' }}
     secrets: inherit

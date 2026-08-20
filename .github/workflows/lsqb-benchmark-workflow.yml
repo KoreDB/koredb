@@ -31,6 +31,8 @@ jobs:
       NUM_THREADS: 4
       GEN: Ninja
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - name: Set env for scheduled run
         if: ${{ github.event_name == 'schedule' }}
@@ -59,12 +61,48 @@ jobs:
         with:
           name: lsqb-benchmark-result
           path: /tmp/benchmark_result/results.csv
+          retention-days: 1
       
       - name: Upload log
         uses: actions/upload-artifact@v4
         with:
           name: lsqb-benchmark-log
           path: lsqb.log
+          retention-days: 1
+
+      - name: Archive the benchmark output
+        id: bench-archive
+        if: ${{ github.event_name != 'pull_request' }}
+        shell: bash
+        env:
+          ARCHIVE: lsqb-${{ github.run_id }}.tar.gz
+        run: |
+          set -euo pipefail
+          rm -rf bench-release && mkdir bench-release
+          for src in /tmp/benchmark_result/results.csv lsqb.log; do
+            if [ -e "$src" ]; then
+              cp -r "$src" bench-release/
+            else
+              echo "missing, skipped: $src"
+            fi
+          done
+          if [ -z "$(ls -A bench-release)" ]; then
+            echo "nothing to publish"
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tar -czf "$ARCHIVE" -C bench-release .
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "published=true" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the benchmark output to a GitHub Release
+        if: ${{ github.event_name != 'pull_request' && steps.bench-archive.outputs.published == 'true' }}
+        uses: ./.github/actions/upload-release-asset
+        with:
+          tag: benchmarks
+          title: Benchmark output
+          files: ${{ steps.bench-archive.outputs.archive }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Report result to server
         run:  python3 benchmark/lsqb/results_reporter.py

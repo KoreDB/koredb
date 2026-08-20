@@ -72,6 +72,8 @@ jobs:
     name: bench-${{ matrix.target.os }}-${{ matrix.target.arch }}
     needs: [select-platforms]
     runs-on: ${{ matrix.target.runner }}
+    permissions:
+      contents: write
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -145,3 +147,38 @@ jobs:
           name: nodejs-bench-${{ matrix.target.os }}-${{ matrix.target.arch }}
           path: tools/nodejs_api/bench-report.txt
           if-no-files-found: error
+          retention-days: 1
+
+      - name: Archive the benchmark output
+        id: bench-archive
+        if: ${{ github.event_name != 'pull_request' }}
+        shell: bash
+        env:
+          ARCHIVE: nodejs-bench-${{ matrix.target.os }}-${{ matrix.target.arch }}-${{ github.run_id }}.tar.gz
+        run: |
+          set -euo pipefail
+          rm -rf bench-release && mkdir bench-release
+          for src in tools/nodejs_api/bench-report.txt; do
+            if [ -e "$src" ]; then
+              cp -r "$src" bench-release/
+            else
+              echo "missing, skipped: $src"
+            fi
+          done
+          if [ -z "$(ls -A bench-release)" ]; then
+            echo "nothing to publish"
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tar -czf "$ARCHIVE" -C bench-release .
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "published=true" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the benchmark output to a GitHub Release
+        if: ${{ github.event_name != 'pull_request' && steps.bench-archive.outputs.published == 'true' }}
+        uses: ./.github/actions/upload-release-asset
+        with:
+          tag: benchmarks
+          title: Benchmark output
+          files: ${{ steps.bench-archive.outputs.archive }}
+          token: ${{ secrets.GITHUB_TOKEN }}

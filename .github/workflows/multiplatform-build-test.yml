@@ -35,6 +35,7 @@ jobs:
         with:
           name: binary-demo
           path: dataset/binary-demo
+          retention-days: 1
 
   macos-build-test:
     strategy:
@@ -147,6 +148,7 @@ jobs:
         with:
           name: ${{ matrix.runner }}
           path: ${{ matrix.runner }}.csv
+          retention-days: 1
 
   windows-build-test:
     strategy:
@@ -283,6 +285,7 @@ jobs:
         with:
           name: ${{ matrix.runner }}
           path: ${{ matrix.runner }}.csv
+          retention-days: 1
 
   debian-ubuntu-build-test:
     strategy:
@@ -424,6 +427,7 @@ jobs:
         with:
           name: ${{env.PLATFORM}}
           path: ${{env.PLATFORM}}.csv
+          retention-days: 1
 
   rhel-fedora-build-test:
     strategy:
@@ -575,6 +579,7 @@ jobs:
         with:
           name: ${{env.PLATFORM}}
           path: ${{env.PLATFORM}}.csv
+          retention-days: 1
 
   archlinux-build-test:
     name: archlinux
@@ -691,6 +696,7 @@ jobs:
         with:
           name: archlinux
           path: archlinux.csv
+          retention-days: 1
 
   collect-results:
     runs-on: ubuntu-22.04
@@ -723,9 +729,3 @@ jobs:
           pip3 install pandas tabulate discord.py
           python3 scripts/multiplatform-test-helper/collect-results.py results
           python3 scripts/multiplatform-test-helper/notify-discord.py results.json
-
-      - name: Upload summary
-        uses: actions/upload-artifact@v4
-        with:
-          name: results
-          path: results.md

@@ -1,0 +1,96 @@
+name: Upload release asset
+description: >-
+  Upload files to a GitHub Release, creating the release first if it does not
+  exist yet. Existing assets with the same name are replaced.
+
+inputs:
+  files:
+    description: >-
+      Space-separated list of files or globs to upload. Every pattern has to
+      match at least one file across the whole list, otherwise the step fails.
+    required: true
+  tag:
+    description: >-
+      Tag of the release to upload to, created on demand. Leave empty to derive
+      it from `nightly`: the rolling `nightly` tag, or `v<project version>`
+      read from CMakeLists.txt.
+    required: false
+    default: ""
+  nightly:
+    description: Select the rolling `nightly` release. Only used when `tag` is empty.
+    required: false
+    default: "false"
+  title:
+    description: Title used when the release has to be created.
+    required: false
+    default: ""
+  prerelease:
+    description: Mark a newly created release as a prerelease.
+    required: false
+    default: "true"
+  token:
+    description: "Token with `contents: write` on this repository."
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Publish to a GitHub Release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        TAG: ${{ inputs.tag }}
+        NIGHTLY: ${{ inputs.nightly }}
+        FILES: ${{ inputs.files }}
+        TITLE: ${{ inputs.title }}
+        PRERELEASE: ${{ inputs.prerelease }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "$TAG" ]; then
+          if [ "$NIGHTLY" = "true" ]; then
+            TAG=nightly
+            PRERELEASE=true
+          else
+            version=$(sed -n 's/^project(KoreDB VERSION \([0-9][0-9.]*\).*/\1/p' CMakeLists.txt)
+            if [ -z "$version" ]; then
+              echo "::error::could not read the project version from CMakeLists.txt"
+              exit 1
+            fi
+            TAG="v${version}"
+            PRERELEASE=false
+          fi
+        fi
+        echo "release tag: $TAG (prerelease=$PRERELEASE)"
+
+        # Expand the globs up front so an empty match fails loudly instead of
+        # silently creating a release with nothing in it.
+        assets=()
+        for pattern in $FILES; do
+          for match in $pattern; do
+            if [ -e "$match" ]; then
+              assets+=("$match")
+            fi
+          done
+        done
+        if [ ${#assets[@]} -eq 0 ]; then
+          echo "::error::no files matched: $FILES"
+          exit 1
+        fi
+        printf 'uploading: %s\n' "${assets[@]}"
+
+        if ! gh release view "$TAG" >/dev/null 2>&1; then
+          create=(gh release create "$TAG" --target "$GITHUB_SHA")
+          create+=(--notes "Automated upload from ${GITHUB_WORKFLOW} (run ${GITHUB_RUN_ID}).")
+          if [ -n "$TITLE" ]; then
+            create+=(--title "$TITLE")
+          fi
+          if [ "$PRERELEASE" = "true" ]; then
+            create+=(--prerelease)
+          fi
+          # Jobs race to create the same rolling release; losing the race is
+          # fine as long as the release exists afterwards.
+          "${create[@]}" || gh release view "$TAG" >/dev/null
+        fi
+
+        gh release upload "$TAG" "${assets[@]}" --clobber

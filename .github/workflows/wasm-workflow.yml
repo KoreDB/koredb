@@ -38,3 +38,4 @@ jobs:
         with:
           name: koredb-deploy-wasm
           path: tools/wasm/koredb-wasm.tar.gz
+          retention-days: 1

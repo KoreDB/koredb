@@ -105,3 +105,4 @@ jobs:
           name: linux-nodejs-module-${{ matrix.arch }}
           path: tools/nodejs_api/build/koredbjs-linux-${{ matrix.arch }}.node
           if-no-files-found: error
+          retention-days: 1

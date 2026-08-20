@@ -22,6 +22,7 @@ jobs:
         with:
           name: koredb-python-package
           path: scripts/pip-package/wheelhouse/*.manylinux_2_28_x86_64.whl
+          retention-days: 1
 
   generate-python-docs:
     runs-on: ubuntu-latest
@@ -53,6 +54,7 @@ jobs:
         with:
           name: koredb-python-docs
           path: ./docs
+          retention-days: 1
 
   generate-nodejs-docs:
     runs-on: macos-latest
@@ -78,6 +80,7 @@ jobs:
         with:
           name: koredb-nodejs-docs
           path: ./docs
+          retention-days: 1
   
   generate-wasm-docs:
     runs-on: macos-latest
@@ -105,6 +108,7 @@ jobs:
         with:
           name: koredb-wasm-docs
           path: ./docs
+          retention-days: 1
 
   generate-cpp-docs:
     runs-on: macos-latest
@@ -126,12 +130,14 @@ jobs:
         with:
           name: koredb-cpp-docs
           path: ./scripts/generate-cpp-docs/cpp/docs/html
+          retention-days: 1
       
       - name: Upload C docs
         uses: actions/upload-artifact@v4
         with:
           name: koredb-c-docs
           path: ./scripts/generate-cpp-docs/c/docs/html
+          retention-days: 1
 
   update-docs:
     runs-on: ubuntu-22.04

@@ -2,6 +2,12 @@ name: Build Windows Precompiled Binaries
 
 on:
   workflow_dispatch:
+    inputs:
+      isNightly:
+        description: "Publish to the rolling `nightly` release instead of the version tag"
+        type: boolean
+        required: false
+        default: false
   workflow_call:
     inputs:
       isNightly:
@@ -12,6 +18,8 @@ on:
 jobs:
   build-precompiled-bin:
     runs-on: windows-2022
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -46,8 +54,25 @@ jobs:
             koredb.hpp
             koredb_shared.dll
             koredb_shared.lib
+          retention-days: 1
 
       - uses: actions/upload-artifact@v4
         with:
           name: koredb_cli-windows-x86_64
           path: koredb.exe
+          retention-days: 1
+
+      - name: Create archives for the release
+        shell: pwsh
+        run: |
+          Compress-Archive -Force -DestinationPath libkoredb-windows-x86_64.zip `
+            -Path koredb.h, koredb.hpp, koredb_shared.dll, koredb_shared.lib
+          Compress-Archive -Force -DestinationPath koredb_cli-windows-x86_64.zip `
+            -Path koredb.exe
+
+      - name: Publish the binaries to a GitHub Release
+        uses: ./.github/actions/upload-release-asset
+        with:
+          nightly: ${{ inputs.isNightly }}
+          files: libkoredb-windows-x86_64.zip koredb_cli-windows-x86_64.zip
+          token: ${{ secrets.GITHUB_TOKEN }}

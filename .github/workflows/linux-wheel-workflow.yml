@@ -64,3 +64,4 @@ jobs:
           name: linux-wheels-${{ matrix.target.arch }}-${{ matrix.python }}
           path: ./scripts/pip-package/wheelhouse/*.whl
           if-no-files-found: error
+          retention-days: 1

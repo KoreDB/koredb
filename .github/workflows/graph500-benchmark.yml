@@ -14,6 +14,8 @@ jobs:
       GEN: Ninja
       EXTENSION_LIST: "algo"
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -32,12 +34,48 @@ jobs:
         with:
           name: benchmark-logs
           path: /tmp/benchmark_logs
+          retention-days: 1
 
       - name: Upload comparison results
         uses: actions/upload-artifact@v4
         with:
           name: comparison-results
           path: benchmark/compare_result.md
+          retention-days: 1
+
+      - name: Archive the benchmark output
+        id: bench-archive
+        if: ${{ github.event_name != 'pull_request' }}
+        shell: bash
+        env:
+          ARCHIVE: graph500-${{ github.run_id }}.tar.gz
+        run: |
+          set -euo pipefail
+          rm -rf bench-release && mkdir bench-release
+          for src in /tmp/benchmark_logs benchmark/compare_result.md; do
+            if [ -e "$src" ]; then
+              cp -r "$src" bench-release/
+            else
+              echo "missing, skipped: $src"
+            fi
+          done
+          if [ -z "$(ls -A bench-release)" ]; then
+            echo "nothing to publish"
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tar -czf "$ARCHIVE" -C bench-release .
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "published=true" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the benchmark output to a GitHub Release
+        if: ${{ github.event_name != 'pull_request' && steps.bench-archive.outputs.published == 'true' }}
+        uses: ./.github/actions/upload-release-asset
+        with:
+          tag: benchmarks
+          title: Benchmark output
+          files: ${{ steps.bench-archive.outputs.archive }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fail if benchmark failed
         run: |

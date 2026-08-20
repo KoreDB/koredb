@@ -2,6 +2,12 @@ name: Build Linux Precompiled Binaries
 
 on:
   workflow_dispatch:
+    inputs:
+      isNightly:
+        description: "Publish to the rolling `nightly` release instead of the version tag"
+        type: boolean
+        required: false
+        default: false
   workflow_call:
     inputs:
       isNightly:
@@ -19,6 +25,8 @@ env:
 jobs:
   build-precompiled-bin-x86_64:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -50,15 +58,26 @@ jobs:
         with:
           name: libkoredb-linux-x86_64
           path: libkoredb-linux-x86_64.tar.gz
+          retention-days: 1
 
       - uses: actions/upload-artifact@v4
         with:
           name: koredb_cli-linux-x86_64
           path: koredb_cli-linux-x86_64.tar.gz
+          retention-days: 1
+
+      - name: Publish the binaries to a GitHub Release
+        uses: ./.github/actions/upload-release-asset
+        with:
+          nightly: ${{ inputs.isNightly }}
+          files: libkoredb-linux-x86_64.tar.gz koredb_cli-linux-x86_64.tar.gz
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   build-precompiled-bin-aarch64:
     if: ${{ inputs.x86_64Only != true }}
     runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -90,15 +109,26 @@ jobs:
         with:
           name: libkoredb-linux-aarch64
           path: libkoredb-linux-aarch64.tar.gz
+          retention-days: 1
 
       - uses: actions/upload-artifact@v4
         with:
           name: koredb_cli-linux-aarch64
           path: koredb_cli-linux-aarch64.tar.gz
+          retention-days: 1
+
+      - name: Publish the binaries to a GitHub Release
+        uses: ./.github/actions/upload-release-asset
+        with:
+          nightly: ${{ inputs.isNightly }}
+          files: libkoredb-linux-aarch64.tar.gz koredb_cli-linux-aarch64.tar.gz
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   build-precompiled-bin-android-armv8a:
     if: ${{ inputs.x86_64Only != true }}
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -134,8 +164,17 @@ jobs:
         with:
           name: libkoredb-android-armv8a
           path: libkoredb-android-armv8a.tar.gz
+          retention-days: 1
         
       - uses: actions/upload-artifact@v4
         with:
           name: koredb_cli-android-armv8a
           path: koredb_cli-android-armv8a.tar.gz
+          retention-days: 1
+
+      - name: Publish the binaries to a GitHub Release
+        uses: ./.github/actions/upload-release-asset
+        with:
+          nightly: ${{ inputs.isNightly }}
+          files: libkoredb-android-armv8a.tar.gz koredb_cli-android-armv8a.tar.gz
+          token: ${{ secrets.GITHUB_TOKEN }}

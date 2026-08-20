@@ -125,6 +125,7 @@ jobs:
           path: |
             releases
             dataset
+          retention-days: 1
   
   deploy-extensions:
     needs: package-built-extensions

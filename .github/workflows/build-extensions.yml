@@ -27,6 +27,7 @@ jobs:
         with:
           name: koredb-extensions_linux-x86_64
           path: extension-artifacts
+          retention-days: 1
 
   build-linux-extensions-aarch64:
     if: ${{ inputs.x86_64LinuxOnly != true }}
@@ -46,6 +47,7 @@ jobs:
         with:
           name: koredb-extensions_linux-aarch64
           path: extension-artifacts
+          retention-days: 1
 
   build-mac-extensions-arm64:
     if: ${{ inputs.x86_64LinuxOnly != true }}
@@ -67,6 +69,7 @@ jobs:
         with:
           name: koredb-extensions_osx-arm64
           path: extension-artifacts
+          retention-days: 1
 
   build-mac-extensions-x86_64:
     if: ${{ inputs.x86_64LinuxOnly != true }}
@@ -88,6 +91,7 @@ jobs:
         with:
           name: koredb-extensions_osx-x86_64
           path: extension-artifacts
+          retention-days: 1
 
   build-windows-extensions-x86_64:
     if: ${{ inputs.x86_64LinuxOnly != true }}
@@ -111,3 +115,4 @@ jobs:
         with:
           name: koredb-extensions_win-x86_64
           path: extension-artifacts
+          retention-days: 1

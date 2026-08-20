@@ -76,3 +76,4 @@ jobs:
           name: mac-nodejs-module-${{ matrix.arch }}
           path: tools/nodejs_api/build/koredbjs-darwin-${{ matrix.arch }}.node
           if-no-files-found: error
+          retention-days: 1

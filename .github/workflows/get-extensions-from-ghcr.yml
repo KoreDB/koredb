@@ -37,3 +37,4 @@ jobs:
         with:
           name: ghcr-extensions
           path: ghcr-extensions
+          retention-days: 1

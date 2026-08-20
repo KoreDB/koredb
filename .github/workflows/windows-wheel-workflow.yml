@@ -71,6 +71,7 @@ jobs:
           name: windows-wheels-AMD64-${{ matrix.python }}
           path: ./scripts/pip-package/wheelhouse/*.whl
           if-no-files-found: error
+          retention-days: 1
 
   build-windows-wheels-arm64:
     name: windows-wheel-ARM64-${{ matrix.python }}
@@ -133,3 +134,4 @@ jobs:
           name: windows-wheels-ARM64-${{ matrix.python }}
           path: ./scripts/pip-package/wheelhouse/*.whl
           if-no-files-found: error
+          retention-days: 1

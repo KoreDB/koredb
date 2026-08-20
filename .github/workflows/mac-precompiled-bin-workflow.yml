@@ -2,6 +2,12 @@ name: Build Mac Precompiled Binaries
 
 on:
   workflow_dispatch:
+    inputs:
+      isNightly:
+        description: "Publish to the rolling `nightly` release instead of the version tag"
+        type: boolean
+        required: false
+        default: false
   workflow_call:
     inputs:
       isNightly:
@@ -14,6 +20,8 @@ env:
 jobs:
   build-precompiled-bin-universal:
     runs-on: macos-15-intel
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       
@@ -55,8 +63,17 @@ jobs:
         with:
           name: libkoredb-osx-universal
           path: libkoredb-osx-universal.tar.gz
+          retention-days: 1
 
       - uses: actions/upload-artifact@v4
         with:
           name: koredb_cli-osx-universal
           path: koredb_cli-osx-universal.tar.gz
+          retention-days: 1
+
+      - name: Publish the binaries to a GitHub Release
+        uses: ./.github/actions/upload-release-asset
+        with:
+          nightly: ${{ inputs.isNightly }}
+          files: libkoredb-osx-universal.tar.gz koredb_cli-osx-universal.tar.gz
+          token: ${{ secrets.GITHUB_TOKEN }}

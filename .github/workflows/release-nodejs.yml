@@ -100,6 +100,7 @@ jobs:
           name: koredb-deploy-nodejs
           path: tools/nodejs_api/dist
           if-no-files-found: error
+          retention-days: 1
 
   test-electron:
     needs: [package]
