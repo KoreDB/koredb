@@ -72,9 +72,9 @@ jobs:
   generate-binary-datasets:
     name: generate binary dataset
     needs: [ sanity-checks, python-lint-check ]
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
-      NUM_THREADS: 32
+      NUM_THREADS: 4
       GEN: Ninja
       CC: gcc
       CXX: g++
@@ -141,12 +141,12 @@ jobs:
   gcc-build-test:
     name: gcc build & test
     needs: [ sanity-checks, python-lint-check, generate-binary-datasets ]
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
-      NUM_THREADS: 32
-      TEST_JOBS: 16
-      CLANGD_DIAGNOSTIC_JOBS: 32
-      CLANGD_DIAGNOSTIC_INSTANCES: 6
+      NUM_THREADS: 4
+      TEST_JOBS: 4
+      CLANGD_DIAGNOSTIC_JOBS: 4
+      CLANGD_DIAGNOSTIC_INSTANCES: 2
       GEN: Ninja
       CC: gcc
       CXX: g++
@@ -228,12 +228,12 @@ jobs:
   gcc-build-test-vector-size:
     name: gcc build & test in-mem only with various vector size
     needs: [ gcc-build-test ]
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
-      NUM_THREADS: 32
-      TEST_JOBS: 16
-      CLANGD_DIAGNOSTIC_JOBS: 32
-      CLANGD_DIAGNOSTIC_INSTANCES: 6
+      NUM_THREADS: 4
+      TEST_JOBS: 4
+      CLANGD_DIAGNOSTIC_JOBS: 4
+      CLANGD_DIAGNOSTIC_INSTANCES: 2
       GEN: Ninja
       CC: gcc
       CXX: g++
@@ -291,11 +291,11 @@ jobs:
 
   code-coverage:
     name: code coverage
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     needs: [ sanity-checks, python-lint-check, generate-binary-datasets ]
     env:
-      NUM_THREADS: 32
-      TEST_JOBS: 16
+      NUM_THREADS: 4
+      TEST_JOBS: 4
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -379,11 +379,11 @@ jobs:
   webassembly-build-test:
     name: webassembly build & test
     needs: [ sanity-checks, generate-binary-datasets ]
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
       WERROR: 0
-      TEST_JOBS: 8
-      NUM_THREADS: 32
+      TEST_JOBS: 4
+      NUM_THREADS: 4
 
     steps:
       - uses: actions/checkout@v4
@@ -436,10 +436,10 @@ jobs:
 
   rust-build-test:
     name: rust build & test
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
       # CARGO_BUILD_JOBS is set using this in the Makefile
-      NUM_THREADS: 32
+      NUM_THREADS: 4
       CC: gcc
       CXX: g++
       KOREDB_LOCAL_EXTENSIONS: ${{ github.workspace }}/extension
@@ -462,10 +462,10 @@ jobs:
   clang-build-test-with-tsan:
     name: clang build & test with tsan
     needs: [ clang-build-test, generate-binary-datasets ]
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
-      NUM_THREADS: 32
-      TEST_JOBS: 16
+      NUM_THREADS: 4
+      TEST_JOBS: 4
       GEN: Ninja
       CC: clang
       CXX: clang++
@@ -495,10 +495,10 @@ jobs:
   gcc-build-test-with-asan:
     name: gcc build & test with asan
     needs: [ gcc-build-test, generate-binary-datasets ]
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
-      NUM_THREADS: 32
-      TEST_JOBS: 16
+      NUM_THREADS: 4
+      TEST_JOBS: 4
       GEN: Ninja
       CC: gcc
       CXX: g++
@@ -537,10 +537,10 @@ jobs:
   clang-build-test:
     name: clang build & test
     needs: [ sanity-checks, python-lint-check, generate-binary-datasets ]
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
-      NUM_THREADS: 32
-      TEST_JOBS: 16
+      NUM_THREADS: 4
+      TEST_JOBS: 4
       CC: clang
       CXX: clang++
       UW_S3_ACCESS_KEY_ID: ${{ secrets.UW_S3_ACCESS_KEY_ID }}
@@ -618,10 +618,10 @@ jobs:
         page_size_log2: [ 16, 18 ]
     name: clang build & test with page_size_log2=${{ matrix.page_size_log2 }}
     needs: [ clang-build-test ]
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
-      NUM_THREADS: 32
-      TEST_JOBS: 16
+      NUM_THREADS: 4
+      TEST_JOBS: 4
       CC: clang
       CXX: clang++
       UW_S3_ACCESS_KEY_ID: ${{ secrets.UW_S3_ACCESS_KEY_ID }}
@@ -658,10 +658,10 @@ jobs:
         node_group_size_log2: [ 4, 12, 19 ]
     name: clang build & test with node_group_size_log2=${{ matrix.node_group_size_log2 }}
     needs: [ clang-build-test ]
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
-      NUM_THREADS: 32
-      TEST_JOBS: 16
+      NUM_THREADS: 4
+      TEST_JOBS: 4
       CC: clang
       CXX: clang++
       UW_S3_ACCESS_KEY_ID: ${{ secrets.UW_S3_ACCESS_KEY_ID }}
@@ -702,12 +702,12 @@ jobs:
   msvc-build-test:
     name: msvc build & test
     needs: [ sanity-checks, python-lint-check, generate-binary-datasets ]
-    runs-on: self-hosted-windows
+    runs-on: windows-2022
     env:
       # Shorten build path as much as possible
       CARGO_TARGET_DIR: ${{ github.workspace }}/rs
-      NUM_THREADS: 18
-      TEST_JOBS: 9
+      NUM_THREADS: 4
+      TEST_JOBS: 4
       UW_S3_ACCESS_KEY_ID: ${{ secrets.UW_S3_ACCESS_KEY_ID }}
       UW_S3_SECRET_ACCESS_KEY: ${{ secrets.UW_S3_SECRET_ACCESS_KEY }}
       AWS_S3_ACCESS_KEY_ID: ${{ secrets.AWS_S3_ACCESS_KEY_ID }}
@@ -942,10 +942,10 @@ jobs:
   clang-tidy:
     name: clang tidy & clangd diagnostics check
     needs: [ sanity-checks ]
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
       GEN: Ninja
-      NUM_THREADS: 32
+      NUM_THREADS: 4
       CC: clang
       CXX: clang++
 
@@ -968,9 +968,9 @@ jobs:
   macos-build-test:
     name: apple clang build & test
     needs: [ sanity-checks, python-lint-check, generate-binary-datasets ]
-    runs-on: [ self-hosted, macOS ]
+    runs-on: macos-14
     env:
-      TEST_JOBS: 16
+      TEST_JOBS: 4
       GEN: Ninja
       UW_S3_ACCESS_KEY_ID: ${{ secrets.UW_S3_ACCESS_KEY_ID }}
       UW_S3_SECRET_ACCESS_KEY: ${{ secrets.UW_S3_SECRET_ACCESS_KEY }}
@@ -1098,12 +1098,12 @@ jobs:
   linux-extension-test:
     name: linux extension test
     needs: [ gcc-build-test, clang-build-test ]
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
-      NUM_THREADS: 32
-      TEST_JOBS: 16
-      CLANGD_DIAGNOSTIC_JOBS: 32
-      CLANGD_DIAGNOSTIC_INSTANCES: 6
+      NUM_THREADS: 4
+      TEST_JOBS: 4
+      CLANGD_DIAGNOSTIC_JOBS: 4
+      CLANGD_DIAGNOSTIC_INSTANCES: 2
       GEN: Ninja
       CC: gcc
       CXX: g++
@@ -1205,9 +1205,9 @@ jobs:
   macos-extension-test:
     name: macos extension test
     needs: [ macos-build-test ]
-    runs-on: [ self-hosted, macOS ]
+    runs-on: macos-14
     env:
-      TEST_JOBS: 16
+      TEST_JOBS: 4
       GEN: Ninja
       UW_S3_ACCESS_KEY_ID: ${{ secrets.UW_S3_ACCESS_KEY_ID }}
       UW_S3_SECRET_ACCESS_KEY: ${{ secrets.UW_S3_SECRET_ACCESS_KEY }}
@@ -1296,12 +1296,12 @@ jobs:
   windows-extension-test:
     name: windows extension test
     needs: [ msvc-build-test ]
-    runs-on: self-hosted-windows
+    runs-on: windows-2022
     env:
       # Shorten build path as much as possible
       CARGO_TARGET_DIR: ${{ github.workspace }}/rs
-      NUM_THREADS: 18
-      TEST_JOBS: 9
+      NUM_THREADS: 4
+      TEST_JOBS: 4
       UW_S3_ACCESS_KEY_ID: ${{ secrets.UW_S3_ACCESS_KEY_ID }}
       UW_S3_SECRET_ACCESS_KEY: ${{ secrets.UW_S3_SECRET_ACCESS_KEY }}
       AWS_S3_ACCESS_KEY_ID: ${{ secrets.AWS_S3_ACCESS_KEY_ID }}

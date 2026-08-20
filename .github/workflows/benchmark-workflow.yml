@@ -7,9 +7,9 @@ jobs:
   ldbc_benchmark:
     name: ldbc benchmark
     env:
-      NUM_THREADS: 30
+      NUM_THREADS: 4
       GEN: Ninja
-    runs-on: koredb-self-hosted-benchmarking
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

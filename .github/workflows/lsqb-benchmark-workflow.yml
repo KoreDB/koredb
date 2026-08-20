@@ -28,9 +28,9 @@ jobs:
   benchmark:
     name: benchmark
     env:
-      NUM_THREADS: 30
+      NUM_THREADS: 4
       GEN: Ninja
-    runs-on: koredb-self-hosted-benchmarking
+    runs-on: ubuntu-24.04
     steps:
       - name: Set env for scheduled run
         if: ${{ github.event_name == 'schedule' }}

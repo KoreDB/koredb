@@ -18,7 +18,7 @@ env:
 
 jobs:
   build-precompiled-bin-x86_64:
-    runs-on: koredb-self-hosted-linux-building-x86_64
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -58,7 +58,7 @@ jobs:
 
   build-precompiled-bin-aarch64:
     if: ${{ inputs.x86_64Only != true }}
-    runs-on: koredb-self-hosted-linux-building-aarch64
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
 
@@ -98,7 +98,7 @@ jobs:
 
   build-precompiled-bin-android-armv8a:
     if: ${{ inputs.x86_64Only != true }}
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

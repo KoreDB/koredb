@@ -12,7 +12,7 @@ on:
 
 jobs:
   build-linux-extensions-x86_64:
-    runs-on: koredb-self-hosted-linux-building-x86_64
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -30,7 +30,7 @@ jobs:
 
   build-linux-extensions-aarch64:
     if: ${{ inputs.x86_64LinuxOnly != true }}
-    runs-on: koredb-self-hosted-linux-building-aarch64
+    runs-on: ubuntu-24.04-arm
 
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +49,7 @@ jobs:
 
   build-mac-extensions-arm64:
     if: ${{ inputs.x86_64LinuxOnly != true }}
-    runs-on: self-hosted-mac-arm64
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -70,7 +70,7 @@ jobs:
 
   build-mac-extensions-x86_64:
     if: ${{ inputs.x86_64LinuxOnly != true }}
-    runs-on: self-hosted-mac-x64
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 
@@ -91,9 +91,9 @@ jobs:
 
   build-windows-extensions-x86_64:
     if: ${{ inputs.x86_64LinuxOnly != true }}
-    runs-on: self-hosted-windows
+    runs-on: windows-2022
     env:
-      NUM_THREADS: 18
+      NUM_THREADS: 4
     steps:
       - uses: actions/checkout@v4
 

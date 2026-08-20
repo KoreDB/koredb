@@ -4,7 +4,7 @@ on: workflow_dispatch
 
 jobs:
   build-python-package:
-    runs-on: koredb-self-hosted-linux-building-x86_64
+    runs-on: ubuntu-24.04
     env:
       PLATFORM: manylinux_2_28_x86_64
     steps:

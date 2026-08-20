@@ -10,10 +10,10 @@ jobs:
   benchmark:
     name: datagen-sf10k benchmark
     env:
-      NUM_THREADS: 128
+      NUM_THREADS: 4
       GEN: Ninja
       EXTENSION_LIST: "algo"
-    runs-on: koredb-self-hosted-benchmarking-xl
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

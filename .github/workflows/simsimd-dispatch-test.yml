@@ -22,9 +22,9 @@ jobs:
   simsimd-dispatch-test:
     name: simsimd-dispatch-test
     needs: [build-precompiled-bin-linux, build-extensions-linux]
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     env:
-      NUM_THREADS: 32
+      NUM_THREADS: 4
       GEN: Ninja
       CC: gcc
       CXX: g++

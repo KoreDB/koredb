@@ -20,9 +20,9 @@ on:
 jobs:
   benchmark:
     name: business-intelligence-benchmark
-    runs-on: koredb-self-hosted-benchmarking-xl
+    runs-on: ubuntu-24.04
     env:
-      NUM_THREADS: 128
+      NUM_THREADS: 4
       GEN: Ninja
     steps:
       - name: Set env for scheduled run

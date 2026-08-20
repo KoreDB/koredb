@@ -11,7 +11,7 @@ on:
 
 jobs:
   build-wasm:
-    runs-on: koredb-self-hosted-testing
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
