@@ -1,9 +1,9 @@
 name: LDBC SNB Business Intelligence Benchmark
 
 on:
-  schedule:
-    - cron: "0 5 * * *"
-
+  # Manual only. This job is expensive and is not part of the day-to-day
+  # loop; the nightly schedule was removed deliberately. Start it from the
+  # Actions tab when you actually want the numbers.
   workflow_dispatch:
     inputs:
       scale_factor:

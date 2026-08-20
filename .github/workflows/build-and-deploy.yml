@@ -9,9 +9,11 @@ name: Build and Deploy
 # matching includeXxx box on a manual dispatch to build them.
 
 on:
-  schedule:
-    - cron: "0 8 * * *"
-
+  # Manual only. The nightly schedule was removed on purpose: a scheduled run
+  # publishes to npm and PyPI, and that is not something to do unattended.
+  # Dispatch it by hand and tick isDeploy / isNightly for the release you want.
+  # (The `github.event_name == 'schedule'` conditions below are now inert; they
+  # are kept so re-enabling the schedule is a one-line change.)
   workflow_dispatch:
     inputs:
       isDeploy:

@@ -7,9 +7,9 @@ env:
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 8 * * *"
-
+  # Manual only. This job is expensive and is not part of the day-to-day
+  # loop; the nightly schedule was removed deliberately. Start it from the
+  # Actions tab when you actually want the numbers.
 jobs:
   # Generate the binary db once to test that it can be read on all platforms.
   generate-binary-demo:
