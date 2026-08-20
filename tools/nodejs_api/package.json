@@ -50,9 +50,7 @@
     "typescript": "^5.5.0"
   },
   "dependencies": {
-    "@koredb/koredb-win32-x64": "file:dist/koredb-koredb-win32-x64-0.11.3.tgz",
     "cmake-js": "^7.3.0",
-    "koredb": "file:dist/koredb-0.11.3.tgz",
     "node-addon-api": "^6.0.0"
   }
 }
