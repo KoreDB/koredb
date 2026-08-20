@@ -16,9 +16,14 @@ import koredb, { QueryResult } from "@koredb/koredb";
 const TABLE = "Person";
 
 // This smoke test never opens a window, so the GPU process and the sandbox
-// helper are pure liability on headless CI machines (the SUID sandbox is not
-// usable under the restricted user namespaces of modern CI images).
-app.commandLine.appendSwitch("no-sandbox");
+// helper are pure liability on headless CI machines: the SUID sandbox helper
+// only works when chrome-sandbox is root-owned with mode 4755, which it is not
+// in a freshly npm-installed Electron.
+//
+// --no-sandbox cannot be set from here. Chromium resolves the sandbox before
+// this script runs, so app.commandLine.appendSwitch("no-sandbox") is too late
+// and the process still aborts in setuid_sandbox_host.cc. The switch is passed
+// on argv by the "start" script in package.json instead.
 app.disableHardwareAcceleration();
 
 async function runSmokeTest(): Promise<void> {

@@ -93,7 +93,9 @@ runs:
         set -euo pipefail
         if [ "${RUNNER_OS}" = "Linux" ]; then
           # Headless runners have no X server; Electron needs one even for a
-          # main-process-only app.
+          # main-process-only app. The sandbox is disabled by the "start"
+          # script itself - see test/electron/main.ts for why it cannot be
+          # switched off from inside the app.
           xvfb-run -a npm start
         else
           npm start
