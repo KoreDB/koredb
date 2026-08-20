@@ -1,0 +1,120 @@
+name: Node.js Electron CI
+
+# Per-commit guard for the Electron story of the npm packages.
+#
+# The release pipeline (release-nodejs.yml) verifies all six platform/arch
+# combinations before it publishes, but that is a manual, hour-long, six-runner
+# job. This workflow is the fast counterpart that runs on every push and pull
+# request: it builds the addon from source on Linux x64, assembles the real npm
+# tarballs with `node package`, installs them the way a user would, and boots a
+# real Electron main process against them.
+#
+# Scope is deliberately one platform. What breaks the Electron path in practice
+# is a change to the addon, the packaging layout, or the JS entry points - all
+# of which are platform independent and caught here. Genuinely per-platform
+# regressions are the release matrix's job; to run that matrix on demand without
+# publishing, dispatch release-nodejs.yml with "Publish to npm?" unchecked.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - "0.11"
+  push:
+    branches:
+      - main
+      - "0.11"
+  workflow_dispatch:
+
+# One run per PR / branch; superseded runs are pointless once the tip moves.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  electron-test:
+    name: electron smoke test (linux-x64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      NUM_THREADS: 4
+      GEN: Ninja
+      CC: gcc
+      CXX: g++
+      # The amalgamated header is a pure build-time artifact that nothing in
+      # this workflow consumes.
+      SKIP_SINGLE_FILE_HEADER: 1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # CMakeLists.txt picks ccache up automatically when it is on PATH, which
+      # is what keeps a from-source engine build viable on every commit.
+      - name: Install ccache
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ccache
+          ccache --max-size=1G
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: nodejs-electron-ci-ccache-${{ github.sha }}
+          restore-keys: |
+            nodejs-electron-ci-ccache-
+
+      # cmake-js is what the CMake build consumes to locate the Node-API
+      # headers, so the npm dependencies have to exist before configuring.
+      - name: Install Node.js build dependencies
+        run: make nodejs-deps
+
+      - name: Build the Node.js addon
+        run: make nodejs
+
+      - name: Report ccache statistics
+        run: ccache --show-stats
+
+      # `node package` reads prebuilt/koredbjs-<platform>-<arch>.node, the same
+      # naming the per-platform build workflows upload. Staging the freshly
+      # built addon there means this job packages through the exact code path
+      # the release pipeline uses, just with a one-entry matrix.
+      - name: Stage the addon as a prebuilt binary
+        run: |
+          set -euo pipefail
+          target="$(node -p "process.platform + '-' + process.arch")"
+          mkdir -p tools/nodejs_api/prebuilt
+          cp tools/nodejs_api/build/koredbjs.node \
+            "tools/nodejs_api/prebuilt/koredbjs-${target}.node"
+          ls -l tools/nodejs_api/prebuilt
+
+      - name: Build the npm packages
+        working-directory: tools/nodejs_api
+        run: node package
+
+      - name: Show packaged tarballs
+        working-directory: tools/nodejs_api
+        run: |
+          ls -l dist
+          cat dist/packages.json
+
+      - name: Electron smoke test
+        uses: ./.github/actions/electron-smoke-test
+        with:
+          dist-dir: tools/nodejs_api/dist
+
+      # Keeping the tarballs around makes a failed smoke test reproducible
+      # locally: download, then `node install-local.js <dir>`.
+      - name: Upload the packaged tarballs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: koredb-nodejs-electron-ci-linux-x64
+          path: tools/nodejs_api/dist
+          if-no-files-found: warn
+          retention-days: 3

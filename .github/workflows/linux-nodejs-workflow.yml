@@ -3,12 +3,6 @@ name: Build Linux Node.js Module
 on:
   workflow_dispatch:
   workflow_call:
-    inputs:
-      isNightly:
-        type: boolean
-        required: true
-        default: false
-
 jobs:
   build-linux-nodejs:
     name: linux-nodejs-${{ matrix.arch }}
@@ -58,11 +52,6 @@ jobs:
           npm --version
           cmake --version
           python --version
-
-      - name: Update nightly version
-        if: ${{ inputs.isNightly == true }}
-        run: python update-nightly-build-version.py
-        working-directory: scripts
 
       # cmake-js is needed at configure time to locate the Node-API headers.
       - name: Install Node.js build dependencies

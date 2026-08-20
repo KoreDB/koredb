@@ -2,8 +2,8 @@ name: LDBC SNB Business Intelligence Benchmark
 
 on:
   # Manual only. This job is expensive and is not part of the day-to-day
-  # loop; the nightly schedule was removed deliberately. Start it from the
-  # Actions tab when you actually want the numbers.
+  # loop, so it carries no automatic trigger. Start it from the Actions tab
+  # when you actually want the numbers.
   workflow_dispatch:
     inputs:
       scale_factor:
@@ -85,9 +85,10 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         shell: bash
         env:
-          ARCHIVE: ldbc-snb-bi-${{ github.run_id }}.tar.gz
+          SLUG: ldbc-snb-bi
         run: |
           set -euo pipefail
+          ARCHIVE="${SLUG}-$(echo "$GITHUB_SHA" | cut -c1-7).tar.gz"
           rm -rf bench-release && mkdir bench-release
           for src in ldbc_snb_bi/koredb/output; do
             if [ -e "$src" ]; then

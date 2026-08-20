@@ -6,20 +6,16 @@ description: >-
 inputs:
   files:
     description: >-
-      Space-separated list of files or globs to upload. Every pattern has to
-      match at least one file across the whole list, otherwise the step fails.
+      Space-separated list of files or globs to upload. At least one pattern
+      has to match, otherwise the step fails.
     required: true
   tag:
     description: >-
       Tag of the release to upload to, created on demand. Leave empty to derive
-      it from `nightly`: the rolling `nightly` tag, or `v<project version>`
-      read from CMakeLists.txt.
+      it from the run: the tag that triggered a tag build, otherwise
+      `v<project version>` read from CMakeLists.txt.
     required: false
     default: ""
-  nightly:
-    description: Select the rolling `nightly` release. Only used when `tag` is empty.
-    required: false
-    default: "false"
   title:
     description: Title used when the release has to be created.
     required: false
@@ -40,7 +36,6 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.token }}
         TAG: ${{ inputs.tag }}
-        NIGHTLY: ${{ inputs.nightly }}
         FILES: ${{ inputs.files }}
         TITLE: ${{ inputs.title }}
         PRERELEASE: ${{ inputs.prerelease }}
@@ -48,9 +43,9 @@ runs:
         set -euo pipefail
 
         if [ -z "$TAG" ]; then
-          if [ "$NIGHTLY" = "true" ]; then
-            TAG=nightly
-            PRERELEASE=true
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            # Tag build: publish straight onto the tag that triggered the run.
+            TAG="$GITHUB_REF_NAME"
           else
             version=$(sed -n 's/^project(KoreDB VERSION \([0-9][0-9.]*\).*/\1/p' CMakeLists.txt)
             if [ -z "$version" ]; then
@@ -58,8 +53,8 @@ runs:
               exit 1
             fi
             TAG="v${version}"
-            PRERELEASE=false
           fi
+          PRERELEASE=false
         fi
         echo "release tag: $TAG (prerelease=$PRERELEASE)"
 
@@ -88,8 +83,8 @@ runs:
           if [ "$PRERELEASE" = "true" ]; then
             create+=(--prerelease)
           fi
-          # Jobs race to create the same rolling release; losing the race is
-          # fine as long as the release exists afterwards.
+          # Jobs race to create the same release; losing the race is fine as
+          # long as the release exists afterwards.
           "${create[@]}" || gh release view "$TAG" >/dev/null
         fi
 

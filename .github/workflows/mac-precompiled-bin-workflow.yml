@@ -1,19 +1,12 @@
 name: Build Mac Precompiled Binaries
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
-    inputs:
-      isNightly:
-        description: "Publish to the rolling `nightly` release instead of the version tag"
-        type: boolean
-        required: false
-        default: false
   workflow_call:
-    inputs:
-      isNightly:
-        type: boolean
-        required: true
-        default: false
+
 env:
   PIP_BREAK_SYSTEM_PACKAGES: 1
 
@@ -25,13 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Update nightly version
-        if: ${{ inputs.isNightly == true }}
-        run: |
-          pip3 install packaging
-          python3 update-nightly-build-version.py
-        working-directory: scripts
-
       - name: Build universal precompiled binaries
         run: |
           make NUM_THREADS=$(sysctl -n hw.ncpu)
@@ -74,6 +60,5 @@ jobs:
       - name: Publish the binaries to a GitHub Release
         uses: ./.github/actions/upload-release-asset
         with:
-          nightly: ${{ inputs.isNightly }}
           files: libkoredb-osx-universal.tar.gz koredb_cli-osx-universal.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}

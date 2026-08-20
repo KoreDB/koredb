@@ -1,15 +1,14 @@
 name: SimSIMD Dispatch Test
 on:
   # Manual only. This job is expensive and is not part of the day-to-day
-  # loop; the nightly schedule was removed deliberately. Start it from the
-  # Actions tab when you actually want the numbers.
+  # loop, so it carries no automatic trigger. Start it from the Actions tab
+  # when you actually want the numbers.
   workflow_dispatch:
 
 jobs:
   build-precompiled-bin-linux:
     uses: ./.github/workflows/linux-precompiled-bin-workflow.yml
     with:
-      isNightly: true
       x86_64Only: true
     secrets: inherit
 
@@ -31,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download nightly build
+      - name: Download the precompiled CLI
         uses: actions/download-artifact@v4
         with:
           name: koredb_cli-linux-x86_64

@@ -13,6 +13,12 @@ name: Release Node.js Packages
 # Publishing is gated: `publish` needs `test-electron`, so nothing reaches the
 # registry unless the addon actually loaded and answered a query on all six
 # platform/architecture combinations.
+#
+# The whole workflow is manual by design - npm releases are never triggered by a
+# push. Dispatching it with "Publish to npm?" unchecked builds everything, runs
+# the six-platform Electron matrix and stops at a `--dry-run` publish, which is
+# also how to get full-matrix Electron coverage on demand. The per-commit
+# Electron guard is nodejs-electron-ci.yml.
 
 on:
   workflow_dispatch:
@@ -22,29 +28,18 @@ on:
         type: boolean
         required: true
         default: false
-      isNightly:
-        description: "Nightly build? Publishes under the 'next' tag instead of 'latest'."
-        type: boolean
-        required: true
-        default: false
 
 jobs:
   build-mac:
     uses: ./.github/workflows/mac-nodejs-workflow.yml
-    with:
-      isNightly: ${{ inputs.isNightly }}
     secrets: inherit
 
   build-linux:
     uses: ./.github/workflows/linux-nodejs-workflow.yml
-    with:
-      isNightly: ${{ inputs.isNightly }}
     secrets: inherit
 
   build-windows:
     uses: ./.github/workflows/windows-nodejs-workflow.yml
-    with:
-      isNightly: ${{ inputs.isNightly }}
     secrets: inherit
 
   package:
@@ -52,13 +47,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Update nightly version
-        if: ${{ inputs.isNightly }}
-        run: |
-          pip3 install packaging
-          python3 update-nightly-build-version.py
-        working-directory: scripts
 
       - name: Collect prebuilt addons
         uses: actions/download-artifact@v4
@@ -133,10 +121,10 @@ jobs:
       # as an optional dependency is.
       - name: Publish dry run
         if: ${{ !inputs.isDeploy }}
-        run: node publish.js --tag ${{ inputs.isNightly && 'next' || 'latest' }} --dry-run
+        run: node publish.js --tag latest --dry-run
         working-directory: tools/nodejs_api
 
       - name: Publish to npm
         if: ${{ inputs.isDeploy }}
-        run: node publish.js --tag ${{ inputs.isNightly && 'next' || 'latest' }}
+        run: node publish.js --tag latest
         working-directory: tools/nodejs_api

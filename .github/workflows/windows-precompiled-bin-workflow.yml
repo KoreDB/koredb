@@ -1,19 +1,11 @@
 name: Build Windows Precompiled Binaries
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
-    inputs:
-      isNightly:
-        description: "Publish to the rolling `nightly` release instead of the version tag"
-        type: boolean
-        required: false
-        default: false
   workflow_call:
-    inputs:
-      isNightly:
-        type: boolean
-        required: true
-        default: false
 
 jobs:
   build-precompiled-bin:
@@ -22,13 +14,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Update nightly version
-        if: ${{ inputs.isNightly == true }}
-        run: |
-          pip3 install packaging
-          python3 update-nightly-build-version.py
-        working-directory: ./scripts
 
       - name: Build precompiled binaries
         shell: cmd
@@ -73,6 +58,5 @@ jobs:
       - name: Publish the binaries to a GitHub Release
         uses: ./.github/actions/upload-release-asset
         with:
-          nightly: ${{ inputs.isNightly }}
           files: libkoredb-windows-x86_64.zip koredb_cli-windows-x86_64.zip
           token: ${{ secrets.GITHUB_TOKEN }}

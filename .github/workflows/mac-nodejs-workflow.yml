@@ -3,12 +3,6 @@ name: Build macOS Node.js Module
 on:
   workflow_dispatch:
   workflow_call:
-    inputs:
-      isNightly:
-        type: boolean
-        required: true
-        default: false
-
 env:
   PIP_BREAK_SYSTEM_PACKAGES: 1
 
@@ -39,13 +33,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Update nightly version
-        if: ${{ inputs.isNightly == true }}
-        run: |
-          python3 -m pip install packaging
-          python3 update-nightly-build-version.py
-        working-directory: scripts
 
       # cmake-js is needed at configure time to locate the Node-API headers.
       - name: Install Node.js build dependencies

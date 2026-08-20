@@ -154,9 +154,10 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         shell: bash
         env:
-          ARCHIVE: nodejs-bench-${{ matrix.target.os }}-${{ matrix.target.arch }}-${{ github.run_id }}.tar.gz
+          SLUG: nodejs-bench-${{ matrix.target.os }}-${{ matrix.target.arch }}
         run: |
           set -euo pipefail
+          ARCHIVE="${SLUG}-$(echo "$GITHUB_SHA" | cut -c1-7).tar.gz"
           rm -rf bench-release && mkdir bench-release
           for src in tools/nodejs_api/bench-report.txt; do
             if [ -e "$src" ]; then

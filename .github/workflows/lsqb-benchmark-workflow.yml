@@ -1,8 +1,8 @@
 name: LSQB Benchmark
 on:
   # Manual only. This job is expensive and is not part of the day-to-day
-  # loop; the nightly schedule was removed deliberately. Start it from the
-  # Actions tab when you actually want the numbers.
+  # loop, so it carries no automatic trigger. Start it from the Actions tab
+  # when you actually want the numbers.
   workflow_dispatch:
     inputs:
       scale_factor:
@@ -75,9 +75,10 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         shell: bash
         env:
-          ARCHIVE: lsqb-${{ github.run_id }}.tar.gz
+          SLUG: lsqb
         run: |
           set -euo pipefail
+          ARCHIVE="${SLUG}-$(echo "$GITHUB_SHA" | cut -c1-7).tar.gz"
           rm -rf bench-release && mkdir bench-release
           for src in /tmp/benchmark_result/results.csv lsqb.log; do
             if [ -e "$src" ]; then

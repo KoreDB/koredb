@@ -44,9 +44,10 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         shell: bash
         env:
-          ARCHIVE: ldbc-benchmark-${{ github.run_id }}.tar.gz
+          SLUG: ldbc-benchmark
         run: |
           set -euo pipefail
+          ARCHIVE="${SLUG}-$(echo "$GITHUB_SHA" | cut -c1-7).tar.gz"
           rm -rf bench-release && mkdir bench-release
           for src in /tmp/benchmark_logs benchmark/compare_result.md; do
             if [ -e "$src" ]; then

@@ -1,28 +1,20 @@
 name: Build and Deploy
 
-# By default (nightly schedule and a plain manual dispatch) this pipeline builds
-# and publishes ONLY the Node.js and Python packages, for
-# Windows / macOS / Linux on both arm64 and amd64.
+# By default a plain manual dispatch builds and publishes ONLY the Node.js
+# and Python packages, for Windows / macOS / Linux on both arm64 and amd64.
 #
 # The remaining deployment targets (WebAssembly, the Rust crate, precompiled
 # shell binaries and extensions) are kept but opted out of by default; tick the
 # matching includeXxx box on a manual dispatch to build them.
 
 on:
-  # Manual only. The nightly schedule was removed on purpose: a scheduled run
-  # publishes to npm and PyPI, and that is not something to do unattended.
-  # Dispatch it by hand and tick isDeploy / isNightly for the release you want.
-  # (The `github.event_name == 'schedule'` conditions below are now inert; they
-  # are kept so re-enabling the schedule is a one-line change.)
+  # Manual only, on purpose: this pipeline publishes to npm and PyPI, and that
+  # is not something to run unattended. Dispatch it by hand and tick isDeploy
+  # for the release you want.
   workflow_dispatch:
     inputs:
       isDeploy:
         description: "Whether the build should be deployed?"
-        type: boolean
-        required: true
-        default: false
-      isNightly:
-        description: "Whether the build is a nightly build?"
         type: boolean
         required: true
         default: false
@@ -64,39 +56,26 @@ jobs:
   # ---------------------------------------------------------------- Node.js --
 
   build-nodejs-mac:
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.skipNodejs != 'true' }}
+    if: ${{ github.event.inputs.skipNodejs != 'true' }}
     uses: ./.github/workflows/mac-nodejs-workflow.yml
-    with:
-      isNightly: ${{ github.event_name == 'schedule' || github.event.inputs.isNightly == 'true' }}
     secrets: inherit
 
   build-nodejs-linux:
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.skipNodejs != 'true' }}
+    if: ${{ github.event.inputs.skipNodejs != 'true' }}
     uses: ./.github/workflows/linux-nodejs-workflow.yml
-    with:
-      isNightly: ${{ github.event_name == 'schedule' || github.event.inputs.isNightly == 'true' }}
     secrets: inherit
 
   build-nodejs-windows:
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.skipNodejs != 'true' }}
+    if: ${{ github.event.inputs.skipNodejs != 'true' }}
     uses: ./.github/workflows/windows-nodejs-workflow.yml
-    with:
-      isNightly: ${{ github.event_name == 'schedule' || github.event.inputs.isNightly == 'true' }}
     secrets: inherit
 
   package-nodejs:
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.skipNodejs != 'true' }}
+    if: ${{ github.event.inputs.skipNodejs != 'true' }}
     needs: [build-nodejs-mac, build-nodejs-linux, build-nodejs-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Update nightly version
-        if: ${{ github.event_name == 'schedule' || github.event.inputs.isNightly == 'true' }}
-        run: |
-          pip3 install packaging
-          python3 update-nightly-build-version.py
-        working-directory: scripts
 
       - name: Collect prebuilt binaries
         uses: actions/download-artifact@v4
@@ -131,7 +110,7 @@ jobs:
           retention-days: 1
 
   test-nodejs-electron:
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.skipNodejs != 'true' }}
+    if: ${{ github.event.inputs.skipNodejs != 'true' }}
     needs: [package-nodejs]
     uses: ./.github/workflows/nodejs-electron-test.yml
     with:
@@ -139,7 +118,7 @@ jobs:
     secrets: inherit
 
   deploy-nodejs:
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.skipNodejs != 'true' }}
+    if: ${{ github.event.inputs.skipNodejs != 'true' }}
     needs: [package-nodejs, test-nodejs-electron]
     runs-on: ubuntu-latest
     env:
@@ -162,55 +141,37 @@ jobs:
       # package last, so `koredb` is never resolvable before the binary it
       # pins as an optional dependency is.
       - name: Deploy to npm.js dry run
-        if: ${{ github.event_name != 'schedule' && github.event.inputs.isDeploy != 'true' }}
+        if: ${{ github.event.inputs.isDeploy != 'true' }}
         run: node publish.js --tag latest --dry-run
         working-directory: tools/nodejs_api
 
-      - name: Deploy nightly to npm.js
-        if: ${{ github.event_name == 'schedule' || (github.event.inputs.isDeploy == 'true' && github.event.inputs.isNightly == 'true') }}
-        run: node publish.js --tag next
-        working-directory: tools/nodejs_api
-
       - name: Deploy to npm.js
-        if: ${{ github.event.inputs.isDeploy == 'true' && github.event.inputs.isNightly != 'true' }}
+        if: ${{ github.event.inputs.isDeploy == 'true' }}
         run: node publish.js --tag latest
         working-directory: tools/nodejs_api
 
   # ----------------------------------------------------------------- Python --
 
   build-wheel-mac:
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.skipPython != 'true' }}
+    if: ${{ github.event.inputs.skipPython != 'true' }}
     uses: ./.github/workflows/mac-wheel-workflow.yml
-    with:
-      isNightly: ${{ github.event_name == 'schedule' || github.event.inputs.isNightly == 'true' }}
     secrets: inherit
 
   build-wheel-linux:
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.skipPython != 'true' }}
+    if: ${{ github.event.inputs.skipPython != 'true' }}
     uses: ./.github/workflows/linux-wheel-workflow.yml
-    with:
-      isNightly: ${{ github.event_name == 'schedule' || github.event.inputs.isNightly == 'true' }}
     secrets: inherit
 
   build-wheel-windows:
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.skipPython != 'true' }}
+    if: ${{ github.event.inputs.skipPython != 'true' }}
     uses: ./.github/workflows/windows-wheel-workflow.yml
-    with:
-      isNightly: ${{ github.event_name == 'schedule' || github.event.inputs.isNightly == 'true' }}
     secrets: inherit
 
   package-python-sdist:
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.skipPython != 'true' }}
+    if: ${{ github.event.inputs.skipPython != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Update nightly version
-        if: ${{ github.event_name == 'schedule' || github.event.inputs.isNightly == 'true' }}
-        run: |
-          pip3 install packaging
-          python3 update-nightly-build-version.py
-        working-directory: scripts
 
       - name: Package Python sdist
         run: python package_tar.py
@@ -227,7 +188,7 @@ jobs:
   deploy-python:
     permissions:
       id-token: write
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.skipPython != 'true' }}
+    if: ${{ github.event.inputs.skipPython != 'true' }}
     needs:
       [
         build-wheel-mac,
@@ -255,13 +216,13 @@ jobs:
         working-directory: dist
 
       - name: Deploy to PyPI test
-        if: ${{ github.event_name != 'schedule' && github.event.inputs.isDeploy != 'true' }}
+        if: ${{ github.event.inputs.isDeploy != 'true' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
 
       - name: Deploy to PyPI
-        if: ${{ github.event_name == 'schedule' || github.event.inputs.isDeploy == 'true' }}
+        if: ${{ github.event.inputs.isDeploy == 'true' }}
         uses: pypa/gh-action-pypi-publish@release/v1
 
   # ----------------------------------------------- Opt-in deployment targets --
@@ -269,15 +230,11 @@ jobs:
   build-extension:
     if: ${{ github.event.inputs.includeExtensions == 'true' }}
     uses: ./.github/workflows/build-and-deploy-extension.yml
-    with:
-      isNightly: ${{ github.event.inputs.isNightly == 'true' }}
     secrets: inherit
 
   build-wasm:
     if: ${{ github.event.inputs.includeWasm == 'true' }}
     uses: ./.github/workflows/wasm-workflow.yml
-    with:
-      isNightly: ${{ github.event.inputs.isNightly == 'true' }}
     secrets: inherit
 
   deploy-wasm:
@@ -308,13 +265,8 @@ jobs:
         run: npm publish koredb-wasm.tar.gz --access public --dry-run
         working-directory: tools/wasm
 
-      - name: Deploy nightly to npm.js
-        if: ${{ github.event.inputs.isDeploy == 'true' && github.event.inputs.isNightly == 'true' }}
-        run: npm publish koredb-wasm.tar.gz --access public --tag next
-        working-directory: tools/wasm
-
       - name: Deploy to npm.js
-        if: ${{ github.event.inputs.isDeploy == 'true' && github.event.inputs.isNightly != 'true' }}
+        if: ${{ github.event.inputs.isDeploy == 'true' }}
         run: npm publish koredb-wasm.tar.gz --access public --tag latest
         working-directory: tools/wasm
 
@@ -325,13 +277,6 @@ jobs:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Update nightly version
-        if: ${{ github.event.inputs.isNightly == 'true' }}
-        run: |
-          pip3 install packaging
-          python3 update-nightly-build-version.py
-        working-directory: scripts
 
       - name: Update Cargo.toml version
         run: python3 update_version.py
@@ -352,8 +297,6 @@ jobs:
     uses: ./.github/workflows/mac-precompiled-bin-workflow.yml
     permissions:
       contents: write
-    with:
-      isNightly: ${{ github.event.inputs.isNightly == 'true' }}
     secrets: inherit
 
   build-precompiled-bin-linux:
@@ -361,8 +304,6 @@ jobs:
     uses: ./.github/workflows/linux-precompiled-bin-workflow.yml
     permissions:
       contents: write
-    with:
-      isNightly: ${{ github.event.inputs.isNightly == 'true' }}
     secrets: inherit
 
   build-precompiled-bin-windows:
@@ -370,6 +311,4 @@ jobs:
     uses: ./.github/workflows/windows-precompiled-bin-workflow.yml
     permissions:
       contents: write
-    with:
-      isNightly: ${{ github.event.inputs.isNightly == 'true' }}
     secrets: inherit

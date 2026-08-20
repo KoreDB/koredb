@@ -182,7 +182,17 @@ Queries run on a libuv worker thread, so they do not block the main process even
 ### Running the Electron smoke test
 
 `test/electron` is a minimal Electron app that loads the published package and runs a
-query in the main process. CI runs it on every platform/architecture before publishing:
+query in the main process. Two GitHub Actions workflows drive it:
+
+* **`Node.js Electron CI`** runs on every push and pull request. It builds the addon
+  from source on Linux x64, packages it, and runs the smoke test — the fast guard on
+  the addon, the packaging layout and the JS entry points.
+* **`Node.js Electron Test`** runs the same smoke test on all six
+  platform/architecture combinations against the prebuilt release binaries. It is the
+  gate the release pipeline must pass before anything is published.
+
+Both share the `.github/actions/electron-smoke-test` composite action, so what runs
+locally, on every commit, and before a release is the same sequence:
 
 ```bash
 cd test/electron
@@ -290,7 +300,7 @@ the platform packages that were built, pinned to the exact version read from
 the root `CMakeLists.txt`, so a partial build never advertises a package that
 does not exist.
 
-The `Build and Deploy` GitHub Actions workflow builds all six binaries, runs
+The `Release Node.js Packages` GitHub Actions workflow builds all six binaries, runs
 `node package`, and gates publication on the Electron smoke test.
 
 ---
@@ -305,6 +315,11 @@ node publish.js --tag latest --dry-run
 `publish.js` reads `dist/packages.json` and publishes the platform packages
 **before** the main package, so `@koredb/koredb` is never resolvable on the registry
 before the addon it pins as an optional dependency is.
+
+Publishing is never automatic. It happens by dispatching the `Release Node.js
+Packages` workflow and ticking **Publish to npm?**; leaving that box unchecked runs
+the full build, the six-platform Electron matrix and a `--dry-run` publish, which is
+also the way to exercise the whole release path without shipping anything.
 
 ---
 

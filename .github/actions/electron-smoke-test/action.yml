@@ -1,0 +1,100 @@
+name: Electron smoke test
+description: >-
+  Install a locally packaged KoreDB build into the Electron test app and run the
+  main-process smoke test on the current runner.
+
+  The addon is built against Node-API (NAPI_VERSION=6), which is ABI-stable
+  across both Node.js and Electron, so the very same prebuilt binary is expected
+  to load in either runtime. This action is what keeps that assumption honest,
+  and it deliberately installs the *packaged* tarballs rather than the build
+  directory so that the split main-package / per-platform-addon-package layout
+  is exercised at the same time.
+
+inputs:
+  dist-dir:
+    description: >-
+      Directory holding the tarballs produced by `node package` in
+      tools/nodejs_api. Must contain packages.json and the tarballs for the main
+      package plus this runner's platform. Relative paths resolve against the
+      workspace.
+    required: true
+  app-dir:
+    description: Directory of the Electron test app, relative to the workspace.
+    required: false
+    default: tools/nodejs_api/test/electron
+
+runs:
+  using: composite
+  steps:
+    # Electron links against the desktop stack even when it never opens a
+    # window, and the GitHub Linux images ship none of it.
+    - name: Install Electron runtime dependencies
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          xvfb libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
+          libdrm2 libgtk-3-0t64 libgbm1 libasound2t64
+
+    - name: Install Electron test app dependencies
+      shell: bash
+      working-directory: ${{ inputs.app-dir }}
+      run: npm install
+
+    - name: Install the packaged KoreDB build
+      shell: bash
+      working-directory: ${{ inputs.app-dir }}
+      env:
+        DIST_DIR: ${{ inputs.dist-dir }}
+      run: |
+        set -euo pipefail
+        # install-local.js resolves its argument against the cwd, which is the
+        # app directory here. Resolve through node rather than `cd`, because on
+        # Windows GITHUB_WORKSPACE is a backslash path that bash cannot cd into.
+        dist="$(node -p "require('path').resolve(process.env.GITHUB_WORKSPACE, process.env.DIST_DIR)")"
+        echo "installing from $dist"
+        node install-local.js "$dist"
+
+    - name: Verify the addon resolves out of its platform package
+      shell: bash
+      working-directory: ${{ inputs.app-dir }}
+      run: |
+        set -euo pipefail
+        node -e '
+          const fs = require("fs");
+          const path = require("path");
+          const pkg = `@koredb/koredb-${process.platform}-${process.arch}`;
+          const manifestPath = require.resolve(pkg + "/package.json");
+          const manifest = require(manifestPath);
+          if (manifest.os[0] !== process.platform || manifest.cpu[0] !== process.arch) {
+            throw new Error("platform package os/cpu mismatch: " + JSON.stringify(manifest.os) + " " + JSON.stringify(manifest.cpu));
+          }
+          const addon = path.join(path.dirname(manifestPath), "koredbjs.node");
+          fs.accessSync(addon);
+          const mainDir = path.dirname(require.resolve("@koredb/koredb"));
+          if (fs.existsSync(path.join(mainDir, "koredbjs.node"))) {
+            throw new Error("the main package must not bundle koredbjs.node");
+          }
+          console.log("main package (JS only): " + mainDir);
+          console.log("addon from " + pkg + ": " + addon);
+        '
+
+    - name: Compile the Electron smoke test
+      shell: bash
+      working-directory: ${{ inputs.app-dir }}
+      run: npm run build
+
+    - name: Run the Electron smoke test
+      shell: bash
+      working-directory: ${{ inputs.app-dir }}
+      run: |
+        set -euo pipefail
+        if [ "${RUNNER_OS}" = "Linux" ]; then
+          # Headless runners have no X server; Electron needs one even for a
+          # main-process-only app.
+          xvfb-run -a npm start
+        else
+          npm start
+        fi
