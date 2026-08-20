@@ -9,24 +9,30 @@ else()
   set(NPX_CMD npx)
 endif()
 
-# cmake-js prints diagnostic "info ..." lines to stdout before the actual value
-# it is asked to print, and on Windows those lines (and the value itself) contain
-# backslash paths that break CMake string parsing (e.g. "Invalid character escape
-# '\P'"). Keep only the last non-empty line of the captured output and normalize
-# path separators. On platforms where cmake-js emits a single clean line this is
-# a no-op.
+# cmake-js prints diagnostic "info ..." / "ERR! ..." lines to stdout alongside
+# the value it is asked to print, and on Windows those lines (and the value
+# itself) contain backslash paths that break CMake string parsing (e.g. "Invalid
+# character escape '\P'"). Drop the diagnostics and normalize path separators.
+#
+# Every remaining line is kept, as a CMake list. print-cmakejs-include
+# legitimately returns MORE THAN ONE directory (the Node-API headers plus
+# node-addon-api); keeping only the last line silently discarded the Node
+# headers, which surfaced much later in the build as
+# "fatal error: node_api.h: No such file or directory".
 macro(clean_cmakejs_var _var)
-  string(REPLACE "\r\n" "\n" _ccv_tmp "${${_var}}")
-  string(STRIP "${_ccv_tmp}" _ccv_tmp)
-  string(REPLACE "\n" ";" _ccv_lines "${_ccv_tmp}")
-  list(LENGTH _ccv_lines _ccv_len)
-  if(_ccv_len GREATER 0)
-    math(EXPR _ccv_last "${_ccv_len} - 1")
-    list(GET _ccv_lines ${_ccv_last} _ccv_tmp)
-  endif()
-  string(STRIP "${_ccv_tmp}" _ccv_tmp)
-  string(REPLACE "\\" "/" _ccv_tmp "${_ccv_tmp}")
-  set(${_var} "${_ccv_tmp}")
+  string(REPLACE "\r\n" "\n" _ccv_raw "${${_var}}")
+  string(REPLACE "\n" ";" _ccv_lines "${_ccv_raw}")
+  set(_ccv_keep "")
+  foreach(_ccv_line IN LISTS _ccv_lines)
+    string(STRIP "${_ccv_line}" _ccv_line)
+    if(NOT "${_ccv_line}" STREQUAL "")
+      if(NOT "${_ccv_line}" MATCHES "^(info|ERR!|WARN|warn|verb|sill|http|npm) ")
+        string(REPLACE "\\" "/" _ccv_line "${_ccv_line}")
+        list(APPEND _ccv_keep "${_ccv_line}")
+      endif()
+    endif()
+  endforeach()
+  set(${_var} "${_ccv_keep}")
 endmacro()
 
 execute_process(

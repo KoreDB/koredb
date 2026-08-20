@@ -69,6 +69,19 @@ jobs:
         working-directory: tools/nodejs_api
         run: npm install
 
+      # These are what CMakeLists.txt consumes to locate the Node-API headers.
+      # print-cmakejs-include returns more than one directory, so the raw output
+      # is worth having in the log when a header ever goes missing again.
+      - name: Report cmake-js paths
+        working-directory: tools/nodejs_api
+        run: |
+          echo "--- print-cmakejs-include ---"
+          npx cmake-js print-cmakejs-include || true
+          echo "--- print-cmakejs-lib ---"
+          npx cmake-js print-cmakejs-lib || true
+          echo "--- print-cmakejs-src ---"
+          npx cmake-js print-cmakejs-src || true
+
       - name: Build Node.js native module
         run: make nodejs
 
