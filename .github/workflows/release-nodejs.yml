@@ -1,0 +1,141 @@
+name: Release Node.js Packages
+
+# Builds the six prebuilt addons, assembles the npm artifacts (@koredb/koredb
+# plus one @koredb/koredb-<platform>-<arch> package per addon), verifies them
+# inside a real Electron main process on every supported platform, and only
+# then publishes to npm.
+#
+# This exists separately from build-and-deploy.yml so that shipping the npm
+# packages does not depend on the Python, WebAssembly or extension pipelines:
+# a failure anywhere in those must not be able to block or break a Node.js
+# release, and vice versa.
+#
+# Publishing is gated: `publish` needs `test-electron`, so nothing reaches the
+# registry unless the addon actually loaded and answered a query on all six
+# platform/architecture combinations.
+
+on:
+  workflow_dispatch:
+    inputs:
+      isDeploy:
+        description: "Publish to npm? Leave unchecked to build, test and dry-run only."
+        type: boolean
+        required: true
+        default: false
+      isNightly:
+        description: "Nightly build? Publishes under the 'next' tag instead of 'latest'."
+        type: boolean
+        required: true
+        default: false
+
+jobs:
+  build-mac:
+    uses: ./.github/workflows/mac-nodejs-workflow.yml
+    with:
+      isNightly: ${{ inputs.isNightly }}
+    secrets: inherit
+
+  build-linux:
+    uses: ./.github/workflows/linux-nodejs-workflow.yml
+    with:
+      isNightly: ${{ inputs.isNightly }}
+    secrets: inherit
+
+  build-windows:
+    uses: ./.github/workflows/windows-nodejs-workflow.yml
+    with:
+      isNightly: ${{ inputs.isNightly }}
+    secrets: inherit
+
+  package:
+    needs: [build-mac, build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update nightly version
+        if: ${{ inputs.isNightly }}
+        run: |
+          pip3 install packaging
+          python3 update-nightly-build-version.py
+        working-directory: scripts
+
+      - name: Collect prebuilt addons
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-nodejs-module-*"
+          path: tools/nodejs_api/prebuilt
+          merge-multiple: true
+
+      - name: List prebuilt addons
+        run: ls -l tools/nodejs_api/prebuilt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build the main package and the per-platform addon packages
+        run: node package
+        working-directory: tools/nodejs_api
+
+      - name: Show packaged tarballs
+        working-directory: tools/nodejs_api
+        run: |
+          ls -l dist
+          cat dist/packages.json
+
+      - name: Fail if the addon matrix is incomplete
+        working-directory: tools/nodejs_api
+        run: |
+          set -eu
+          count=$(node -p "require('./dist/packages.json').platforms.length")
+          echo "platform packages built: $count"
+          if [ "$count" -ne 6 ]; then
+            echo "Expected 6 platform packages, refusing to publish a partial matrix." >&2
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: koredb-deploy-nodejs
+          path: tools/nodejs_api/dist
+          if-no-files-found: error
+
+  test-electron:
+    needs: [package]
+    uses: ./.github/workflows/nodejs-electron-test.yml
+    with:
+      artifactName: koredb-deploy-nodejs
+    secrets: inherit
+
+  publish:
+    needs: [package, test-electron]
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_JS_TOKEN }}
+    steps:
+      # publish.js lives in the repository, not in the built artifact.
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: koredb-deploy-nodejs
+          path: tools/nodejs_api/dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      # publish.js pushes the six addon packages first and the main package
+      # last, so @koredb/koredb is never resolvable before the binary it pins
+      # as an optional dependency is.
+      - name: Publish dry run
+        if: ${{ !inputs.isDeploy }}
+        run: node publish.js --tag ${{ inputs.isNightly && 'next' || 'latest' }} --dry-run
+        working-directory: tools/nodejs_api
+
+      - name: Publish to npm
+        if: ${{ inputs.isDeploy }}
+        run: node publish.js --tag ${{ inputs.isNightly && 'next' || 'latest' }}
+        working-directory: tools/nodejs_api
