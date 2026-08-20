@@ -1,3 +1,4 @@
+# Standalone maintenance workflow. Start it from the Actions tab.
 name: Purge Extensions
 
 on: 

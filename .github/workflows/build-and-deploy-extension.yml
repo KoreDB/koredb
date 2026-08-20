@@ -1,3 +1,4 @@
+# Reusable workflow. Called by build-and-deploy.yml (includeExtensions).
 name: Build and Deploy Extensions
 
 on: 

@@ -1,3 +1,4 @@
+# Reusable workflow. Called by build-and-deploy.yml to build the Windows Python wheels.
 name: Build Windows Wheels
 
 on:

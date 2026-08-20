@@ -78,7 +78,10 @@ jobs:
           file koredbjs.node
           # The highest GLIBC_x.y version referenced is the addon's real floor;
           # manylinux_2_28 keeps it at or below 2.28.
-          objdump -T koredbjs.node             | grep -o "GLIBC_[0-9.]*"             | sort -Vu             | tail -5
+          objdump -T koredbjs.node \
+            | grep -o "GLIBC_[0-9.]*" \
+            | sort -Vu \
+            | tail -5
 
       - name: Move Node.js native module
         working-directory: tools/nodejs_api/build

@@ -1,3 +1,4 @@
+# Standalone workflow. Not called by any other workflow; start it from the Actions tab.
 name: Node.js Benchmark
 
 # Performance testing for KoreDB is centred on the Node.js binding. This

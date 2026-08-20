@@ -1,3 +1,4 @@
+# Reusable workflow. Called by build-and-deploy-extension.yml and purge-extension.yml.
 name: Get Extensions from GHCR
 on:
   workflow_dispatch:

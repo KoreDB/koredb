@@ -1,3 +1,4 @@
+# Reusable workflow. Called by build-and-deploy-extension.yml and purge-extension.yml.
 name: Deploy Extensions
 
 on: 
