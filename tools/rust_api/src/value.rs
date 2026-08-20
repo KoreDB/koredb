@@ -197,7 +197,7 @@ impl From<(u64, u64)> for InternalID {
 
 /// Data types supported by KoreDB
 ///
-/// Also see <https://kuzudb.com/docusaurus/cypher/data-types/overview.html>
+/// Also see <https://koredb.github.io/docs/cypher/data-types>
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Null(LogicalType),
@@ -216,37 +216,37 @@ pub enum Value {
     /// Stored internally as the number of days since 1970-01-01 as a 32-bit signed integer, which
     /// allows for a wider range of dates to be stored than can be represented by `time::Date`
     ///
-    /// <https://kuzudb.com/docusaurus/cypher/data-types/date.html>
+    /// <https://koredb.github.io/docs/cypher/data-types>
     Date(time::Date),
     /// May be signed or unsigned.
     ///
     /// Nanosecond precision of `time::Duration` (if available) will not be preserved when passed to
     /// queries, and results will always have at most microsecond precision.
     ///
-    /// <https://kuzudb.com/docusaurus/cypher/data-types/interval.html>
+    /// <https://koredb.github.io/docs/cypher/data-types>
     Interval(time::Duration),
     /// Stored internally as the number of microseconds since 1970-01-01
     /// Nanosecond precision of `SystemTime` (if available) will not be preserved when used.
     ///
-    /// <https://kuzudb.com/docusaurus/cypher/data-types/timestamp.html>
+    /// <https://koredb.github.io/docs/cypher/data-types>
     Timestamp(time::OffsetDateTime),
     TimestampTz(time::OffsetDateTime),
     TimestampNs(time::OffsetDateTime),
     TimestampMs(time::OffsetDateTime),
     TimestampSec(time::OffsetDateTime),
     InternalID(InternalID),
-    /// <https://kuzudb.com/docusaurus/cypher/data-types/string.html>
+    /// <https://koredb.github.io/docs/cypher/data-types>
     String(String),
     Blob(Vec<u8>),
     // TODO: Enforce type of contents
     // LogicalType is necessary so that we can pass the correct type to the C++ API if the list is empty.
     /// These must contain elements which are all the given type.
-    /// <https://kuzudb.com/docusaurus/cypher/data-types/list.html>
+    /// <https://koredb.github.io/docs/cypher/data-types>
     List(LogicalType, Vec<Value>),
     /// These must contain elements which are all the same type.
-    /// <https://kuzudb.com/docusaurus/cypher/data-types/list.html>
+    /// <https://koredb.github.io/docs/cypher/data-types>
     Array(LogicalType, Vec<Value>),
-    /// <https://kuzudb.com/docusaurus/cypher/data-types/struct.html>
+    /// <https://koredb.github.io/docs/cypher/data-types>
     Struct(Vec<(String, Value)>),
     Node(NodeVal),
     Rel(RelVal),
@@ -258,9 +258,9 @@ pub enum Value {
         /// Sequence of Rels which make up the `RecursiveRel`
         rels: Vec<RelVal>,
     },
-    /// <https://kuzudb.com/docusaurus/cypher/data-types/map>
+    /// <https://koredb.github.io/docs/cypher/data-types>
     Map((LogicalType, LogicalType), Vec<(Value, Value)>),
-    /// <https://kuzudb.com/docusaurus/cypher/data-types/union>
+    /// <https://koredb.github.io/docs/cypher/data-types>
     Union {
         types: Vec<(String, LogicalType)>,
         value: Box<Value>,

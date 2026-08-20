@@ -1,7 +1,7 @@
 # KoreDB-Wasm
 KoreDB-Wasm is the official WebAssembly build of KoreDB in-process property graph database management system. 
 KoreDB is an embeddable property graph database management system built for query speed and scalability. 
-Please visit [KoreDB website](https://kuzudb.com) for more information. KoreDB-Wasm enables the following:
+Please visit [KoreDB website](https://koredb.github.io/docs/) for more information. KoreDB-Wasm enables the following:
 
 - Fast, in-browser graph analysis without ever sending data to a server
 - Strong data privacy guarantees, as the data never leaves the browser
@@ -11,7 +11,7 @@ Please visit [KoreDB website](https://kuzudb.com) for more information. KoreDB-W
 ## Installation
 
 ```bash
-npm i koredb-wasm
+npm i @koredb/wasm
 ```
 
 ## Example usage
@@ -33,8 +33,8 @@ In this package, three different variants of WebAssembly modules are provided:
 - **Node.js**: This build is optimized for Node.js and uses Node.js's filesystem instead of Emscripten's default filesystem (`NODEFS` flag is enabled). This build also supports multi-threading. It is distributed as a CommonJS module rather than an ES module to maximize compatibility. This build is located in the `nodejs` directory. Note that this build only works in Node.js and does not work in the browser environment.
 
 In each variant, there are two different versions of the WebAssembly module:
-- **Async**: This version of the module is the default version and each function call returns a Promise. This version dispatches all the function calls to the WebAssembly module to a Web Worker or Node.js worker thread to prevent blocking the main thread. However, this version may have a slight overhead due to the serialization and deserialization of the data required by the worker threads. This version is located at the root level of each variant (e.g., `koredb-wasm`, `koredb-wasm/multithreaded`, `koredb-wasm/nodejs`).
-- **Sync**: This version of the module is synchronous and does not require any callbacks (other than the module initialization). This version is good for scripting / CLI / prototyping purposes but is not recommended to be used in GUI applications or web servers because it may block the main thread and cause unexpected freezes. This alternative version is located in the `sync` directory of each variant (e.g., `koredb-wasm/sync`, `koredb-wasm/multithreaded/sync`, `koredb-wasm/nodejs/sync`).
+- **Async**: This version of the module is the default version and each function call returns a Promise. This version dispatches all the function calls to the WebAssembly module to a Web Worker or Node.js worker thread to prevent blocking the main thread. However, this version may have a slight overhead due to the serialization and deserialization of the data required by the worker threads. This version is located at the root level of each variant (e.g., `@koredb/wasm`, `@koredb/wasm/multithreaded`, `@koredb/wasm/nodejs`).
+- **Sync**: This version of the module is synchronous and does not require any callbacks (other than the module initialization). This version is good for scripting / CLI / prototyping purposes but is not recommended to be used in GUI applications or web servers because it may block the main thread and cause unexpected freezes. This alternative version is located in the `sync` directory of each variant (e.g., `@koredb/wasm/sync`, `@koredb/wasm/multithreaded/sync`, `@koredb/wasm/nodejs/sync`).
 
 Note that you cannot mix and match the variants and versions. For example, a `Database` object created with the default variant cannot be passed to a function in the multithreaded variant. Similarly, a `Database` object created with the async version cannot be passed to a function in the sync version.
 
@@ -43,7 +43,7 @@ In each variant, the main module is bundled as one script file. However, the wor
 
 By default, the worker script is resolved under the same directory / URL prefix as the main module. If you want to change the location of the worker script, you can use pass the optional worker path parameter to the `setWorkerPath` function. For example:
 ```javascript
-import koredb from "koredb-wasm";
+import koredb from "@koredb/wasm";
 koredb.setWorkerPath('path/to/worker.js');
 ```
 
@@ -54,9 +54,9 @@ For the Node.js variant, the worker script can be resolved automatically and you
 ## API documentation
 The API documentation can be found here:
 
-**Synchronous** version: [API documentation](https://kuzudb.com/api-docs/wasm/sync/)
+**Synchronous** version: [API documentation](https://koredb.github.io/docs/client-apis/wasm)
 
-**Asynchronous** version: [API documentation](https://kuzudb.com/api-docs/wasm/async/)
+**Asynchronous** version: [API documentation](https://koredb.github.io/docs/client-apis/wasm)
 
 ## Local development
 

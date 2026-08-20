@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const { fork } = require("child_process");
-const koredb = process.env.TEST_INSTALLED ? require("koredb") : require("../build/");
+const koredb = process.env.TEST_INSTALLED ? require("@koredb/koredb") : require("../build/");
 
 // Benchmark 3 comparable queries against the on-disk demo_large database,
 // measuring wall-clock time and process memory (RSS) for each.

@@ -23,12 +23,12 @@ jobs:
         include:
           - runner: macos-14
             arch: arm64
-            archflags: "-arch arm64"
+            cmakeArch: arm64
           # macos-15-intel is GitHub's replacement for the retired macos-13
           # image and is the last x86_64 macOS runner (available until Aug 2027).
           - runner: macos-15-intel
             arch: x64
-            archflags: "-arch x86_64"
+            cmakeArch: x86_64
     steps:
       - uses: actions/checkout@v4
 
@@ -47,34 +47,32 @@ jobs:
           python3 update-nightly-build-version.py
         working-directory: scripts
 
-      - name: Create Node.js source distribution
+      # cmake-js is needed at configure time to locate the Node-API headers.
+      - name: Install Node.js build dependencies
         working-directory: tools/nodejs_api
-        run: |
-          rm -rf koredb-source.tar.gz package *.node
-          node package
-
-      - name: Extract tarball
-        working-directory: tools/nodejs_api
-        run: tar -xzf koredb-source.tar.gz
+        run: npm install
 
       - name: Build Node.js native module
-        working-directory: tools/nodejs_api/package
-        run: npm i
+        run: make nodejs
         env:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
-          ARCHFLAGS: ${{ matrix.archflags }}
+          # Electron requires macOS 11, so the addon must not need anything newer.
+          EXTRA_CMAKE_FLAGS: >-
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmakeArch }}
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+
+      - name: Report the architecture of the addon
+        working-directory: tools/nodejs_api/build
+        run: |
+          file koredbjs.node
+          lipo -archs koredbjs.node
 
       - name: Move Node.js native module
-        working-directory: tools/nodejs_api
-        run: mv package/koredbjs.node koredbjs-darwin-${{ matrix.arch }}.node
+        working-directory: tools/nodejs_api/build
+        run: mv koredbjs.node koredbjs-darwin-${{ matrix.arch }}.node
 
       - uses: actions/upload-artifact@v4
         with:
           name: mac-nodejs-module-${{ matrix.arch }}
-          path: tools/nodejs_api/koredbjs-darwin-${{ matrix.arch }}.node
+          path: tools/nodejs_api/build/koredbjs-darwin-${{ matrix.arch }}.node
           if-no-files-found: error
-
-      - name: Clean up
-        if: always()
-        working-directory: tools/nodejs_api
-        run: rm -rf package

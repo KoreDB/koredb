@@ -8,10 +8,29 @@ A high-performance graph database for knowledge-intensive applications. This Nod
 ## 📦 Installation
 
 ```bash
-npm install koredb
+npm install @koredb/koredb
 ```
 
----
+The `@koredb/koredb` package is pure JavaScript. The native addon lives in a separate
+package per platform and architecture, declared as `optionalDependencies`, so a
+normal install downloads exactly one binary — the one matching your machine:
+
+| Package | Contents |
+| ------- | -------- |
+| `@koredb/koredb` | JavaScript API and the addon loader (~60 KB) |
+| `@koredb/koredb-linux-x64` | prebuilt addon for `linux-x64` |
+| `@koredb/koredb-linux-arm64` | prebuilt addon for `linux-arm64` |
+| `@koredb/koredb-darwin-x64` | prebuilt addon for `darwin-x64` |
+| `@koredb/koredb-darwin-arm64` | prebuilt addon for `darwin-arm64` |
+| `@koredb/koredb-win32-x64` | prebuilt addon for `win32-x64` |
+| `@koredb/koredb-win32-arm64` | prebuilt addon for `win32-arm64` |
+
+Never depend on a `@koredb/*` package directly — npm, yarn and pnpm select the
+right one from the `os` and `cpu` fields.
+
+There is no install script and no compilation step. Platforms outside that
+matrix (musl-based Linux such as Alpine, armv7, FreeBSD) have no prebuilt
+binary; see [Building from source](#🛠-building-from-source).
 
 ## 🚀 Quick Start
 
@@ -19,7 +38,7 @@ npm install koredb
 
 ```js
 // Import the KoreDB module (ESM)
-import { Database, Connection } from "koredb";
+import { Database, Connection } from "@koredb/koredb";
 
 const main = async () => {
   // Initialize database and connection
@@ -60,39 +79,105 @@ const main = async () => {
 
 main().catch(console.error);
 ```
- ✅ The dataset used in this example can be found in the [official KoreDB repository](https://github.com/kuzudb/kuzu/tree/master/dataset/demo-db/csv).
+ ✅ The dataset used in this example can be found in the [official KoreDB repository](https://github.com/KoreDB/koredb/tree/main/dataset/demo-db/csv).
 
 ---
 
 ## ⚡ Electron
 
 The native addon is built against **Node-API (`NAPI_VERSION=6`)**, which is ABI-stable
-across both Node.js and Electron. The prebuilt binaries shipped in the npm package are
+across both Node.js and Electron. The addon package installed for your platform is
 therefore loaded as-is by Electron &ge; 11 — there is **no** `electron-rebuild` step and
-no separate Electron build.
+no separate Electron build. Neither the main package nor the addon packages contain a
+`binding.gyp` or an install script, so `@electron/rebuild` and `electron-builder`'s
+`npmRebuild` skip them, which is exactly what you want.
 
 Prebuilt binaries are published for all six supported targets:
 
-| Platform | amd64 | arm64 |
-| -------- | ----- | ----- |
-| Windows  | ✅    | ✅    |
-| macOS    | ✅    | ✅    |
-| Linux    | ✅    | ✅    |
+| Platform | x64 | arm64 | Minimum |
+| -------- | --- | ----- | ------- |
+| Windows  | ✅ | ✅ | Windows 10 |
+| macOS    | ✅ | ✅ | macOS 11 |
+| Linux    | ✅ | ✅ | glibc 2.28 (RHEL 8 / Ubuntu 20.04) |
+
+These floors are at or below Electron's own platform requirements, so any Electron
+version that runs on a machine can load the addon on it.
+
+### Packaging for another platform or architecture
+
+An Electron app is routinely packaged for a target other than the build machine.
+Because the addon is chosen at *install* time, install the dependency tree for
+the target before packaging:
+
+```bash
+# building a macOS arm64 app from any machine
+npm install --os=darwin --cpu=arm64
+```
+
+`--os` / `--cpu` redirect optional-dependency resolution at the requested target
+(npm &ge; 10.6). The equivalents for other package managers:
+
+| Package manager | How to select a foreign target |
+| --------------- | ------------------------------ |
+| npm &ge; 10.6 | `npm install --os=darwin --cpu=arm64` |
+| pnpm | `pnpm.supportedArchitectures` in `package.json` |
+| yarn &ge; 3 | `supportedArchitectures` in `.yarnrc.yml` |
+
+For a macOS universal build, or any build that needs two architectures at once,
+install both addon packages explicitly and let the loader pick at runtime:
+
+```bash
+npm install --os=darwin --cpu=x64
+npm install --os=darwin --cpu=arm64
+```
 
 ### Packaging an Electron app
 
-Native addons cannot be loaded from inside an `asar` archive, so unpack them when
-bundling with `electron-builder`:
+Unpack the addon from the `asar` archive. Electron *can* load a `.node` from
+inside an archive by extracting it to a temporary directory first, but that is
+slower and breaks under hardened sandboxes and read-only temp directories.
+
+`electron-builder`:
 
 ```json
 {
   "build": {
-    "asarUnpack": ["**/node_modules/koredb/**"]
+    "asarUnpack": ["**/node_modules/@koredb/**"]
   }
 }
 ```
 
-With `electron-forge`, add the equivalent `packagerConfig.asar.unpack` entry.
+`electron-forge` (`forge.config.js`):
+
+```js
+module.exports = {
+  packagerConfig: {
+    asar: { unpack: "**/node_modules/@koredb/**" },
+  },
+};
+```
+
+Nothing needs excluding: the main package is JavaScript only, and the single
+addon package that gets installed contains just the binary.
+
+### Bundlers
+
+The addon is loaded with `process.dlopen()` against a path derived from `__dirname`, so
+`@koredb/koredb` must stay **external**. A bundler that inlines it will emit code that looks for
+`koredbjs.node` next to the bundle instead of inside the package.
+
+| Bundler | Configuration |
+| ------- | ------------- |
+| webpack | `externals: { "@koredb/koredb": "commonjs @koredb/koredb" }` |
+| Vite / electron-vite | `build.rollupOptions.external: ["@koredb/koredb"]` |
+| esbuild | `--external:@koredb/koredb` |
+
+### Main process vs. renderer process
+
+Use KoreDB from the **main process** (or a `utilityProcess`) and expose the results to
+renderers over IPC. Loading a native addon in a renderer requires `nodeIntegration: true`
+together with `contextIsolation: false`, which Electron discourages for security reasons.
+Queries run on a libuv worker thread, so they do not block the main process event loop.
 
 ### Running the Electron smoke test
 
@@ -102,9 +187,14 @@ query in the main process. CI runs it on every platform/architecture before publ
 ```bash
 cd test/electron
 npm install
-npm install <path-to>/koredb-source.tar.gz
+node install-local.js ../../dist   # installs the locally packaged tarballs
 npm test
 ```
+
+`install-local.js` reads `dist/packages.json`, then installs the main package
+together with the addon package for the current target. It records both in this
+app’s `package.json`; run `git checkout package.json` afterwards to discard
+that.
 
 On headless Linux, run it under `xvfb-run -a npm test`.
 
@@ -130,7 +220,7 @@ the report as an artifact.
 
 ## 📚 API Overview
 
-The `koredb` package exposes the following primary classes:
+The `@koredb/koredb` package exposes the following primary classes:
 
 * `Database` – Initializes a database from a file path.
 * `Connection` – Executes queries on a connected database.
@@ -162,52 +252,64 @@ npm test
 
 ---
 
-## 📦 Packaging and Binary Distribution
+## 🛠 Building from source
 
-We bundle all prebuilt binaries directly into the npm package, inspired by the approach used by [prebuildify](https://github.com/prebuild/prebuildify).
-
->  All prebuilt binaries are shipped inside the package that is published to npm, which means there's no need for a separate download step like you find in [`prebuild`](https://github.com/prebuild/prebuild). The irony of this approach is that it is faster to download all prebuilt binaries for every platform when they are bundled than it is to download a single prebuilt binary as an install script.
-
-### Requirements (for building from source)
-
-If a prebuilt binary is unavailable for your platform, the module will be built from source during installation. Ensure the following tools are installed:
-
-* **CMake** (≥ 3.15)
-* **Python 3**
-* A **C++20-compatible compiler**
-
-### Packaging Prebuilt Binaries
-
-1. Place your binaries inside the `prebuilt` directory.
-2. Name them using the format:
-
-   ```
-   koredbjs-${platform}-${arch}.node
-   ```
-3. Run the packaging script:
+If your platform has no prebuilt binary, build the addon and link it:
 
 ```bash
-node package
+git clone https://github.com/KoreDB/koredb.git
+cd koredb
+make nodejs
+npm link tools/nodejs_api/build
 ```
 
-If no binaries are found, a source-only tarball will be generated.
+`make nodejs` writes the addon and the JavaScript files to
+`tools/nodejs_api/build/`. The loader prefers a `koredbjs.node` sitting next to
+its own JavaScript, so a linked build is used ahead of any installed
+`@koredb/*` package.
+
+Requirements: **CMake** (≥ 3.15), **Python 3**, and a **C++20** compiler.
+
+---
+
+## 📦 Packaging and Binary Distribution
+
+The npm artifacts are produced by `node package`, which reads the prebuilt
+binaries from `prebuilt/` and writes tarballs to `dist/`:
+
+1. Place the binaries in `prebuilt/`, named `koredbjs-${platform}-${arch}.node`.
+2. Run the packaging script:
+
+   ```bash
+   node package
+   ```
+
+That emits one tarball per platform binary found, one tarball for the main
+package, and a `dist/packages.json` manifest. The main package declares exactly
+the platform packages that were built, pinned to the exact version read from
+the root `CMakeLists.txt`, so a partial build never advertises a package that
+does not exist.
+
+The `Build and Deploy` GitHub Actions workflow builds all six binaries, runs
+`node package`, and gates publication on the Electron smoke test.
 
 ---
 
 ## 🚀 Publishing
 
-To publish the package to npm:
-
 ```bash
-npm publish
+node publish.js --tag latest            # or --tag next for nightlies
+node publish.js --tag latest --dry-run
 ```
 
-Refer to the [npm documentation](https://docs.npmjs.com/cli/v9/commands/npm-publish) for full details on publishing and versioning.
+`publish.js` reads `dist/packages.json` and publishes the platform packages
+**before** the main package, so `@koredb/koredb` is never resolvable on the registry
+before the addon it pins as an optional dependency is.
 
 ---
 
 ## 🔗 Resources
 
-* [KoreDB GitHub](https://github.com/kuzudb/kuzu)
-* [KoreDB Documentation](https://docs.kuzudb.com)
-* [Issue Tracker](https://github.com/kuzudb/kuzu/issues)
+* [KoreDB GitHub](https://github.com/KoreDB/koredb)
+* [KoreDB Documentation](https://koredb.github.io/docs/)
+* [Issue Tracker](https://github.com/KoreDB/koredb/issues)

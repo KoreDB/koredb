@@ -33,7 +33,7 @@
 //!
 //! Example:
 //! ```bash
-//! koredb_prebuilt_dir=/tmp/koredb # pre-built KoreDB from https://docs.kuzudb.com/installation/#cc
+//! koredb_prebuilt_dir=/tmp/koredb # pre-built KoreDB from https://koredb.github.io/docs/installation/#cc
 //! koredb_prebuilt_dir=/path_to_koredb_source/build/release/src # KoreDB built from source
 //! export KOREDB_LIBRARY_DIR="koredb_prebuilt_dir"
 //! export KOREDB_INCLUDE_DIR="koredb_prebuilt_dir"
@@ -49,7 +49,7 @@
 //!
 //! ## Using Extensions
 //! By default, binaries created using this library will not work with KoreDB's
-//! [extensions](https://docs.kuzudb.com/extensions/) (except on Windows/MSVC, where the linker works differently).
+//! [extensions](https://koredb.github.io/docs/extensions/) (except on Windows/MSVC, where the linker works differently).
 //!
 //! If you want to use extensions in binaries (binary crates or tests) using this
 //! library, you will need to add the following (or a similar command; see

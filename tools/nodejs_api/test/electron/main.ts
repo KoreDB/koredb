@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import koredb, { QueryResult } from "koredb";
+import koredb, { QueryResult } from "@koredb/koredb";
 
 const TABLE = "Person";
 

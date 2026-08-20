@@ -1,16 +1,17 @@
 name: Node.js Electron Test
 
-# Verifies that the *published* Node.js package loads and runs inside a real
+# Verifies that the *published* Node.js packages load and run inside a real
 # Electron main process on every supported platform/architecture. The addon is
 # built against Node-API (NAPI_VERSION=6), which is ABI-stable across Node.js
 # and Electron, so the prebuilt binaries are reused as-is - this workflow is the
-# guard that keeps that assumption honest.
+# guard that keeps that assumption honest. It also checks that the split
+# main-package / per-platform-addon-package layout resolves the way it must.
 
 on:
   workflow_dispatch:
     inputs:
       artifactName:
-        description: "Name of the artifact holding koredb-source.tar.gz"
+        description: "Name of the artifact holding the packaged npm tarballs"
         type: string
         required: true
         default: koredb-deploy-nodejs
@@ -51,7 +52,7 @@ jobs:
             xvfb libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
             libdrm2 libgtk-3-0t64 libgbm1 libasound2t64
 
-      - name: Download packaged Node.js tarball
+      - name: Download packaged npm tarballs
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.artifactName }}
@@ -64,15 +65,71 @@ jobs:
       - name: Install the packaged KoreDB build
         working-directory: tools/nodejs_api/test/electron
         shell: bash
-        run: npm install "$GITHUB_WORKSPACE/packaged/koredb-source.tar.gz"
+        run: node install-local.js "$GITHUB_WORKSPACE/packaged"
 
-      - name: Verify a prebuilt binary was used
+      - name: Verify the addon resolves out of its platform package
         working-directory: tools/nodejs_api/test/electron
         shell: bash
         run: |
-          test -f node_modules/koredb/koredbjs.node
-          echo "Resolved addon:"
-          ls -l node_modules/koredb/koredbjs.node
+          set -eu
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const pkg = `@koredb/koredb-${process.platform}-${process.arch}`;
+            const manifestPath = require.resolve(pkg + "/package.json");
+            const manifest = require(manifestPath);
+            if (manifest.os[0] !== process.platform || manifest.cpu[0] !== process.arch) {
+              throw new Error("platform package os/cpu mismatch: " + JSON.stringify(manifest.os) + " " + JSON.stringify(manifest.cpu));
+            }
+            const addon = path.join(path.dirname(manifestPath), "koredbjs.node");
+            fs.accessSync(addon);
+            const mainDir = path.dirname(require.resolve("@koredb/koredb"));
+            if (fs.existsSync(path.join(mainDir, "koredbjs.node"))) {
+              throw new Error("the main package must not bundle koredbjs.node");
+            }
+            console.log("main package (JS only): " + mainDir);
+            console.log("addon from " + pkg + ": " + addon);
+          '
+
+      - name: Verify cross-platform selection of the addon package
+        # Electron apps are routinely packaged for a target other than the build
+        # machine. With the split layout that is an `npm install --os --cpu`,
+        # which redirects the main package's optional dependency resolution at
+        # the requested target. One runner is enough - the logic is shared.
+        if: ${{ matrix.target.runner == 'ubuntu-24.04' }}
+        shell: bash
+        env:
+          PACKAGED: ${{ github.workspace }}/packaged
+        run: |
+          set -eu
+          # --os/--cpu require npm >= 10.6; the runner ships a newer npm.
+          npm --version
+          workdir="$(mktemp -d)"
+          cd "$workdir"
+          # The platform packages are not on the registry yet, so point the main
+          # package's optional dependencies at the freshly built tarballs.
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            const dist = process.env.PACKAGED;
+            const manifest = require(path.join(dist, "packages.json"));
+            const overrides = {};
+            for (const entry of manifest.platforms) {
+              overrides[entry.packageName] = "file:" + path.join(dist, entry.tarball);
+            }
+            fs.writeFileSync("package.json", JSON.stringify({
+              name: "koredb-cross-install-test",
+              version: "1.0.0",
+              private: true,
+              dependencies: { koredb: "file:" + path.join(dist, manifest.main.tarball) },
+              overrides,
+            }, null, 2));
+          '
+          npm install --os=darwin --cpu=arm64
+          test -f node_modules/@koredb/koredb-darwin-arm64/koredbjs.node
+          # The host addon must NOT have been installed for a darwin target.
+          test ! -d node_modules/@koredb/koredb-linux-x64
+          echo "npm --os=darwin --cpu=arm64 selected the darwin-arm64 addon package."
 
       - name: Compile the Electron smoke test
         working-directory: tools/nodejs_api/test/electron

@@ -42,6 +42,9 @@ tools/nodejs_api/node_modules/
 tools/nodejs_api/cmake_install.cmake
 tools/nodejs_api/package-lock.json
 tools/nodejs_api/prebuilt/
+# npm artifacts produced by `node package`
+tools/nodejs_api/dist/
+tools/nodejs_api/test/electron/dist/
 
 ### WASM
 tools/wasm/node_modules/

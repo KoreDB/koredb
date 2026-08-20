@@ -64,26 +64,28 @@ jobs:
         run: python update-nightly-build-version.py
         working-directory: scripts
 
-      - name: Create Node.js source distribution
+      # cmake-js is needed at configure time to locate the Node-API headers.
+      - name: Install Node.js build dependencies
         working-directory: tools/nodejs_api
-        run: |
-          rm -rf koredb-source.tar.gz package *.node
-          node package
-
-      - name: Extract tarball
-        working-directory: tools/nodejs_api
-        run: tar -xzf koredb-source.tar.gz
+        run: npm install
 
       - name: Build Node.js native module
-        working-directory: tools/nodejs_api/package
-        run: npm i
+        run: make nodejs
+
+      - name: Report the glibc floor of the addon
+        working-directory: tools/nodejs_api/build
+        run: |
+          file koredbjs.node
+          # The highest GLIBC_x.y version referenced is the addon's real floor;
+          # manylinux_2_28 keeps it at or below 2.28.
+          objdump -T koredbjs.node             | grep -o "GLIBC_[0-9.]*"             | sort -Vu             | tail -5
 
       - name: Move Node.js native module
-        working-directory: tools/nodejs_api/package
+        working-directory: tools/nodejs_api/build
         run: mv koredbjs.node koredbjs-linux-${{ matrix.arch }}.node
 
       - uses: actions/upload-artifact@v4
         with:
           name: linux-nodejs-module-${{ matrix.arch }}
-          path: tools/nodejs_api/package/koredbjs-linux-${{ matrix.arch }}.node
+          path: tools/nodejs_api/build/koredbjs-linux-${{ matrix.arch }}.node
           if-no-files-found: error

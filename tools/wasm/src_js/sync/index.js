@@ -12,12 +12,12 @@ const QueryResult = require("./query_result.js");
 
 /**
  * The synchronous version of KoreDB WebAssembly module.
- * @module koredb-wasm
+ * @module @koredb/wasm
  */
 module.exports = {
   /**
    * Initialize the KoreDB WebAssembly module.
-   * @memberof module:koredb-wasm
+   * @memberof module:@koredb/wasm
    * @returns {Promise<void>} a promise that resolves when the module is 
    * initialized. The promise is rejected if the module fails to initialize.
    */
@@ -27,7 +27,7 @@ module.exports = {
 
   /**
    * Get the version of the KoreDB WebAssembly module.
-   * @memberof module:koredb-wasm
+   * @memberof module:@koredb/wasm
    * @returns {String} the version of the KoreDB WebAssembly module.
    */
   getVersion: () => {
@@ -36,7 +36,7 @@ module.exports = {
 
   /**
    * Get the storage version of the KoreDB WebAssembly module.
-   * @memberof module:koredb-wasm
+   * @memberof module:@koredb/wasm
    * @returns {BigInt} the storage version of the KoreDB WebAssembly module.
    */
   getStorageVersion: () => {
@@ -46,7 +46,7 @@ module.exports = {
   /**
    * Get the standard emscripten filesystem module (FS). Please refer to the 
    * emscripten documentation for more information.
-   * @memberof module:koredb-wasm
+   * @memberof module:@koredb/wasm
    * @returns {Object} the standard emscripten filesystem module (FS).
    */
   getFS: () => {
@@ -56,7 +56,7 @@ module.exports = {
   /**
    * Get the WebAssembly memory. Please refer to the emscripten documentation 
    * for more information.
-   * @memberof module:koredb-wasm
+   * @memberof module:@koredb/wasm
    * @returns {Object} the WebAssembly memory object.
    */
   getWasmMemory: () => {

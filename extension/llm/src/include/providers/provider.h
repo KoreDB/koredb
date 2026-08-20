@@ -11,7 +11,7 @@ public:
     // TODO(Tanvir) When docs are created validate the url in the string
     static constexpr const char* referenceKoreDBDocs =
         "For more information, please refer to the official KoreDB documentation: "
-        "https://docs.kuzudb.com/extensions/llm/\n";
+        "https://koredb.github.io/docs/extensions/llm/\n";
     virtual ~EmbeddingProvider() = default;
     virtual std::string getClient() const = 0;
     virtual std::string getPath(const std::string& model) const = 0;

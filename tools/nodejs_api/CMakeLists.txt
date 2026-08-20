@@ -66,6 +66,32 @@ file(GLOB JS_SOURCE_FILES
 # Copy all JS/TS files to build directory
 file(COPY ${JS_SOURCE_FILES} DESTINATION  "${CMAKE_CURRENT_SOURCE_DIR}/build")
 
+# Give the build directory a manifest so that it is a usable npm package on its
+# own. A source build is consumed with `npm link tools/nodejs_api/build` (or by
+# installing that path), which is the documented route for platforms that have
+# no prebuilt addon package. No optionalDependencies here: the addon is built
+# right next to this file, and the loader prefers a local koredbjs.node.
+file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/build/package.json"
+"{
+  \"name\": \"@koredb/koredb\",
+  \"version\": \"${CMAKE_PROJECT_VERSION}\",
+  \"description\": \"Locally built KoreDB Node.js API.\",
+  \"license\": \"MIT\",
+  \"main\": \"index.js\",
+  \"module\": \"./index.mjs\",
+  \"types\": \"./koredb.d.ts\",
+  \"exports\": {
+    \".\": {
+      \"require\": \"./index.js\",
+      \"import\": \"./index.mjs\",
+      \"types\": \"./koredb.d.ts\"
+    },
+    \"./package.json\": \"./package.json\"
+  },
+  \"type\": \"commonjs\"
+}
+")
+
 add_library(koredbjs SHARED ${CPP_SOURCE_FILES} ${CMAKE_JS_SRC})
 set_target_properties(koredbjs PROPERTIES PREFIX "" SUFFIX ".node")
 set_target_properties(koredbjs

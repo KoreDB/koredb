@@ -1,12 +1,12 @@
 {
-  "name": "koredb-wasm",
+  "name": "@koredb/wasm",
   "version": "0.0.1",
   "description": "Official WebAssembly build of KoreDB in-process property graph database management system.",
   "main": "index.js",
-  "homepage": "https://kuzudb.com/",
+  "homepage": "https://koredb.github.io/docs/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kuzudb/kuzu.git"
+    "url": "git+https://github.com/KoreDB/koredb.git"
   },
   "exports": {
     ".": {

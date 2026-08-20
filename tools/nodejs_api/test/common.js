@@ -6,8 +6,8 @@ chai.config.includeStack = true;
 
 const TEST_INSTALLED = process.env.TEST_INSTALLED || false;
 if (TEST_INSTALLED) {
-  global.koredb = require("koredb");
-  global.koredbPath = require.resolve("koredb");
+  global.koredb = require("@koredb/koredb");
+  global.koredbPath = require.resolve("@koredb/koredb");
   console.log("Testing installed version @", koredbPath);
 } else {
   global.koredb = require("../build/");

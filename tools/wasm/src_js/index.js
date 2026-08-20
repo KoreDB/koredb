@@ -13,13 +13,13 @@ const FS = require("./fs");
 
 /**
  * The default asynchronous version of KoreDB WebAssembly module.
- * @module koredb-wasm
+ * @module @koredb/wasm
  */
 module.exports = {
   /**
    * Initialize the KoreDB WebAssembly module. Calling this function is optional,
    * as the module is initialized automatically when the first query is executed.
-   * @memberof module:koredb-wasm
+   * @memberof module:@koredb/wasm
    */
   init: async () => {
     await dispatcher.init();
@@ -27,7 +27,7 @@ module.exports = {
 
   /**
    * Get the version of the KoreDB WebAssembly module.
-   * @memberof module:koredb-wasm
+   * @memberof module:@koredb/wasm
    * @returns {String} the version of the KoreDB WebAssembly module.
    */
   getVersion: async () => {
@@ -38,7 +38,7 @@ module.exports = {
 
   /**
    * Get the storage version of the KoreDB WebAssembly module.
-   * @memberof module:koredb-wasm
+   * @memberof module:@koredb/wasm
    * @returns {BigInt} the storage version of the KoreDB WebAssembly module.
    */
   getStorageVersion: async () => {
@@ -55,7 +55,7 @@ module.exports = {
    * called before any other function calls to the WebAssembly module. After the 
    * initialization is started, the worker script path cannot be changed and not 
    * finding the worker script will cause an error.
-   * @memberof module:koredb-wasm
+   * @memberof module:@koredb/wasm
    * @param {String} workerPath the path to the WebAssembly worker script.
    */
   setWorkerPath: (workerPath) => {
@@ -65,7 +65,7 @@ module.exports = {
   /**
    * Destroy the KoreDB WebAssembly module and kill the worker. This function
    * should be called when the module is no longer needed to free up resources.
-   * @memberof module:koredb-wasm
+   * @memberof module:@koredb/wasm
    */
   close: async () => {
     await dispatcher.close();

@@ -129,19 +129,21 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Package Node.js API with prebuilt binaries
+      - name: Build the main package and the per-platform addon packages
         run: node package
         working-directory: tools/nodejs_api
 
-      - name: Show tarball contents
-        run: tar -tvf koredb-source.tar.gz
+      - name: Show packaged tarballs
         working-directory: tools/nodejs_api
+        run: |
+          ls -l dist
+          cat dist/packages.json
 
-      - name: Upload tarball
+      - name: Upload tarballs
         uses: actions/upload-artifact@v4
         with:
           name: koredb-deploy-nodejs
-          path: tools/nodejs_api/koredb-source.tar.gz
+          path: tools/nodejs_api/dist
           if-no-files-found: error
 
   test-nodejs-electron:
@@ -159,29 +161,35 @@ jobs:
     env:
       NODE_AUTH_TOKEN: ${{ secrets.NPM_JS_TOKEN }}
     steps:
+      # publish.js lives in the repository, not in the built artifact.
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           name: koredb-deploy-nodejs
-          path: tools/nodejs_api
+          path: tools/nodejs_api/dist
 
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
+      # publish.js pushes the per-platform addon packages first and the main
+      # package last, so `koredb` is never resolvable before the binary it
+      # pins as an optional dependency is.
       - name: Deploy to npm.js dry run
         if: ${{ github.event_name != 'schedule' && github.event.inputs.isDeploy != 'true' }}
-        run: npm publish koredb-source.tar.gz --access public --dry-run
+        run: node publish.js --tag latest --dry-run
         working-directory: tools/nodejs_api
 
       - name: Deploy nightly to npm.js
         if: ${{ github.event_name == 'schedule' || (github.event.inputs.isDeploy == 'true' && github.event.inputs.isNightly == 'true') }}
-        run: npm publish koredb-source.tar.gz --access public --tag next
+        run: node publish.js --tag next
         working-directory: tools/nodejs_api
 
       - name: Deploy to npm.js
         if: ${{ github.event.inputs.isDeploy == 'true' && github.event.inputs.isNightly != 'true' }}
-        run: npm publish koredb-source.tar.gz --access public --tag latest
+        run: node publish.js --tag latest
         working-directory: tools/nodejs_api
 
   # ----------------------------------------------------------------- Python --
