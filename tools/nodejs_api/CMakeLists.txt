@@ -8,6 +8,7 @@ if(WIN32)
 else()
   set(NPX_CMD npx)
 endif()
+set(NODE_CMD node)
 
 # cmake-js prints diagnostic "info ..." / "ERR! ..." lines to stdout alongside
 # the value it is asked to print, and on Windows those lines (and the value
@@ -97,6 +98,53 @@ file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/build/package.json"
   \"type\": \"commonjs\"
 }
 ")
+
+# On Windows a Node-API addon still has to link against an import library that
+# resolves the napi_* symbols out of the host executable. `cmake-js
+# print-cmakejs-lib` reports where that library belongs - <nodejs_api>/build/
+# node.lib - but it never creates it: cmake-js only generates node.lib when it
+# drives the build itself, where it passes CMAKE_JS_NODELIB_DEF/TARGET and
+# leaves the actual `lib /def:` call to the project. This build invokes CMake
+# directly, so the generation has to happen here, from the .def that ships in
+# node-api-headers. Without it the link step fails with:
+#   ninja: error: '.../nodejs_api/build/node.lib', needed by 'koredbjs.node',
+#   missing and no known rule to make it
+if(MSVC)
+  execute_process(
+    COMMAND ${NODE_CMD} -p "require('node-api-headers').def_paths.node_api_def"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE NODE_API_DEF
+    RESULT_VARIABLE NODE_API_DEF_RESULT
+    ERROR_VARIABLE NODE_API_DEF_ERROR
+  )
+  if(NOT NODE_API_DEF_RESULT EQUAL 0)
+    message(FATAL_ERROR
+      "Could not locate node-api-headers. Run `npm install` in "
+      "${CMAKE_CURRENT_SOURCE_DIR} first. ${NODE_API_DEF_ERROR}")
+  endif()
+  clean_cmakejs_var(NODE_API_DEF)
+
+  # CMAKE_STATIC_LINKER_FLAGS carries the /machine: flag CMake derived for this
+  # target, which is what stops the arm64 build from emitting an x86 stub.
+  separate_arguments(NODE_LIB_AR_FLAGS NATIVE_COMMAND "${CMAKE_STATIC_LINKER_FLAGS}")
+
+  foreach(NODE_LIB_PATH IN LISTS CMAKE_JS_LIB)
+    get_filename_component(NODE_LIB_DIR "${NODE_LIB_PATH}" DIRECTORY)
+    file(MAKE_DIRECTORY "${NODE_LIB_DIR}")
+    execute_process(
+      COMMAND ${CMAKE_AR} /def:${NODE_API_DEF} /out:${NODE_LIB_PATH} ${NODE_LIB_AR_FLAGS}
+      RESULT_VARIABLE NODE_LIB_RESULT
+      OUTPUT_VARIABLE NODE_LIB_OUTPUT
+      ERROR_VARIABLE NODE_LIB_OUTPUT
+    )
+    if(NOT NODE_LIB_RESULT EQUAL 0)
+      message(FATAL_ERROR
+        "Failed to generate ${NODE_LIB_PATH} from ${NODE_API_DEF}: "
+        "${NODE_LIB_OUTPUT}")
+    endif()
+    message(STATUS "Generated Node-API import library: ${NODE_LIB_PATH}")
+  endforeach()
+endif()
 
 add_library(koredbjs SHARED ${CPP_SOURCE_FILES} ${CMAKE_JS_SRC})
 set_target_properties(koredbjs PROPERTIES PREFIX "" SUFFIX ".node")
