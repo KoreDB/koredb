@@ -703,7 +703,7 @@ jobs:
   msvc-build-test:
     name: msvc build & test
     needs: [ sanity-checks, python-lint-check, generate-binary-datasets ]
-    runs-on: windows-2022
+    runs-on: windows-2025
     env:
       # Shorten build path as much as possible
       CARGO_TARGET_DIR: ${{ github.workspace }}/rs
@@ -1299,7 +1299,7 @@ jobs:
   windows-extension-test:
     name: windows extension test
     needs: [ msvc-build-test ]
-    runs-on: windows-2022
+    runs-on: windows-2025
     env:
       # Shorten build path as much as possible
       CARGO_TARGET_DIR: ${{ github.workspace }}/rs

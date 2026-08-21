@@ -73,7 +73,7 @@ jobs:
 
   build-mac-extensions-x86_64:
     if: ${{ inputs.x86_64LinuxOnly != true }}
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     steps:
       - uses: actions/checkout@v4
 
@@ -95,7 +95,7 @@ jobs:
 
   build-windows-extensions-x86_64:
     if: ${{ inputs.x86_64LinuxOnly != true }}
-    runs-on: windows-2022
+    runs-on: windows-2025
     env:
       NUM_THREADS: 4
     steps:

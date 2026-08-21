@@ -19,9 +19,9 @@ jobs:
         target:
           - runner: macos-14
             arch: arm64
-          # macos-15-intel is GitHub's replacement for the retired macos-13
+          # macos-26-intel is GitHub's replacement for the retired macos-13
           # image and is the last x86_64 macOS runner (available until Aug 2027).
-          - runner: macos-15-intel
+          - runner: macos-26-intel
             arch: x86_64
     steps:
       - uses: actions/checkout@v4

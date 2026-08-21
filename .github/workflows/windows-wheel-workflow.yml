@@ -7,7 +7,7 @@ on:
 jobs:
   build-windows-wheels-amd64:
     name: windows-wheel-AMD64-${{ matrix.python }}
-    runs-on: windows-2022
+    runs-on: windows-2025
     timeout-minutes: 360
     strategy:
       fail-fast: false
