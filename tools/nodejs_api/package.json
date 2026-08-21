@@ -38,6 +38,7 @@
     "clean": "node clean.js",
     "clean-all": "node clean.js all",
     "build": "node build.js",
+    "verify:addon": "tsc -p scripts/tsconfig.json && node scripts/dist/verify-addon.js",
     "test:electron": "npm --prefix test/electron run test"
   },
   "author": "KoreDB Team",

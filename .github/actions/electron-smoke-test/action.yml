@@ -103,6 +103,33 @@ runs:
         LAUNCH_TIMEOUT: "120"
       run: bash ci-launch.sh npx electron baseline.js --no-sandbox --load-addon
 
+    # Windows only, and the one check that actually proves the Electron story
+    # there: the addon binds the napi_* symbols to its host process, which only
+    # works when node.exe is a DELAY import. A normal import is invisible on any
+    # machine that has Node installed - the loader quietly maps a second node.exe
+    # image into the Electron process instead of failing - and every CI runner
+    # has Node installed. Taking node.exe off PATH is what makes the difference
+    # observable, and it is also exactly the situation of an end user's machine.
+    - name: Windows - the addon loads with no node.exe on PATH
+      if: ${{ runner.os == 'Windows' }}
+      shell: pwsh
+      working-directory: ${{ inputs.app-dir }}
+      run: |
+        $electron = Join-Path (Get-Location) "node_modules\electron\dist\electron.exe"
+        # A stripped PATH keeps the launcher shims out of reach too, so Electron
+        # is started from its own path rather than through npx.
+        $env:PATH = "$env:SystemRoot\system32;$env:SystemRoot"
+        Remove-Item Env:\ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
+        $proc = Start-Process -FilePath $electron -ArgumentList "baseline.js","--no-sandbox","--load-addon" -NoNewWindow -PassThru
+        if (-not $proc.WaitForExit(120000)) {
+          $proc.Kill()
+          throw "Electron did not exit within 120s with node.exe off PATH"
+        }
+        if ($proc.ExitCode -ne 0) {
+          throw "the addon did not load with node.exe off PATH (exit $($proc.ExitCode)). Check that koredbjs.node delay-imports node.exe."
+        }
+        Write-Output "the addon loaded inside Electron with no node.exe on PATH"
+
     - name: Compile the Electron smoke test
       shell: bash
       working-directory: ${{ inputs.app-dir }}

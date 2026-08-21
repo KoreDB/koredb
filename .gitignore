@@ -45,6 +45,7 @@ tools/nodejs_api/prebuilt/
 # npm artifacts produced by `node package`
 tools/nodejs_api/dist/
 tools/nodejs_api/test/electron/dist/
+tools/nodejs_api/scripts/dist/
 
 ### WASM
 tools/wasm/node_modules/
