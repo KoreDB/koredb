@@ -1,7 +1,11 @@
 // Electron shutdown probe: start, optionally load KoreDB, then exit.
 //
-// The KoreDB smoke test does its work correctly and then fails to let Electron
-// exit. On its own that result is ambiguous, so this file brackets it:
+// A teardown that faults or never finishes is a real failure mode for a native
+// addon, and the hardest one to read from a log: the smoke test prints PASSED
+// and the job then simply stops producing output. KoreDB had exactly that -
+// closing the database while the result of a write statement was still open
+// dereferenced a null block collection in ~FactorizedTable - so this file
+// brackets the smoke test to keep a recurrence attributable:
 //
 //   (no flag)      bare Electron, no KoreDB at all. If this cannot start and
 //                  exit, the CI environment is at fault, not the addon.

@@ -641,6 +641,12 @@ std::unique_ptr<QueryResult> ClientContext::executeNoLock(PreparedStatement* pre
     } else if (isMemoryExceeded()) {
         queryResult->setTruncationReason("memory_limit");
     }
+    // Every result has to carry the life cycle manager, not just the one Connection hands back:
+    // a multi-statement query chains the rest behind it as nextQueryResult, and those are
+    // destroyed with the head, potentially after the database is gone. Without the manager a
+    // chained result destroys its factorized table normally and returns its pages to a memory
+    // manager that no longer exists.
+    queryResult->dbLifeCycleManager = localDatabase->dbLifeCycleManager;
     return queryResult;
 }
 

@@ -564,3 +564,37 @@ TEST_F(ApiTest, DBFileUnderNonExistingDir) {
     // Attempt to open the database with the empty file.
     ASSERT_THROW(std::make_unique<Database>(databasePath, *systemConfig), IOException);
 }
+
+// A query result may legitimately outlive the database it came from: JavaScript and Python both
+// hand results to a garbage collector, so `db.close()` routinely runs while results are still
+// reachable. When that happens the result must leak its pages rather than return them to a
+// memory manager that no longer exists - that is what the DatabaseLifeCycleManager guard is for.
+//
+// The result of a write statement is the case that used to take the whole process down at exit:
+// it has no output columns, so its factorized table is built from an empty schema and never
+// allocates the block collections the guard walks. Chained results (a multi-statement query
+// keeps the rest behind the first one) are the other half - they are destroyed together with the
+// head, equally after the database is gone.
+TEST_F(ApiTest, ResultsOutlivingDatabase) {
+    ASSERT_TRUE(conn->query("CREATE NODE TABLE Widget(id INT64, PRIMARY KEY(id))")->isSuccess());
+    // No output columns: an empty factorized table schema.
+    auto writeResult = conn->query("CREATE (:Widget {id: 1})");
+    ASSERT_TRUE(writeResult->isSuccess());
+    // Output columns, so an allocated result table.
+    auto readResult = conn->query("MATCH (w:Widget) RETURN w.id");
+    ASSERT_TRUE(readResult->isSuccess());
+    // Two statements: the second result hangs off the first as nextQueryResult.
+    auto chainedResult = conn->query("MATCH (w:Widget) RETURN w.id; MATCH (w:Widget) RETURN w.id");
+    ASSERT_TRUE(chainedResult->isSuccess());
+    ASSERT_TRUE(chainedResult->hasNextQueryResult());
+
+    conn.reset();
+    database.reset();
+
+    // Releasing them now must be safe: each has to leak its pages instead of handing them back
+    // to the memory manager that went away with the database. Before the fix this faulted and
+    // took the test process down with it.
+    writeResult.reset();
+    readResult.reset();
+    chainedResult.reset();
+}

@@ -111,9 +111,19 @@ FactorizedTable::~FactorizedTable() {
     if (!preventDestruction) {
         return;
     }
-    flatTupleBlockCollection->preventDestruction();
-    unFlatTupleBlockCollection->preventDestruction();
-    inMemOverflowBuffer->preventDestruction();
+    // A table built from an empty schema never allocates any of these - see the constructor.
+    // That is the shape of the result of a write statement, which returns no columns, and
+    // dereferencing them here is how closing a database with such a result still open used to
+    // take the process down at exit.
+    if (flatTupleBlockCollection) {
+        flatTupleBlockCollection->preventDestruction();
+    }
+    if (unFlatTupleBlockCollection) {
+        unFlatTupleBlockCollection->preventDestruction();
+    }
+    if (inMemOverflowBuffer) {
+        inMemOverflowBuffer->preventDestruction();
+    }
 }
 
 void FactorizedTable::append(const std::vector<ValueVector*>& vectors) {
