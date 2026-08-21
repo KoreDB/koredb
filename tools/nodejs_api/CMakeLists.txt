@@ -157,3 +157,26 @@ if(APPLE)
   target_link_options(koredbjs PRIVATE -undefined dynamic_lookup)
 endif()
 target_link_libraries(koredbjs PRIVATE koredb ${CMAKE_JS_LIB})
+
+# Electron compatibility.
+#
+# The addon resolves the napi_* symbols out of whatever executable is hosting
+# it. The import library generated above comes from node-api-headers' .def,
+# which starts with `NAME NODE.EXE`, so node.exe lands in the *normal* import
+# table and the Windows loader insists on a module literally called node.exe.
+# Inside electron.exe there is none: on a clean machine the load fails with
+# "The specified module could not be found", and where a node.exe happens to
+# sit on PATH the loader maps a second Node image into the process, which
+# takes the host down with it.
+#
+# Delay-loading node.exe hands the resolution to cmake-js's
+# win_delay_load_hook.cc - already compiled in through ${CMAKE_JS_SRC} above,
+# but inert without this flag. The hook answers with GetModuleHandle(NULL),
+# i.e. the running host whatever it is called, so one binary loads in node.exe,
+# electron.exe and any renamed application executable alike.
+#
+# scripts/verify-addon.ts asserts the result on the produced binary.
+if(MSVC)
+  target_link_options(koredbjs PRIVATE /DELAYLOAD:NODE.EXE)
+  target_link_libraries(koredbjs PRIVATE delayimp)
+endif()

@@ -111,6 +111,18 @@ ifdef BM_MALLOC
 	CMAKE_FLAGS += -DENABLE_MALLOC_BUFFER_MANAGER=$(BM_MALLOC)
 endif
 
+# Windows: build the addon - and everything it statically links - against the
+# static CRT. A /MD addon carries VCRUNTIME140.dll and MSVCP140.dll with it,
+# both part of the VC++ redistributable and simply absent on a clean machine,
+# where the addon then fails to load with Windows error 126 ("The specified
+# module could not be found"). cmake-js does the same when it drives the build
+# itself. CMP0091 has to be forced NEW because a few third-party subprojects
+# (zstd, re2) still declare an older cmake_minimum_required, which would leave
+# them on /MD and produce a RuntimeLibrary mismatch at link time.
+ifeq ($(OS),Windows_NT)
+	NODEJS_CMAKE_FLAGS += -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
+endif
+
 release:
 	$(call run-cmake-release,)
 
@@ -188,7 +200,7 @@ else
 endif
 
 nodejs:
-	$(call run-cmake-release, -DBUILD_NODEJS=TRUE)
+	$(call run-cmake-release, -DBUILD_NODEJS=TRUE $(NODEJS_CMAKE_FLAGS))
 
 nodejs-deps:
 	cd tools/nodejs_api && npm install --include=dev
