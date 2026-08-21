@@ -53,14 +53,32 @@ on:
 
 jobs:
   build-mac:
+  # contents: write is what the called workflow's publish-release job declares.
+  # A called workflow can never hold more than its caller, and the repository
+  # default is read-only, so without this the whole run is rejected before it
+  # starts ("workflow file issue") even though that job is skipped here.
+    permissions:
+      contents: write
     uses: ./.github/workflows/mac-nodejs-workflow.yml
     secrets: inherit
 
   build-linux:
+  # contents: write is what the called workflow's publish-release job declares.
+  # A called workflow can never hold more than its caller, and the repository
+  # default is read-only, so without this the whole run is rejected before it
+  # starts ("workflow file issue") even though that job is skipped here.
+    permissions:
+      contents: write
     uses: ./.github/workflows/linux-nodejs-workflow.yml
     secrets: inherit
 
   build-windows:
+  # contents: write is what the called workflow's publish-release job declares.
+  # A called workflow can never hold more than its caller, and the repository
+  # default is read-only, so without this the whole run is rejected before it
+  # starts ("workflow file issue") even though that job is skipped here.
+    permissions:
+      contents: write
     uses: ./.github/workflows/windows-nodejs-workflow.yml
     secrets: inherit
 
