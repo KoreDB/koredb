@@ -69,6 +69,14 @@
         #define PCG_LITTLE_ENDIAN 0
     #elif __x86_64 || __x86_64__ || _M_X64 || __i386 || __i386__ || _M_IX86
         #define PCG_LITTLE_ENDIAN 1
+    // KoreDB local change: MSVC is the only supported compiler that does not
+    // define __BYTE_ORDER__, so Windows on ARM reaches this list and hits the
+    // #error below. Every ARM target Windows supports is little-endian. Kept
+    // to the MSVC-only macros on purpose: __aarch64__/__arm__ compilers all
+    // define __BYTE_ORDER__ and are already handled above, so listing them
+    // here would only let us guess wrong for a big-endian ARM toolchain.
+    #elif _M_ARM64 || _M_ARM64EC || _M_ARM
+        #define PCG_LITTLE_ENDIAN 1
     #elif __powerpc__ || __POWERPC__ || __ppc__ || __PPC__ \
           || __m68k__ || __mc68000__
         #define PCG_LITTLE_ENDIAN 0
