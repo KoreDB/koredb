@@ -36,7 +36,8 @@ runs:
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
           xvfb libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
-          libdrm2 libgtk-3-0t64 libgbm1 libasound2t64
+          libdrm2 libgtk-3-0t64 libgbm1 libasound2t64 \
+          gdb
 
     - name: Install Electron test app dependencies
       shell: bash
@@ -53,28 +54,7 @@ runs:
         LAUNCH_TIMEOUT: "120"
       run: |
         set -euo pipefail
-        # Electron must be given a display on Linux, and must not be allowed to
-        # hang forever: a teardown that never finishes is a real failure mode
-        # here, and without a bound it burns the whole job timeout instead of
-        # reporting itself.
-        launch() {
-          local -a cmd=("$@")
-          if command -v timeout >/dev/null 2>&1; then
-            cmd=(timeout -k 10 "$LAUNCH_TIMEOUT" "${cmd[@]}")
-          fi
-          if [ "${RUNNER_OS}" = "Linux" ]; then
-            cmd=(xvfb-run -a "${cmd[@]}")
-          fi
-          set +e
-          "${cmd[@]}"
-          local status=$?
-          set -e
-          if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-            echo "::error::Electron did not exit within ${LAUNCH_TIMEOUT}s"
-          fi
-          return "$status"
-        }
-        launch npx electron baseline.js --no-sandbox
+        bash ci-launch.sh npx electron baseline.js --no-sandbox
 
     - name: Install the packaged KoreDB build
       shell: bash
@@ -114,6 +94,15 @@ runs:
           console.log("addon from " + pkg + ": " + addon);
         '
 
+    # Narrows a shutdown hang to a layer: if merely requiring koredbjs.node
+    # already stops Electron from exiting, the Database lifecycle is innocent.
+    - name: Probe - Electron exits with the addon loaded
+      shell: bash
+      working-directory: ${{ inputs.app-dir }}
+      env:
+        LAUNCH_TIMEOUT: "120"
+      run: bash ci-launch.sh npx electron baseline.js --no-sandbox --load-addon
+
     - name: Compile the Electron smoke test
       shell: bash
       working-directory: ${{ inputs.app-dir }}
@@ -126,28 +115,7 @@ runs:
         LAUNCH_TIMEOUT: "120"
       run: |
         set -euo pipefail
-        # Electron must be given a display on Linux, and must not be allowed to
-        # hang forever: a teardown that never finishes is a real failure mode
-        # here, and without a bound it burns the whole job timeout instead of
-        # reporting itself.
-        launch() {
-          local -a cmd=("$@")
-          if command -v timeout >/dev/null 2>&1; then
-            cmd=(timeout -k 10 "$LAUNCH_TIMEOUT" "${cmd[@]}")
-          fi
-          if [ "${RUNNER_OS}" = "Linux" ]; then
-            cmd=(xvfb-run -a "${cmd[@]}")
-          fi
-          set +e
-          "${cmd[@]}"
-          local status=$?
-          set -e
-          if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-            echo "::error::Electron did not exit within ${LAUNCH_TIMEOUT}s"
-          fi
-          return "$status"
-        }
         # The sandbox is disabled by the "start" script itself - see
         # test/electron/main.ts for why it cannot be switched off from inside
         # the app.
-        launch npm start
+        bash ci-launch.sh npm start
