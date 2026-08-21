@@ -14,6 +14,11 @@ name: Release Node.js Packages
 # registry unless the addon actually loaded and answered a query on all six
 # platform/architecture combinations.
 #
+# Build output is attached to a GitHub Release as well: the six addons as raw
+# .node files (for apps that vendor a binary directly) and the npm tarballs.
+# That step is independent of the npm publish - either can run without the
+# other.
+#
 # The whole workflow is manual by design - npm releases are never triggered by a
 # push. Dispatching it with "Publish to npm?" unchecked builds everything, runs
 # the six-platform Electron matrix and stops at a `--dry-run` publish, which is
@@ -28,6 +33,16 @@ on:
         type: boolean
         required: true
         default: false
+      githubRelease:
+        description: "Attach the six addons and the npm tarballs to a GitHub Release."
+        type: boolean
+        required: true
+        default: true
+      releaseTag:
+        description: "Release tag to upload to. Empty derives v<project version> from CMakeLists.txt."
+        type: string
+        required: false
+        default: ""
 
 jobs:
   build-mac:
@@ -96,6 +111,43 @@ jobs:
     with:
       artifactName: koredb-deploy-nodejs
     secrets: inherit
+
+  github-release:
+    name: attach the build output to a GitHub Release
+    needs: [package, test-electron]
+    if: ${{ inputs.githubRelease }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      # The raw addons, exactly as the three build workflows produced them, so
+      # that an Electron app can vendor one binary without going through npm.
+      - name: Collect the prebuilt addons
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          pattern: "*-nodejs-module-*"
+          path: prebuilt
+          merge-multiple: true
+
+      # ... plus the packaged tarballs, which are what `npm install <url>` and
+      # air-gapped installs consume.
+      - name: Collect the npm tarballs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          name: koredb-deploy-nodejs
+          path: dist
+
+      - name: List the release assets
+        run: ls -l prebuilt dist
+
+      - name: Publish to a GitHub Release
+        uses: ./.github/actions/upload-release-asset
+        with:
+          files: prebuilt/*.node dist/*.tgz
+          tag: ${{ inputs.releaseTag }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   publish:
     needs: [package, test-electron]

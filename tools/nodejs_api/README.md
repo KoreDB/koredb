@@ -103,6 +103,45 @@ Prebuilt binaries are published for all six supported targets:
 These floors are at or below Electron's own platform requirements, so any Electron
 version that runs on a machine can load the addon on it.
 
+### What makes one binary work in both runtimes
+
+Node-API stability is necessary but not sufficient — the link step has to cooperate,
+and on Windows it does not by default:
+
+* **Windows.** The addon reaches the `napi_*` symbols through an import library
+  generated from `node-api-headers`' `.def`, which names `NODE.EXE`. Left as a normal
+  import that is a hard requirement for a module called `node.exe`, which `electron.exe`
+  is not: the load fails with *"The specified module could not be found"* on a clean
+  machine, and on a machine that happens to have Node on `PATH` the loader maps a
+  second Node image into the process and takes the host down with it. The addon is
+  therefore linked with `/DELAYLOAD:NODE.EXE` and `delayimp`, which activates cmake-js's
+  `win_delay_load_hook` — it answers with `GetModuleHandle(NULL)`, the running host,
+  whatever it is called. The Windows build also uses the **static CRT**
+  (`-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded`) so the addon does not need the VC++
+  redistributable, which is missing on a fresh machine.
+* **Linux.** The `napi_*` symbols stay undefined and are resolved from the host at
+  `dlopen` time, so nothing needs to link against Node. Building inside
+  `manylinux_2_28` keeps the glibc and libstdc++ floors below what Electron itself
+  requires.
+* **macOS.** Linked with `-undefined dynamic_lookup` (same flat lookup as Linux) and a
+  deployment target of macOS 11, the oldest release supported Electron versions run on.
+
+None of this is observable from a passing Node.js test suite — every way of losing it
+still works under plain `node`. `scripts/verify-addon.ts` reads the produced binary and
+asserts the invariants directly, and every build workflow runs it on the addon it is
+about to upload:
+
+```bash
+npm run verify:addon -- build/koredbjs.node
+```
+
+It reports the object format and architecture, the imports and symbol-version floors,
+and fails on a normal `node.exe` import, a VC++ runtime dependency, a link against the
+host runtime, a glibc/libstdc++ floor above the promised one, or a deployment target
+that is too new. The Electron smoke test additionally launches Electron on Windows with
+`node.exe` removed from `PATH`, which is the only way the delay-load regression shows up
+on a machine that has Node installed.
+
 ### Packaging for another platform or architecture
 
 An Electron app is routinely packaged for a target other than the build machine.
@@ -302,6 +341,18 @@ does not exist.
 
 The `Release Node.js Packages` GitHub Actions workflow builds all six binaries, runs
 `node package`, and gates publication on the Electron smoke test.
+
+It also attaches the build output to a GitHub Release: the six raw
+`koredbjs-<platform>-<arch>.node` files, for apps that vendor a binary directly instead
+of installing from npm, plus the `.tgz` tarballs for offline or `npm install <url>`
+installs. That step is independent of the npm publish — dispatch the workflow with
+**Attach the six addons and the npm tarballs to a GitHub Release** ticked and **Publish
+to npm?** unticked to produce a release without touching the registry. Leave the tag
+empty to derive `v<project version>` from the root `CMakeLists.txt`.
+
+Each platform workflow (`Build Windows Node.js Module` and friends) takes the same
+`uploadToRelease` / `releaseTag` inputs, so a single platform's addon can be rebuilt and
+attached to an existing release on its own.
 
 ---
 

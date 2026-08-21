@@ -3,7 +3,27 @@ name: Build Windows Node.js Module
 
 on:
   workflow_dispatch:
+    inputs:
+      uploadToRelease:
+        description: "Also upload the built addons to a GitHub Release"
+        type: boolean
+        required: false
+        default: false
+      releaseTag:
+        description: "Release tag to upload to. Empty derives v<project version> from CMakeLists.txt."
+        type: string
+        required: false
+        default: ""
   workflow_call:
+    inputs:
+      uploadToRelease:
+        type: boolean
+        required: false
+        default: false
+      releaseTag:
+        type: string
+        required: false
+        default: ""
 jobs:
   build-windows-nodejs:
     name: windows-nodejs-${{ matrix.arch }}
@@ -56,6 +76,15 @@ jobs:
         shell: cmd
         run: make nodejs NUM_THREADS=%NUM_THREADS%
 
+      # Electron loadability and the glibc/libstdc++ floor are properties of
+      # the produced binary that no passing Node.js test suite can detect -
+      # every way of losing them still works under plain `node`. They are
+      # asserted here, on the artifact that ships.
+      - name: Verify the addon
+        working-directory: tools/nodejs_api
+        shell: cmd
+        run: npm run verify:addon -- build/koredbjs.node
+
       - name: Move Node.js native module
         working-directory: tools/nodejs_api/build
         shell: cmd
@@ -67,3 +96,33 @@ jobs:
           path: tools/nodejs_api/build/koredbjs-win32-${{ matrix.arch }}.node
           if-no-files-found: error
           retention-days: 1
+
+  # Publishing runs on its own hosted runner rather than inside the build
+  # job: the composite action drives `gh`, which the build environment does
+  # not necessarily have (the Linux addon is built inside a manylinux
+  # container). Downloading the artifact back is cheap by comparison.
+  publish-release:
+    name: publish the Windows addons to a GitHub Release
+    needs: [build-windows-nodejs]
+    if: ${{ inputs.uploadToRelease }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          pattern: windows-nodejs-module-*
+          path: prebuilt
+          merge-multiple: true
+
+      - name: List the addons to publish
+        run: ls -l prebuilt
+
+      - name: Publish the addons to a GitHub Release
+        uses: ./.github/actions/upload-release-asset
+        with:
+          files: prebuilt/*.node
+          tag: ${{ inputs.releaseTag }}
+          token: ${{ secrets.GITHUB_TOKEN }}
