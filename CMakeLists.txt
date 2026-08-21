@@ -160,11 +160,40 @@ if(MSVC)
     # older versions of the MSVC runtime library
     # See: https://github.com/microsoft/STL/wiki/Changelog#vs-2022-1710
     add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
-    # TODO (bmwinger): Figure out if this can be set automatically by cmake,
-    # or at least better integrated with user-specified options
-    # For now, hardcode _AMD64_
-    # CMAKE_GENERATOR_PLATFORM can be used for visual studio builds, but not for ninja
-    add_compile_definitions(_AMD64_)
+    # The Windows SDK headers select their architecture-specific declarations
+    # from one of these macros, and nothing defines them for you. Getting it
+    # wrong is not a soft failure: with _AMD64_ set while targeting arm64,
+    # winnt.h exposes the x64 interlocked/barrier intrinsics and the build dies
+    # in the SDK with "error C3861: 'ReadAcquire8': identifier not found".
+    #
+    # CMAKE_GENERATOR_PLATFORM only exists for the Visual Studio generators, so
+    # key off the compiler's own target architecture, which CMake fills in for
+    # MSVC under every generator, Ninja included.
+    if(CMAKE_CXX_COMPILER_ARCHITECTURE_ID)
+        set(KOREDB_SDK_ARCH "${CMAKE_CXX_COMPILER_ARCHITECTURE_ID}")
+    elseif(CMAKE_GENERATOR_PLATFORM)
+        set(KOREDB_SDK_ARCH "${CMAKE_GENERATOR_PLATFORM}")
+    else()
+        set(KOREDB_SDK_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
+    string(TOUPPER "${KOREDB_SDK_ARCH}" KOREDB_SDK_ARCH)
+    if(KOREDB_SDK_ARCH STREQUAL "ARM64EC")
+        # ARM64EC keeps the x64 ABI, so the SDK wants both macros.
+        add_compile_definitions(_ARM64EC_ _AMD64_)
+    elseif(KOREDB_SDK_ARCH STREQUAL "ARM64")
+        add_compile_definitions(_ARM64_)
+    elseif(KOREDB_SDK_ARCH STREQUAL "ARM")
+        add_compile_definitions(_ARM_)
+    elseif(KOREDB_SDK_ARCH MATCHES "^(X64|AMD64|X86_64)$")
+        add_compile_definitions(_AMD64_)
+    elseif(KOREDB_SDK_ARCH MATCHES "^(X86|WIN32|I[3-6]86)$")
+        add_compile_definitions(_X86_)
+    else()
+        message(FATAL_ERROR
+            "Unrecognised MSVC target architecture '${KOREDB_SDK_ARCH}'; cannot "
+            "pick the Windows SDK architecture macro (_AMD64_/_ARM64_/_X86_).")
+    endif()
+    message(STATUS "Windows SDK architecture macro selected for ${KOREDB_SDK_ARCH}")
     # Non-english windows system may use other encodings other than utf-8 (e.g. Chinese use GBK).
     add_compile_options("/utf-8")
     # Enables support for custom hardware exception handling
