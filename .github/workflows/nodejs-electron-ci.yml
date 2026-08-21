@@ -62,7 +62,7 @@ jobs:
           ccache --max-size=1G
 
       - name: Restore ccache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
         with:
           path: ~/.cache/ccache
           key: nodejs-electron-ci-ccache-${{ github.sha }}
@@ -75,10 +75,22 @@ jobs:
         run: make nodejs-deps
 
       - name: Build the Node.js addon
+        id: build-addon
         run: make nodejs
 
       - name: Report ccache statistics
         run: ccache --show-stats
+
+      # Saved here rather than left to actions/cache's own post step, which is
+      # skipped when the job fails. A failing Electron test would otherwise
+      # throw away a perfectly good compile cache and make every retry pay for
+      # a cold build.
+      - name: Save ccache
+        if: ${{ always() && steps.build-addon.outcome == 'success' }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.cache/ccache
+          key: nodejs-electron-ci-ccache-${{ github.sha }}
 
       # `node package` reads prebuilt/koredbjs-<platform>-<arch>.node, the same
       # naming the per-platform build workflows upload. Staging the freshly

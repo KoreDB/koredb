@@ -43,6 +43,39 @@ runs:
       working-directory: ${{ inputs.app-dir }}
       run: npm install
 
+    # Runs before KoreDB is anywhere near the picture. If Electron cannot even
+    # start and exit on this runner, the smoke test below would fail for reasons
+    # that have nothing to do with the addon - see baseline.js.
+    - name: Baseline - a bare Electron app starts and exits
+      shell: bash
+      working-directory: ${{ inputs.app-dir }}
+      env:
+        LAUNCH_TIMEOUT: "120"
+      run: |
+        set -euo pipefail
+        # Electron must be given a display on Linux, and must not be allowed to
+        # hang forever: a teardown that never finishes is a real failure mode
+        # here, and without a bound it burns the whole job timeout instead of
+        # reporting itself.
+        launch() {
+          local -a cmd=("$@")
+          if command -v timeout >/dev/null 2>&1; then
+            cmd=(timeout -k 10 "$LAUNCH_TIMEOUT" "${cmd[@]}")
+          fi
+          if [ "${RUNNER_OS}" = "Linux" ]; then
+            cmd=(xvfb-run -a "${cmd[@]}")
+          fi
+          set +e
+          "${cmd[@]}"
+          local status=$?
+          set -e
+          if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+            echo "::error::Electron did not exit within ${LAUNCH_TIMEOUT}s"
+          fi
+          return "$status"
+        }
+        launch npx electron baseline.js --no-sandbox
+
     - name: Install the packaged KoreDB build
       shell: bash
       working-directory: ${{ inputs.app-dir }}
@@ -89,14 +122,32 @@ runs:
     - name: Run the Electron smoke test
       shell: bash
       working-directory: ${{ inputs.app-dir }}
+      env:
+        LAUNCH_TIMEOUT: "120"
       run: |
         set -euo pipefail
-        if [ "${RUNNER_OS}" = "Linux" ]; then
-          # Headless runners have no X server; Electron needs one even for a
-          # main-process-only app. The sandbox is disabled by the "start"
-          # script itself - see test/electron/main.ts for why it cannot be
-          # switched off from inside the app.
-          xvfb-run -a npm start
-        else
-          npm start
-        fi
+        # Electron must be given a display on Linux, and must not be allowed to
+        # hang forever: a teardown that never finishes is a real failure mode
+        # here, and without a bound it burns the whole job timeout instead of
+        # reporting itself.
+        launch() {
+          local -a cmd=("$@")
+          if command -v timeout >/dev/null 2>&1; then
+            cmd=(timeout -k 10 "$LAUNCH_TIMEOUT" "${cmd[@]}")
+          fi
+          if [ "${RUNNER_OS}" = "Linux" ]; then
+            cmd=(xvfb-run -a "${cmd[@]}")
+          fi
+          set +e
+          "${cmd[@]}"
+          local status=$?
+          set -e
+          if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+            echo "::error::Electron did not exit within ${LAUNCH_TIMEOUT}s"
+          fi
+          return "$status"
+        }
+        # The sandbox is disabled by the "start" script itself - see
+        # test/electron/main.ts for why it cannot be switched off from inside
+        # the app.
+        launch npm start
