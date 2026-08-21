@@ -1,14 +1,11 @@
 name: CI Workflow
 
+# Manual only. This is the heavy matrix - gcc/clang/msvc/apple builds, the
+# sanitizer runs, extension tests and the benchmark - so it is dispatched when
+# it is wanted rather than on every push and pull request. The per-commit guard
+# that still runs automatically is nodejs-electron-ci.yml.
+
 on:
-  pull_request:
-    branches:
-      - main
-      - "0.11"
-  push:
-    branches:
-      - main
-      - "0.11"
   workflow_dispatch:
     inputs:
       auto_checkpoint:

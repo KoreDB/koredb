@@ -340,15 +340,15 @@ the root `CMakeLists.txt`, so a partial build never advertises a package that
 does not exist.
 
 The `Release Node.js Packages` GitHub Actions workflow builds all six binaries, runs
-`node package`, and gates publication on the Electron smoke test.
+`node package`, and gates publication on the Electron smoke test. It runs automatically
+when a `v*` tag is pushed, and can also be dispatched by hand.
 
 It also attaches the build output to a GitHub Release: the six raw
 `koredbjs-<platform>-<arch>.node` files, for apps that vendor a binary directly instead
 of installing from npm, plus the `.tgz` tarballs for offline or `npm install <url>`
-installs. That step is independent of the npm publish — dispatch the workflow with
-**Attach the six addons and the npm tarballs to a GitHub Release** ticked and **Publish
-to npm?** unticked to produce a release without touching the registry. Leave the tag
-empty to derive `v<project version>` from the root `CMakeLists.txt`.
+installs. On a tag build the assets land on that tag's release; on a dispatch, leaving
+the tag input empty derives `v<project version>` from the root `CMakeLists.txt`. This
+step is independent of the npm publish — either can happen without the other.
 
 Each platform workflow (`Build Windows Node.js Module` and friends) takes the same
 `uploadToRelease` / `releaseTag` inputs, so a single platform's addon can be rebuilt and
@@ -367,10 +367,12 @@ node publish.js --tag latest --dry-run
 **before** the main package, so `@koredb/koredb` is never resolvable on the registry
 before the addon it pins as an optional dependency is.
 
-Publishing is never automatic. It happens by dispatching the `Release Node.js
-Packages` workflow and ticking **Publish to npm?**; leaving that box unchecked runs
-the full build, the six-platform Electron matrix and a `--dry-run` publish, which is
-also the way to exercise the whole release path without shipping anything.
+Publishing to npm is never automatic — not even on a tag, which stops at the
+`--dry-run` publish. It happens only by dispatching the `Release Node.js Packages`
+workflow and ticking **Publish to npm?**, because a publish cannot be taken back (npm
+refuses `unpublish` after 24 hours). Dispatching with the box unchecked runs the full
+build, the six-platform Electron matrix and that dry run, which is also the way to
+exercise the whole release path without shipping anything.
 
 ---
 

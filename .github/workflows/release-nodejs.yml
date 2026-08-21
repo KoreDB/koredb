@@ -19,13 +19,20 @@ name: Release Node.js Packages
 # That step is independent of the npm publish - either can run without the
 # other.
 #
-# The whole workflow is manual by design - npm releases are never triggered by a
-# push. Dispatching it with "Publish to npm?" unchecked builds everything, runs
-# the six-platform Electron matrix and stops at a `--dry-run` publish, which is
-# also how to get full-matrix Electron coverage on demand. The per-commit
-# Electron guard is nodejs-electron-ci.yml.
+# A pushed `v*` tag is the signal that a version is ready, and runs everything
+# above automatically: the six addons, the Electron matrix on all of them, and
+# the assets attached to that tag's release.
+#
+# npm is deliberately not part of that. A publish cannot be taken back (npm
+# refuses unpublish after 24 hours), so it stays behind an explicit dispatch
+# with "Publish to npm?" ticked; a tag build stops at a `--dry-run` publish.
+# Dispatching with the box unticked is also how to get full-matrix Electron
+# coverage on demand. The per-commit Electron guard is nodejs-electron-ci.yml.
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       isDeploy:
@@ -115,7 +122,9 @@ jobs:
   github-release:
     name: attach the build output to a GitHub Release
     needs: [package, test-electron]
-    if: ${{ inputs.githubRelease }}
+    # Always on for a tag build, where there are no inputs at all; on a dispatch
+    # it follows the checkbox (ticked by default).
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.githubRelease }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
