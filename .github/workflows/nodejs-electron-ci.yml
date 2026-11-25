@@ -78,6 +78,10 @@ jobs:
         id: build-addon
         run: make nodejs
 
+      - name: Verify built-in extensions
+        working-directory: tools/nodejs_api
+        run: npm run test:extensions
+
       - name: Report ccache statistics
         run: ccache --show-stats
 

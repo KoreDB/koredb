@@ -33,6 +33,7 @@
   },
   "scripts": {
     "test": "mocha test --timeout 20000",
+    "test:extensions": "mocha test/test_extensions.js --timeout 20000",
     "bench": "node --expose-gc bench/query-bench.js",
     "bench:gen": "tsc -p bench/tsconfig.json && node bench/dist/gen-bench-db.js",
     "clean": "node clean.js",

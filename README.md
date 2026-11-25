@@ -48,11 +48,13 @@ Refer to our [Getting Started](https://koredb.github.io/docs/get-started/) page 
 KoreDB has an extension framework that users can dynamically load the functionality you need at runtime.
 See the list of [available extensions](https://koredb.github.io/docs/extensions/#available-extensions) that you can use to extend KoreDB's functionality.
 
-KoreDB requires you to install the extension before loading and using it.
+Extensions that are not built in must be installed before loading and using them.
 Note that KoreDB no longer provides the official extension server, where you can directly install any official extensions.
 
-If you've upgraded to the latest version v0.11.3, KoreDB has pre-installed four commonly used extensions (`algo`, `fts`, `json`, `vector`) for you.
-You do not need to manually INSTALL these extensions.
+KoreDB 0.11.3 and default native source builds, including Release builds and the Node.js
+package, statically link four extensions: `algo`, `fts`, `json`, and `vector`. They load
+automatically when a database opens. Existing `INSTALL` and `LOAD EXTENSION` statements
+for these names succeed without downloading or loading them again.
 
 For KoreDB versions before v0.11.3, or to install extensions that haven't been pre-installed, you have to set up a local extension server.
 The instructions of setting up a local extension server can be found below.

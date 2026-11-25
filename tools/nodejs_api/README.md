@@ -5,6 +5,21 @@ A high-performance graph database for knowledge-intensive applications. This Nod
 
 ---
 
+## Built-in extensions
+
+The native addon includes `algo`, `fts`, `json`, and `vector` by default, including
+Release builds. They are statically linked and load automatically when a database
+opens, so no extension server, download, `INSTALL`, or `LOAD` is required.
+
+Existing `INSTALL fts` and `LOAD EXTENSION fts` queries succeed with an informational
+result and skip any download or duplicate loading. The same applies to the other
+three built-in extensions, through both sync and async APIs, including prepared
+statements and multi-statement queries. Verify the loaded set with
+`CALL SHOW_LOADED_EXTENSIONS() RETURN *;` (source: `STATIC LINK`).
+
+Run `npm run test:extensions` after building to check this behavior and an actual
+FTS index search. The test is also run on each platform's Release addon before upload.
+
 ## 📦 Installation
 
 ```bash

@@ -85,6 +85,11 @@ jobs:
         shell: cmd
         run: npm run verify:addon -- build/koredbjs.node
 
+      - name: Verify built-in extensions
+        working-directory: tools/nodejs_api
+        shell: cmd
+        run: npm run test:extensions
+
       - name: Move Node.js native module
         working-directory: tools/nodejs_api/build
         shell: cmd
