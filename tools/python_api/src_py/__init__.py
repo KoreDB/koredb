@@ -3,10 +3,11 @@
 
 This package provides a Python API for KoreDB graph database management system.
 
-To install the package, run:
-```
-python3 -m pip install koredb
-```
+Install from the KoreDB 0.11.3 Release:
+https://github.com/KoreDB/koredb/releases/tag/0.11.3
+
+Download a compatible wheel when available, or build the package from the 0.11.3 source tag.
+See https://koredb.github.io/docs/installation/#python for installation instructions.
 
 Example usage:
 ```python

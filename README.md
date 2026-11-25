@@ -14,20 +14,39 @@ on very large databases and provides a set of retrieval features, such as a full
 - Wasm (WebAssembly) bindings for fast, secure execution in the browser
 
 KoreDB is derived from [Kuzu](https://github.com/kuzudb/kuzu), which was initially developed by
-Kùzu Inc. and released under the MIT License. Documentation links below still point at the
-upstream Kuzu resources, which describe the same engine.
+Kùzu Inc. and released under the [MIT License](LICENSE). We thank the Kuzu team and
+contributors for their work on the database engine and its documentation.
+
+## Storage Format Compatibility
+
+**KoreDB will always maintain compatibility with the Kuzu 0.11.x storage format.**
+This commitment applies to all future KoreDB releases. Storage changes must preserve
+compatibility with existing Kuzu 0.11.x database files.
 
 ## Docs and Blog
 
-To learn more about KoreDB, see our [Documentation](https://kuzudb.github.io/docs) and [Blog](https://kuzudb.github.io/blog) page.
+To learn more about KoreDB, see our [Documentation](https://koredb.github.io/docs/).
+For background on the upstream project, see the [Kuzu Blog](https://kuzudb.github.io/blog).
+
+## Installation
+
+Install the Node.js package with `npm install @koredb/koredb` and import it with
+`require("@koredb/koredb")` or `import { Database, Connection } from "@koredb/koredb"`.
+
+For Python and other interfaces, use the
+[0.11.3 Release](https://github.com/KoreDB/koredb/releases/tag/0.11.3).
+The tag is `0.11.3`, without a `v` prefix. The release currently contains Node.js assets;
+for Python, build the package from that source tag using the
+[Python installation instructions](https://koredb.github.io/docs/installation/#python).
+See the [installation guide](https://koredb.github.io/docs/installation/) for all interfaces.
 
 ## Getting Started
 
-Refer to our [Getting Started](https://kuzudb.github.io/docs/get-started/) page for your first example.
+Refer to our [Getting Started](https://koredb.github.io/docs/get-started/) page for your first example.
 
 ## Extensions
 KoreDB has an extension framework that users can dynamically load the functionality you need at runtime.
-We've developed a list of [official extensions](https://kuzudb.github.io/docs/extensions/#available-extensions) that you can use to extend KoreDB's functionality.
+See the list of [available extensions](https://koredb.github.io/docs/extensions/#available-extensions) that you can use to extend KoreDB's functionality.
 
 KoreDB requires you to install the extension before loading and using it.
 Note that KoreDB no longer provides the official extension server, where you can directly install any official extensions.
@@ -66,7 +85,7 @@ git clone --recurse-submodules https://github.com/KoreDB/koredb.git
 For an existing clone, run `git submodule update --init dataset`. Building the
 library itself does not need the submodule — only the tests do.
 
-You can build from source using the instructions provided in the [developer guide](https://kuzudb.github.io/docs/developer-guide).
+You can build from source using the instructions provided in the [developer guide](https://koredb.github.io/docs/developer-guide/).
 
 ## License
 KoreDB is licensed under the [MIT License](LICENSE).

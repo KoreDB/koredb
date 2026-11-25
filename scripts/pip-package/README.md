@@ -1,8 +1,20 @@
-# `pip install` from the source
-```
-chmod +x package_tar.py
-./package_tar.py
-pip install koredb.tar.gz    
+# Install the Python package from release source
+
+Use the [KoreDB 0.11.3 Release](https://github.com/KoreDB/koredb/releases/tag/0.11.3)
+as the package source. To build the Python source distribution for that release:
+
+```bash
+git clone --branch 0.11.3 --depth 1 https://github.com/KoreDB/koredb.git
+cd koredb/scripts/pip-package
+python -m pip install setuptools wheel
+python package_tar.py
+python -m pip install ./koredb-0.11.3.tar.gz
 ```
 
-Note: installing from source requires the full toolchain for building the project, including Cmake(>=3.11), Python 3, and a compiler compatible with C++20. The package works for both Linux and macOS.
+Run `package_tar.py` from `scripts/pip-package` in a Git checkout: it uses `git archive HEAD`
+and reads packaging files relative to that directory. The generated tarball is a Python source
+distribution, unlike GitHub's repository source archive.
+
+Installing from source requires Git, Make, CMake 3.15 or later, Python development headers,
+and a C++20 compiler. See the [developer guide](https://koredb.github.io/docs/developer-guide/)
+for platform setup. For other source versions, install the tarball name reported by the script.
