@@ -33,22 +33,18 @@ For background on the upstream project, see the [Kuzu Blog](https://kuzudb.githu
 Install the Node.js package with `npm install @koredb/koredb` and import it with
 `require("@koredb/koredb")` or `import { Database, Connection } from "@koredb/koredb"`.
 
-Install the Python package directly from this GitHub repository:
+Install the Python package from PyPI:
 
 The Python package supports standard CPython 3.12 and later. Published wheels use
 the CPython stable ABI and are built once for each supported operating system and
 CPU architecture. Free-threaded CPython builds are not currently supported.
 
 ```bash
-python -m pip install "git+https://github.com/KoreDB/koredb.git"
+pip install koredb
 ```
 
-This compiles the native extension and requires Git, Make, CMake 3.15 or newer,
-Python development headers, and a C++20 compiler. On Windows, use an MSVC
-developer environment with Ninja and GNU Make available. See the
-[Python build instructions](tools/python_api/README.md) for details and examples.
-The GitHub command installs a repository revision containing this packaging support;
-older releases may require their own installation instructions.
+See the [Python installation instructions](tools/python_api/README.md) for
+examples and source build requirements.
 See the [installation guide](https://koredb.github.io/docs/installation/) for all interfaces.
 
 ## Getting Started
