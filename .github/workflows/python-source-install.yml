@@ -4,11 +4,17 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - 'CMakeLists.txt'
+      - 'Makefile'
       - 'setup.py'
       - 'pyproject.toml'
       - 'MANIFEST.in'
+      - 'cmake/**'
+      - 'src/**'
+      - 'extension/**'
+      - 'third_party/**'
+      - 'tools/CMakeLists.txt'
       - 'tools/python_api/**'
-      - 'third_party/pybind11/**'
       - '.github/workflows/python-source-install.yml'
 
 jobs:
@@ -38,3 +44,7 @@ jobs:
         run: python -m pip install .
       - name: Run an in-memory query
         run: python -c "import koredb; db = koredb.Database(); conn = koredb.Connection(db); assert conn.execute('RETURN 1').get_next() == [1]"
+      - name: Install Kuzu 0.11.3
+        run: 'python -m pip install --only-binary=:all: kuzu==0.11.3'
+      - name: Test bidirectional Kuzu database compatibility
+        run: python tools/python_api/test/kuzu_compatibility.py
