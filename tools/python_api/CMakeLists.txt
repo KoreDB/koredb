@@ -7,7 +7,7 @@ file(GLOB SOURCE_PY
         "src_py/*")
 
 pybind11_add_module(_koredb
-        SHARED
+        MODULE
         src_cpp/koredb_binding.cpp
         src_cpp/cached_import/py_cached_item.cpp
         src_cpp/cached_import/py_cached_import.cpp
