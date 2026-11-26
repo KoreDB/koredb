@@ -6,13 +6,9 @@ on:
   workflow_call:
 jobs:
   build-windows-wheels-amd64:
-    name: windows-wheel-AMD64-${{ matrix.python }}
+    name: windows-wheel-AMD64
     runs-on: windows-2025
     timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["cp39", "cp310", "cp311", "cp312", "cp313", "cp314", "cp315"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -51,28 +47,27 @@ jobs:
       - name: Build wheels
         working-directory: ./scripts/pip-package/
         env:
-          CIBW_BUILD: ${{ matrix.python }}-*
+          CIBW_BUILD: cp312-*
           CIBW_ARCHS_WINDOWS: AMD64
           CIBW_BUILD_VERBOSITY: 3
           CIBW_TEST_COMMAND: 'python -c "import koredb; db = koredb.Database(); conn = koredb.Connection(db); assert conn.execute(''RETURN 1'').get_next() == [1]"'
         run: pipx run --spec "cibuildwheel==4.3.5" cibuildwheel --output-dir wheelhouse koredb.tar.gz
 
+      - uses: ./.github/actions/test-python-wheel
+        with:
+          wheel-directory: scripts/pip-package/wheelhouse
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: windows-wheels-AMD64-${{ matrix.python }}
+          name: windows-wheels-AMD64
           path: ./scripts/pip-package/wheelhouse/*.whl
           if-no-files-found: error
           retention-days: 1
 
   build-windows-wheels-arm64:
-    name: windows-wheel-ARM64-${{ matrix.python }}
+    name: windows-wheel-ARM64
     runs-on: windows-11-arm
     timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      # CPython only ships official win_arm64 builds from 3.11 onwards.
-      matrix:
-        python: ["cp311", "cp312", "cp313", "cp314", "cp315"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -111,15 +106,19 @@ jobs:
       - name: Build wheels
         working-directory: ./scripts/pip-package/
         env:
-          CIBW_BUILD: ${{ matrix.python }}-*
+          CIBW_BUILD: cp312-*
           CIBW_ARCHS_WINDOWS: ARM64
           CIBW_BUILD_VERBOSITY: 3
           CIBW_TEST_COMMAND: 'python -c "import koredb; db = koredb.Database(); conn = koredb.Connection(db); assert conn.execute(''RETURN 1'').get_next() == [1]"'
         run: pipx run --spec "cibuildwheel==4.3.5" cibuildwheel --output-dir wheelhouse koredb.tar.gz
 
+      - uses: ./.github/actions/test-python-wheel
+        with:
+          wheel-directory: scripts/pip-package/wheelhouse
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: windows-wheels-ARM64-${{ matrix.python }}
+          name: windows-wheels-ARM64
           path: ./scripts/pip-package/wheelhouse/*.whl
           if-no-files-found: error
           retention-days: 1

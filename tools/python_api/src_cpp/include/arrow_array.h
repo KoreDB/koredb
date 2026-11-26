@@ -7,7 +7,7 @@ namespace pyarrow {
 
 class Table : public py::object {
 public:
-    explicit Table(const py::object& o) : py::object(o, borrowed_t{}) {}
+    explicit Table(const py::object& o) : py::object(o) {}
 
 public:
     static bool check_(const py::handle& object) { return !py::none().is(object); }

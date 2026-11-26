@@ -35,6 +35,10 @@ Install the Node.js package with `npm install @koredb/koredb` and import it with
 
 Install the Python package directly from this GitHub repository:
 
+The Python package supports standard CPython 3.12 and later. Published wheels use
+the CPython stable ABI and are built once for each supported operating system and
+CPU architecture. Free-threaded CPython builds are not currently supported.
+
 ```bash
 python -m pip install "git+https://github.com/KoreDB/koredb.git"
 ```

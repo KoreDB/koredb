@@ -25,7 +25,7 @@ bool doesPyModuleExist(std::string moduleName) {
 #elif defined(__GNUC__)
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
-    return find_spec(moduleName) != Py_None;
+    return !find_spec(moduleName).is_none();
 }
 
 } // namespace koredb

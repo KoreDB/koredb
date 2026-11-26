@@ -14,7 +14,7 @@ public:
     void appendElement(Value* value);
 
 private:
-    py::dtype convertToArrayType(const LogicalType& type);
+    std::string convertToArrayType(const LogicalType& type);
 
 public:
     py::array data;

@@ -23,7 +23,7 @@ public:
         return PyDict_GetItem(dict.ptr(), obj.ptr());
     }
 
-    std::string toString() const { return std::string(py::str(dict)); }
+    std::string toString() const { return py::cast<std::string>(py::str(dict)); }
 
 private:
     py::object dict;

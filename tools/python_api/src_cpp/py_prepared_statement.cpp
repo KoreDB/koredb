@@ -10,7 +10,7 @@ void PyPreparedStatement::initialize(py::handle& m) {
 }
 
 py::str PyPreparedStatement::getErrorMessage() const {
-    return preparedStatement->getErrorMessage();
+    return py::str(preparedStatement->getErrorMessage().c_str());
 }
 
 bool PyPreparedStatement::isSuccess() const {

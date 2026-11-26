@@ -11,7 +11,7 @@ NPArrayWrapper::NPArrayWrapper(const LogicalType& type, uint64_t numFlatTuple)
     : type{type.copy()}, numElements{0} {
     data = py::array(convertToArrayType(type), numFlatTuple);
     dataBuffer = (uint8_t*)data.mutable_data();
-    mask = py::array(py::dtype("bool"), numFlatTuple);
+    mask = py::array("bool", numFlatTuple);
 }
 
 void NPArrayWrapper::appendElement(Value* value) {
@@ -80,11 +80,11 @@ void NPArrayWrapper::appendElement(Value* value) {
         } break;
         case LogicalTypeID::STRING: {
             auto val = value->getValue<std::string>();
-            py::str result(val);
-            ((py::str*)dataBuffer)[numElements] = result;
+            py::str result(val.c_str());
+            data.as_object()[numElements] = result;
         } break;
         case LogicalTypeID::BLOB: {
-            ((py::bytes*)dataBuffer)[numElements] = PyQueryResult::convertValueToPyObject(*value);
+            data.as_object()[numElements] = PyQueryResult::convertValueToPyObject(*value);
         } break;
         case LogicalTypeID::DECIMAL:
         case LogicalTypeID::UUID:
@@ -93,14 +93,14 @@ void NPArrayWrapper::appendElement(Value* value) {
         case LogicalTypeID::STRUCT:
         case LogicalTypeID::NODE:
         case LogicalTypeID::REL: {
-            ((py::object*)dataBuffer)[numElements] = PyQueryResult::convertValueToPyObject(*value);
+            data.as_object()[numElements] = PyQueryResult::convertValueToPyObject(*value);
         } break;
         case LogicalTypeID::ARRAY:
         case LogicalTypeID::LIST: {
-            ((py::list*)dataBuffer)[numElements] = PyQueryResult::convertValueToPyObject(*value);
+            data.as_object()[numElements] = PyQueryResult::convertValueToPyObject(*value);
         } break;
         case LogicalTypeID::RECURSIVE_REL: {
-            ((py::dict*)dataBuffer)[numElements] = PyQueryResult::convertValueToPyObject(*value);
+            data.as_object()[numElements] = PyQueryResult::convertValueToPyObject(*value);
         } break;
         default: {
             KU_UNREACHABLE;
@@ -110,7 +110,7 @@ void NPArrayWrapper::appendElement(Value* value) {
     numElements++;
 }
 
-py::dtype NPArrayWrapper::convertToArrayType(const LogicalType& type) {
+std::string NPArrayWrapper::convertToArrayType(const LogicalType& type) {
     std::string dtype;
     switch (type.getLogicalTypeID()) {
     case LogicalTypeID::INT128: {
@@ -185,7 +185,7 @@ py::dtype NPArrayWrapper::convertToArrayType(const LogicalType& type) {
         KU_UNREACHABLE;
     }
     }
-    return py::dtype(dtype);
+    return dtype;
 }
 
 QueryResultConverter::QueryResultConverter(QueryResult* queryResult) : queryResult{queryResult} {
@@ -209,7 +209,7 @@ py::object QueryResultConverter::toDF() {
     auto fromDict = importCache->pandas.DataFrame.from_dict();
 
     for (auto i = 0u; i < colNames.size(); i++) {
-        result[colNames[i].c_str()] = maskedArray(columns[i]->data, columns[i]->mask);
+        result[colNames[i].c_str()] = maskedArray(columns[i]->data.as_object(), columns[i]->mask.as_object());
     }
     return fromDict(result);
 }

@@ -15,7 +15,8 @@ Run `package_tar.py` from `scripts/pip-package` in a Git checkout: it uses `git 
 and reads packaging files relative to that directory. The generated tarball is a Python source
 distribution, unlike GitHub's repository source archive.
 
-Installing from source requires Git, Make, CMake 3.15 or later, Python development headers,
+Installing the current source requires standard CPython 3.12 or later, Git, Make,
+CMake 3.26 or later, Python development headers,
 and a C++20 compiler. See the [developer guide](https://koredb.github.io/docs/developer-guide/)
 for platform setup. For other source versions, install the tarball name reported by the script.
 
@@ -28,6 +29,11 @@ when a tag is pushed. The tag must match the version in the root
 publish the selected revision to PyPI or TestPyPI; a selected tag is checked
 against the package version as well. PyPI does not allow files to be replaced
 for an existing release, so update the version before publishing a new release.
+
+Each operating system and CPU architecture gets one `cp312-abi3` wheel. The
+same wheel is installed and tested with each supported standard CPython minor
+version. Free-threaded CPython builds require a different ABI and are not
+currently supported.
 
 Configure a PyPI Trusted Publisher for the `koredb` project (or a pending
 publisher before the first release), repository `KoreDB/koredb`, workflow

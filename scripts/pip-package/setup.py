@@ -3,10 +3,14 @@ import subprocess
 import multiprocessing
 import os
 import sys
+import sysconfig
 
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 from setuptools.command.build_py import build_py as _build_py
+
+if sys.implementation.name != 'cpython' or sysconfig.get_config_var('Py_GIL_DISABLED'):
+    raise RuntimeError("KoreDB's stable ABI extension requires standard (non-free-threaded) CPython")
 
 base_dir = os.path.dirname(__file__)
 
@@ -35,7 +39,7 @@ print("The version of this build is %s" % koredb_version)
 
 class CMakeExtension(Extension):
     def __init__(self, name: str, sourcedir: str = "") -> None:
-        super().__init__(name, sources=[])
+        super().__init__(name, sources=[], py_limited_api=True)
         self.sourcedir = os.path.abspath(sourcedir)
 
 
@@ -106,6 +110,8 @@ class BuildExtFirst(_build_py):
 
 setup(name='koredb',
       version=koredb_version,
+      python_requires='>=3.12',
+      options={'bdist_wheel': {'py_limited_api': 'cp312'}},
       install_requires=[],
       ext_modules=[CMakeExtension(
           name="koredb", sourcedir=base_dir)],

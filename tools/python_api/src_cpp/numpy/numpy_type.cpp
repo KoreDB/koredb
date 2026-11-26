@@ -80,14 +80,14 @@ static NumpyNullableType convertNumpyTypeInternal(const std::string& colTypeStr)
         return NumpyNullableType::DATETIME_NS;
     }
     // LCOV_EXCL_STOP
-    if (colTypeStr == "object" || colTypeStr == "string") {
+    if (colTypeStr == "object" || colTypeStr == "string" || colTypeStr == "str") {
         return NumpyNullableType::OBJECT;
     }
     KU_UNREACHABLE;
 }
 
 NumpyType NumpyTypeUtils::convertNumpyType(const py::handle& colType) {
-    auto colTypeStr = std::string(py::str(colType));
+    auto colTypeStr = py::cast<std::string>(py::str(colType));
     NumpyType resultNPType;
     resultNPType.type = convertNumpyTypeInternal(colTypeStr);
     if (isDateTime(resultNPType.type)) {

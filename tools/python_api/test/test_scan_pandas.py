@@ -16,6 +16,27 @@ except ImportError:
 import koredb
 
 
+def test_scan_default_string_dtype_and_noncontiguous_values() -> None:
+    values = np.arange(8, dtype=np.int64)[::2]
+    frame = pd.DataFrame(
+        {"value": pd.Series(values, copy=False), "text": ["café", "漢字", None, "🐟"]},
+        copy=False,
+    )
+    with koredb.Database(max_num_threads=2) as db, koredb.Connection(db) as conn:
+        result = conn.execute("LOAD FROM $frame RETURN * ORDER BY value", {"frame": frame})
+        assert [result.get_next() for _ in range(4)] == [
+            [0, "café"], [2, "漢字"], [4, None], [6, "🐟"]
+        ]
+
+
+def test_scan_object_strings_with_null_in_later_batch() -> None:
+    frame = pd.DataFrame({"text": pd.Series(["value"] * 5000, dtype=object)})
+    frame.loc[4100, "text"] = None
+    with koredb.Database(max_num_threads=2) as db, koredb.Connection(db) as conn:
+        result = conn.execute("LOAD FROM $frame RETURN count(text)", {"frame": frame})
+        assert result.get_next() == [4999]
+
+
 def validate_scan_pandas_results(results: koredb.QueryResult) -> None:
     assert results.get_next() == [
         True,

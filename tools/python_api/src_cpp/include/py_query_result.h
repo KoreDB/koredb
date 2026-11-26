@@ -3,7 +3,6 @@
 #include <memory>
 #include <vector>
 
-#include "arrow_array.h"
 #include "common/arrow/arrow.h"
 #include "main/koredb.h"
 #include "pybind_include.h"
@@ -34,7 +33,7 @@ public:
 
     py::object getAsDF();
 
-    koredb::pyarrow::Table getAsArrow(std::int64_t chunkSize);
+    py::object getAsArrow(std::int64_t chunkSize);
 
     py::list getColumnDataTypes();
 

@@ -9,10 +9,10 @@ void bind(py::module& m) {
     PyConnection::initialize(m);
     PyPreparedStatement::initialize(m);
     PyQueryResult::initialize(m);
-    auto cleanImportCache = []() { koredb::importCache.reset(); };
-    m.add_object("_clean_import_cache", py::capsule(cleanImportCache));
+    auto cleanImportCache = [](void*) noexcept { koredb::importCache.reset(); };
+    m.attr("_clean_import_cache") = py::capsule(&koredb::importCache, cleanImportCache);
 }
 
-PYBIND11_MODULE(_koredb, m) {
+NB_MODULE(_koredb, m) {
     bind(m);
 }

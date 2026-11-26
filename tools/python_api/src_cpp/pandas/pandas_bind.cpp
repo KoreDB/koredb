@@ -21,8 +21,8 @@ public:
 struct PandasDataFrameBind {
 public:
     explicit PandasDataFrameBind(py::handle& df) {
-        names = py::list(df.attr("columns"));
-        types = py::list(df.attr("dtypes"));
+        names = py::list(py::handle(df.attr("columns")));
+        types = py::list(py::handle(df.attr("dtypes")));
         getter = df.attr("__getitem__");
     }
     PandasBindColumn operator[](uint64_t index) const {
@@ -102,7 +102,7 @@ void Pandas::bind(py::handle dfToBind,
     for (auto i = 0u; i < numColumns; i++) {
         std::unique_ptr<PandasColumnBindData> bindData = std::make_unique<PandasColumnBindData>();
 
-        names.emplace_back(py::str(df.names[i]));
+        names.emplace_back(py::cast<std::string>(py::str(py::handle(df.names[i]))));
         auto column = df[i];
         auto columnType = bindColumn(column, bindData.get());
 

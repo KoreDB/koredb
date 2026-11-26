@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD 20)
 file(GLOB SOURCE_PY
         "src_py/*")
 
-pybind11_add_module(_koredb
-        MODULE
+nanobind_add_module(_koredb
+        STABLE_ABI
         src_cpp/koredb_binding.cpp
         src_cpp/cached_import/py_cached_item.cpp
         src_cpp/cached_import/py_cached_import.cpp

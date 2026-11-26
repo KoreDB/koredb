@@ -137,7 +137,7 @@ common::LogicalType PandasAnalyzer::dictToStruct(const PyDictionary& dict, bool&
 
     for (auto i = 0u; i < dict.len; i++) {
         auto dictKey = dict.keys.attr("__getitem__")(i);
-        auto key = std::string(py::str(dictKey));
+        auto key = py::cast<std::string>(py::str(dictKey));
         auto dictVal = dict.values.attr("__getitem__")(i);
         auto val = getItemType(dictVal, canConvert);
         fields.emplace_back(std::move(key), std::move(val));

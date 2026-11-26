@@ -40,7 +40,7 @@ PythonObjectType getPythonObjectType(py::handle& ele) {
         return PythonObjectType::Dict;
     } else {
         throw NotImplementedException(stringFormat("Scanning of type {} has not been implemented",
-            py::str(py::type::of(ele)).cast<std::string>()));
+            py::cast<std::string>(py::str(py::type_of(ele)))));
     }
 }
 
@@ -50,7 +50,7 @@ void tryTransformPythonNumeric(common::ValueVector* outputVector, uint64_t pos, 
     if (overflow != 0) {
         PyErr_Clear();
         throw common::ConversionException(common::stringFormat(
-            "Failed to cast value: Python value '{}' to INT64", std::string(pybind11::str(ele))));
+            "Failed to cast value: Python value '{}' to INT64", py::cast<std::string>(py::str(ele))));
     }
     outputVector->setNull(pos, false /* isNull */);
     outputVector->setValue(pos, value);
@@ -71,7 +71,7 @@ static std::vector<std::string> transformStructKeys(py::handle keys, idx_t size)
     std::vector<std::string> res;
     res.reserve(size);
     for (auto i = 0u; i < size; i++) {
-        res.emplace_back(py::str(keys.attr("__getitem__")(i)));
+        res.emplace_back(py::cast<std::string>(py::str(keys.attr("__getitem__")(i))));
     }
     return res;
 }
@@ -136,7 +136,7 @@ void transformPythonValue(common::ValueVector* outputVector, uint64_t pos, py::h
     } break;
     case PythonObjectType::Bool: {
         outputVector->setNull(pos, false /* isNull */);
-        outputVector->setValue(pos, ele.cast<bool>());
+        outputVector->setValue(pos, py::cast<bool>(ele));
     } break;
     case PythonObjectType::Integer: {
         tryTransformPythonNumeric(outputVector, pos, ele);
@@ -146,32 +146,32 @@ void transformPythonValue(common::ValueVector* outputVector, uint64_t pos, py::h
             outputVector->setNull(pos, true /* isNull */);
         }
         outputVector->setNull(pos, false /* isNull */);
-        outputVector->setValue(pos, ele.cast<double>());
+        outputVector->setValue(pos, py::cast<double>(ele));
     } break;
     case PythonObjectType::Datetime: {
         outputVector->setNull(pos, false /* isNull */);
-        auto years = PyDateTime_GET_YEAR(ele.ptr());
-        auto month = PyDateTime_GET_MONTH(ele.ptr());
-        auto day = PyDateTime_GET_DAY(ele.ptr());
-        auto hours = PyDateTime_DATE_GET_HOUR(ele.ptr());
-        auto minutes = PyDateTime_DATE_GET_MINUTE(ele.ptr());
-        auto seconds = PyDateTime_DATE_GET_SECOND(ele.ptr());
-        auto microseconds = PyDateTime_DATE_GET_MICROSECOND(ele.ptr());
+        auto years = py::cast<int>(ele.attr("year"));
+        auto month = py::cast<int>(ele.attr("month"));
+        auto day = py::cast<int>(ele.attr("day"));
+        auto hours = py::cast<int>(ele.attr("hour"));
+        auto minutes = py::cast<int>(ele.attr("minute"));
+        auto seconds = py::cast<int>(ele.attr("second"));
+        auto microseconds = py::cast<int>(ele.attr("microsecond"));
         auto date = common::Date::fromDate(years, month, day);
         auto time = common::Time::fromTime(hours, minutes, seconds, microseconds);
         outputVector->setValue(pos, common::Timestamp::fromDateTime(date, time));
     } break;
     case PythonObjectType::Date: {
         outputVector->setNull(pos, false /* isNull */);
-        auto years = PyDateTime_GET_YEAR(ele.ptr());
-        auto month = PyDateTime_GET_MONTH(ele.ptr());
-        auto day = PyDateTime_GET_DAY(ele.ptr());
+        auto years = py::cast<int>(ele.attr("year"));
+        auto month = py::cast<int>(ele.attr("month"));
+        auto day = py::cast<int>(ele.attr("day"));
         auto dateVal = common::Date::fromDate(years, month, day);
         outputVector->setValue(pos, dateVal);
     } break;
     case PythonObjectType::String: {
         outputVector->setNull(pos, false /* isNull */);
-        common::StringVector::addString(outputVector, pos, ele.cast<std::string>());
+        common::StringVector::addString(outputVector, pos, py::cast<std::string>(ele));
     } break;
     case PythonObjectType::List: {
         transformListValue(outputVector, pos, ele);
@@ -179,7 +179,7 @@ void transformPythonValue(common::ValueVector* outputVector, uint64_t pos, py::h
     case PythonObjectType::UUID: {
         outputVector->setNull(pos, false /* isNull */);
         int128_t result = 0;
-        UUID::fromString(ele.attr("hex").cast<std::string>(), result);
+        UUID::fromString(py::cast<std::string>(ele.attr("hex")), result);
         outputVector->setValue(pos, result);
     } break;
     case PythonObjectType::Dict: {

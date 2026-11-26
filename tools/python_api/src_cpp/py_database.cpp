@@ -71,11 +71,9 @@ void PyDatabase::close() {
 template<class T>
 void PyDatabase::scanNodeTable(const std::string& tableName, const std::string& propName,
     const py::array_t<uint64_t>& indices, py::array_t<T>& result, int numThreads) {
-    auto indices_buffer_info = indices.request(false);
-    auto indices_buffer = static_cast<uint64_t*>(indices_buffer_info.ptr);
+    auto indices_buffer = indices.data();
     auto nodeOffsets = (offset_t*)indices_buffer;
-    auto result_buffer_info = result.request();
-    auto result_buffer = (uint8_t*)result_buffer_info.ptr;
+    auto result_buffer = (uint8_t*)result.data();
     auto size = indices.size();
     storageDriver->scan(tableName, propName, nodeOffsets, size, result_buffer, numThreads);
 }

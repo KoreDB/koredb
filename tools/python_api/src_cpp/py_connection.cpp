@@ -42,7 +42,6 @@ void PyConnection::initialize(py::handle& m) {
             py::arg("udf"), py::arg("params_type"), py::arg("return_value"),
             py::arg("default_null"), py::arg("catch_exceptions"))
         .def("remove_function", &PyConnection::removeScalarFunction, py::arg("name"));
-    PyDateTime_IMPORT;
 }
 
 static std::vector<function::scan_replace_handle_t> lookupPythonObject(
@@ -50,7 +49,7 @@ static std::vector<function::scan_replace_handle_t> lookupPythonObject(
     std::vector<function::scan_replace_handle_t> ret;
 
     py::gil_scoped_acquire acquire;
-    auto pyTableName = py::str(objectName);
+    auto pyTableName = py::str(objectName.c_str());
     // Here we do an exhaustive search on the frame lineage.
     auto currentFrame = importCache->inspect.currentframe()();
     while (hasattr(currentFrame, "f_locals")) {
@@ -196,8 +195,7 @@ void PyConnection::getAllEdgesForTorchGeometric(py::array_t<int64_t>& npArray,
     }
     auto numRels = getNumRels(relName);
 
-    auto bufferInfo = npArray.request();
-    auto buffer = (int64_t*)bufferInfo.ptr;
+    auto buffer = npArray.data();
 
     // Set the number of threads to 1 for fetching edges to ensure ordering.
     auto numThreadsForExec = conn->getMaxNumThreadForExec();
@@ -280,14 +278,14 @@ bool PyConnection::isPyArrowTable(const py::handle& object) {
 static std::unordered_map<std::string, std::unique_ptr<Value>> transformPythonParameters(
     const py::dict& params, Connection* conn) {
     std::unordered_map<std::string, std::unique_ptr<Value>> result;
-    for (auto& [key, value] : params) {
+    for (auto [key, value] : params) {
         if (!py::isinstance<py::str>(key)) {
             // TODO(Chang): remove ROLLBACK once we can guarantee database is deleted after conn
             conn->query("ROLLBACK");
             throw std::runtime_error("Parameter name must be of type string but got " +
-                                     py::str(key.get_type()).cast<std::string>());
+                                     py::cast<std::string>(py::str(py::type_of(key))));
         }
-        auto name = key.cast<std::string>();
+        auto name = py::cast<std::string>(key);
         auto val = std::make_unique<Value>(PyConnection::transformPythonValueFromParameter(value));
         result.insert({name, std::move(val)});
     }
@@ -348,7 +346,7 @@ static LogicalType pyLogicalType(const py::handle& val) {
     } else if (py::isinstance<py::bool_>(val)) {
         return LogicalType::BOOL();
     } else if (py::isinstance<py::int_>(val)) {
-        auto nativeValue = val.cast<int64_t>();
+        auto nativeValue = py::cast<int64_t>(val);
         if (integerFitsIn<int8_t>(nativeValue)) {
             return LogicalType::INT8();
         } else if (integerFitsIn<uint8_t>(nativeValue)) {
@@ -368,7 +366,8 @@ static LogicalType pyLogicalType(const py::handle& val) {
         return LogicalType::DOUBLE();
     } else if (py::isinstance(val, Decimal)) {
         auto as_tuple = val.attr("as_tuple")();
-        auto precision = py::len(as_tuple.attr("digits"));
+        py::object digits = as_tuple.attr("digits");
+        auto precision = py::len(digits);
         auto exponent = py::cast<int32_t>(as_tuple.attr("exponent"));
         if (exponent > 0) {
             precision += exponent;
@@ -433,13 +432,13 @@ static LogicalType pyLogicalType(const py::handle& val) {
     } else {
         // LCOV_EXCL_START
         throw common::RuntimeException(
-            "Unknown parameter type " + py::str(val.get_type()).cast<std::string>());
+            "Unknown parameter type " + py::cast<std::string>(py::str(py::type_of(val))));
         // LCOV_EXCL_STOP
     }
 }
 
 static bool validateMapFields(py::dict& dict) {
-    for (auto& field : dict) {
+    for (auto field : dict) {
         auto keyType = pyLogicalType(field.first).getLogicalTypeID();
         if (keyType != LogicalTypeID::STRING) {
             return false;
@@ -449,11 +448,11 @@ static bool validateMapFields(py::dict& dict) {
             return false;
         }
     }
-    std::string keyName = py::str(dict.begin()->first);
+    std::string keyName = py::cast<std::string>(py::str((*dict.begin()).first));
     if (keyName != "key") {
         return false;
     }
-    std::string valueName = py::str((++dict.begin())->first);
+    std::string valueName = py::cast<std::string>(py::str((*(++dict.begin())).first));
     if (valueName != "value") {
         return false;
     }
@@ -482,8 +481,8 @@ static bool tryCastToMap(py::dict& dict, LogicalType& result) {
     if (!validateMapFields(dict)) {
         return false;
     }
-    auto keyList = dict.begin()->second;
-    auto valList = (++dict.begin())->second;
+    auto keyList = (*dict.begin()).second;
+    auto valList = (*(++dict.begin())).second;
     if (py::reinterpret_borrow<py::list>(keyList).size() !=
         py::reinterpret_borrow<py::list>(valList).size()) {
         return false;
@@ -540,23 +539,23 @@ Value PyConnection::transformPythonValueAs(const py::handle& val, const LogicalT
     case LogicalTypeID::ANY:
         return Value::createNullValue();
     case LogicalTypeID::BOOL:
-        return Value::createValue<bool>(py::cast<py::bool_>(val).cast<bool>());
+        return Value::createValue<bool>(py::cast<bool>(py::bool_(val)));
     case LogicalTypeID::INT64:
-        return Value::createValue<int64_t>(py::cast<py::int_>(val).cast<int64_t>());
+        return Value::createValue<int64_t>(py::cast<int64_t>(py::int_(val)));
     case LogicalTypeID::UINT32:
-        return Value::createValue<uint32_t>(py::cast<py::int_>(val).cast<uint32_t>());
+        return Value::createValue<uint32_t>(py::cast<uint32_t>(py::int_(val)));
     case LogicalTypeID::INT32:
-        return Value::createValue<int32_t>(py::cast<py::int_>(val).cast<int32_t>());
+        return Value::createValue<int32_t>(py::cast<int32_t>(py::int_(val)));
     case LogicalTypeID::UINT16:
-        return Value::createValue<uint16_t>(py::cast<py::int_>(val).cast<uint16_t>());
+        return Value::createValue<uint16_t>(py::cast<uint16_t>(py::int_(val)));
     case LogicalTypeID::INT16:
-        return Value::createValue<int16_t>(py::cast<py::int_>(val).cast<int16_t>());
+        return Value::createValue<int16_t>(py::cast<int16_t>(py::int_(val)));
     case LogicalTypeID::UINT8:
-        return Value::createValue<uint8_t>(py::cast<py::int_>(val).cast<uint8_t>());
+        return Value::createValue<uint8_t>(py::cast<uint8_t>(py::int_(val)));
     case LogicalTypeID::INT8:
-        return Value::createValue<int8_t>(py::cast<py::int_>(val).cast<int8_t>());
+        return Value::createValue<int8_t>(py::cast<int8_t>(py::int_(val)));
     case LogicalTypeID::DOUBLE:
-        return Value::createValue<double>(py::cast<py::float_>(val).cast<double>());
+        return Value::createValue<double>(py::cast<double>(py::float_(val)));
     case LogicalTypeID::DECIMAL: {
         auto str = py::cast<std::string>(py::str(val));
         int128_t result = 0;
@@ -567,9 +566,9 @@ Value PyConnection::transformPythonValueAs(const py::handle& val, const LogicalT
     }
     case LogicalTypeID::STRING:
         if (py::isinstance<py::str>(val)) {
-            return Value::createValue<std::string>(val.cast<std::string>());
+            return Value::createValue<std::string>(py::cast<std::string>(val));
         } else {
-            return Value::createValue<std::string>(py::str(val));
+            return Value::createValue<std::string>(py::cast<std::string>(py::str(val)));
         }
     case LogicalTypeID::TIMESTAMP: {
         // LCOV_EXCL_START
@@ -578,14 +577,13 @@ Value PyConnection::transformPythonValueAs(const py::handle& val, const LogicalT
                 but was resolved to type datetime.datetime");
         }
         // LCOV_EXCL_STOP
-        auto ptr = val.ptr();
-        auto year = PyDateTime_GET_YEAR(ptr);
-        auto month = PyDateTime_GET_MONTH(ptr);
-        auto day = PyDateTime_GET_DAY(ptr);
-        auto hour = PyDateTime_DATE_GET_HOUR(ptr);
-        auto minute = PyDateTime_DATE_GET_MINUTE(ptr);
-        auto second = PyDateTime_DATE_GET_SECOND(ptr);
-        auto micros = PyDateTime_DATE_GET_MICROSECOND(ptr);
+        auto year = py::cast<int>(val.attr("year"));
+        auto month = py::cast<int>(val.attr("month"));
+        auto day = py::cast<int>(val.attr("day"));
+        auto hour = py::cast<int>(val.attr("hour"));
+        auto minute = py::cast<int>(val.attr("minute"));
+        auto second = py::cast<int>(val.attr("second"));
+        auto micros = py::cast<int>(val.attr("microsecond"));
         auto date = Date::fromDate(year, month, day);
         auto time = Time::fromTime(hour, minute, second, micros);
         return Value::createValue<timestamp_t>(Timestamp::fromDateTime(date, time));
@@ -597,10 +595,9 @@ Value PyConnection::transformPythonValueAs(const py::handle& val, const LogicalT
                 but was resolved to type datetime.date");
         }
         // LCOV_EXCL_STOP
-        auto ptr = val.ptr();
-        auto year = PyDateTime_GET_YEAR(ptr);
-        auto month = PyDateTime_GET_MONTH(ptr);
-        auto day = PyDateTime_GET_DAY(ptr);
+        auto year = py::cast<int>(val.attr("year"));
+        auto month = py::cast<int>(val.attr("month"));
+        auto day = py::cast<int>(val.attr("day"));
         return Value::createValue<date_t>(Date::fromDate(year, month, day));
     }
     case LogicalTypeID::INTERVAL: {
@@ -610,10 +607,9 @@ Value PyConnection::transformPythonValueAs(const py::handle& val, const LogicalT
                 but was resolved to type datetime.timedelta");
         }
         // LCOV_EXCL_STOP
-        auto ptr = val.ptr();
-        auto days = PyDateTime_DELTA_GET_DAYS(ptr);
-        auto seconds = PyDateTime_DELTA_GET_SECONDS(ptr);
-        auto microseconds = PyDateTime_DELTA_GET_MICROSECONDS(ptr);
+        auto days = py::cast<int>(val.attr("days"));
+        auto seconds = py::cast<int>(val.attr("seconds"));
+        auto microseconds = py::cast<int>(val.attr("microseconds"));
         interval_t interval;
         Interval::addition(interval, days, "days");
         Interval::addition(interval, seconds, "seconds");
@@ -621,7 +617,7 @@ Value PyConnection::transformPythonValueAs(const py::handle& val, const LogicalT
         return Value::createValue<interval_t>(interval);
     }
     case LogicalTypeID::UUID: {
-        auto strVal = py::str(val).cast<std::string>();
+        auto strVal = py::cast<std::string>(py::str(val));
         auto uuidVal = UUID::fromString(strVal);
         ku_uuid_t uuidToAppend{uuidVal};
         return Value{uuidToAppend};
@@ -690,9 +686,9 @@ Value PyConnection::transformPythonValueFromParameterAs(const py::handle& val,
         auto dict = py::reinterpret_borrow<py::dict>(val);
         std::vector<std::unique_ptr<Value>> children;
         auto keys = transformPythonValueFromParameter(
-            py::reinterpret_borrow<py::list>(dict.begin()->second));
+            py::reinterpret_borrow<py::list>((*dict.begin()).second));
         auto vals = transformPythonValueFromParameter(
-            py::reinterpret_borrow<py::list>((++dict.begin())->second));
+            py::reinterpret_borrow<py::list>((*(++dict.begin())).second));
         auto numKeys = NestedVal::getChildrenSize(&keys);
         // LCOV_EXCL_START
         if (NestedVal::getChildrenSize(&keys) != NestedVal::getChildrenSize(&vals)) {

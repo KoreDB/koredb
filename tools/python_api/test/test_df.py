@@ -30,7 +30,8 @@ def test_to_df(conn_db_readonly: ConnDB) -> None:
             "Greg",
             "Hubert Blaine Wolfeschlegelsteinhausenbergerdorff",
         ]
-        assert str(pd["p.fName"].dtype) == "object"
+        # Pandas 3 defaults to its string dtype instead of NumPy object.
+        assert str(pd["p.fName"].dtype) in {"object", "str"}
         assert pd["p.gender"].tolist() == [1, 2, 1, 2, 1, 2, 2, 2]
         assert str(pd["p.gender"].dtype) == "int64"
         assert pd["p.isStudent"].tolist() == [

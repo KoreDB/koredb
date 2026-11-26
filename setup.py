@@ -8,12 +8,15 @@ import re
 import shutil
 import subprocess
 import sys
+import sysconfig
 import tempfile
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
 ROOT = Path(__file__).resolve().parent
+if sys.implementation.name != "cpython" or sysconfig.get_config_var("Py_GIL_DISABLED"):
+    raise RuntimeError("KoreDB's stable ABI extension requires standard (non-free-threaded) CPython")
 version_match = re.search(
     r"^project\(KoreDB VERSION ([0-9]+\.[0-9]+\.[0-9]+)(?:\.([0-9]+))?",
     (ROOT / "CMakeLists.txt").read_text(encoding="utf-8"),
@@ -69,7 +72,9 @@ class CMakeBuild(build_ext):
             threads = env.get("NUM_THREADS", str(min(4, os.cpu_count() or 1)))
             subprocess.run(["make", "python", f"NUM_THREADS={threads}"], cwd=source, env=env, check=True)
             built_package = source / "tools" / "python_api" / "build" / "koredb"
-            candidates = [built_package / ("_koredb" + suffix) for suffix in importlib.machinery.EXTENSION_SUFFIXES]
+            candidates = [built_package / "_koredb.abi3.so"] + [
+                built_package / ("_koredb" + suffix) for suffix in importlib.machinery.EXTENSION_SUFFIXES
+            ]
             binary = next((path for path in candidates if path.is_file()), None)
             if binary is None:
                 raise RuntimeError(f"Python extension not found in {built_package}")
@@ -86,11 +91,12 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/KoreDB/koredb",
     license="MIT",
-    python_requires=">=3.9",
+    python_requires=">=3.12",
     packages=["koredb"],
     package_dir={"koredb": "tools/python_api/src_py"},
     package_data={"koredb": ["py.typed"]},
-    ext_modules=[Extension("koredb._koredb", sources=[])],
+    ext_modules=[Extension("koredb._koredb", sources=[], py_limited_api=True)],
+    options={"bdist_wheel": {"py_limited_api": "cp312"}},
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
 )

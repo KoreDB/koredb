@@ -10,7 +10,7 @@
 #include "py_connection.h"
 #include "py_scan_config.h"
 #include "pyarrow/pyarrow_bind.h"
-#include "pybind11/pytypes.h"
+#include "pybind_include.h"
 
 using namespace koredb::function;
 using namespace koredb::common;
@@ -20,7 +20,7 @@ namespace koredb {
 
 template<typename T>
 static bool moduleIsLoaded() {
-    auto dict = pybind11::module_::import("sys").attr("modules");
+    auto dict = py::borrow<py::dict>(py::module_::import_("sys").attr("modules"));
     return dict.contains(py::str(T::name_));
 }
 
@@ -54,9 +54,9 @@ static std::unique_ptr<TableFuncBindData> bindFunc(ClientContext*,
     if (config.limitNum != NumericLimits<uint64_t>::maximum()) {
         table = table.attr("slice")(0, config.limitNum);
     }
-    py::list batches = table.attr("to_batches")(DEFAULT_VECTOR_CAPACITY);
+    py::list batches = py::borrow<py::list>(table.attr("to_batches")(DEFAULT_VECTOR_CAPACITY));
     std::vector<std::shared_ptr<ArrowArrayWrapper>> arrowArrayBatches;
-    for (auto& i : batches) {
+    for (auto i : batches) {
         arrowArrayBatches.push_back(std::make_shared<ArrowArrayWrapper>());
         i.attr("_export_to_c")(reinterpret_cast<uint64_t>(arrowArrayBatches.back().get()));
     }

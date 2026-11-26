@@ -15,10 +15,6 @@
 using namespace koredb::common;
 using koredb::importCache;
 
-#define PyDateTimeTZ_FromDateAndTime(year, month, day, hour, min, sec, usec, timezone)             \
-    PyDateTimeAPI->DateTime_FromDateAndTime(year, month, day, hour, min, sec, usec, timezone,      \
-        PyDateTimeAPI->DateTimeType)
-
 void PyQueryResult::initialize(py::handle& m) {
     py::class_<PyQueryResult>(m, "result")
         .def("hasNext", &PyQueryResult::hasNext)
@@ -38,10 +34,7 @@ void PyQueryResult::initialize(py::handle& m) {
         .def("getCompilingTime", &PyQueryResult::getCompilingTime)
         .def("getExecutionTime", &PyQueryResult::getExecutionTime)
         .def("getNumTuples", &PyQueryResult::getNumTuples);
-    // PyDateTime_IMPORT is a macro that must be invoked before calling any other cpython datetime
-    // macros. One could also invoke this in a separate function like constructor. See
-    // https://docs.python.org/3/c-api/datetime.html for details.
-    PyDateTime_IMPORT;
+
 }
 
 PyQueryResult::~PyQueryResult() {
@@ -54,9 +47,9 @@ bool PyQueryResult::hasNext() {
 
 py::list PyQueryResult::getNext() {
     auto tuple = queryResult->getNext();
-    py::tuple result(tuple->len());
+    py::list result;
     for (auto i = 0u; i < tuple->len(); ++i) {
-        result[i] = convertValueToPyObject(*tuple->getValue(i));
+        result.append(convertValueToPyObject(*tuple->getValue(i)));
     }
     return result;
 }
@@ -92,8 +85,7 @@ static py::object converTimestampToPyObject(timestamp_t& timestamp) {
     Timestamp::convert(timestamp, date, time);
     Date::convert(date, year, month, day);
     Time::convert(time, hour, min, sec, micros);
-    return py::cast<py::object>(
-        PyDateTime_FromDateAndTime(year, month, day, hour, min, sec, micros));
+    return importCache->datetime.datetime()(year, month, day, hour, min, sec, micros);
 }
 
 py::object PyQueryResult::convertValueToPyObject(const Value& value) {
@@ -166,7 +158,7 @@ py::object PyQueryResult::convertValueToPyObject(const Value& value) {
         auto dateVal = value.getValue<date_t>();
         int32_t year = 0, month = 0, day = 0;
         Date::convert(dateVal, year, month, day);
-        return py::cast<py::object>(PyDate_FromDate(year, month, day));
+        return importCache->datetime.date()(year, month, day);
     }
     case LogicalTypeID::TIMESTAMP: {
         auto timestampVal = value.getValue<timestamp_t>();
@@ -181,8 +173,8 @@ py::object PyQueryResult::convertValueToPyObject(const Value& value) {
         Date::convert(date, year, month, day);
         Time::convert(time, hour, min, sec, micros);
 
-        return py::cast<py::object>(PyDateTimeTZ_FromDateAndTime(year, month, day, hour, min, sec,
-            micros, PyDateTime_TimeZone_UTC));
+        return importCache->datetime.datetime()(year, month, day, hour, min, sec, micros,
+            py::module_::import_("datetime").attr("timezone").attr("utc"));
     }
     case LogicalTypeID::TIMESTAMP_NS: {
         timestamp_t timestampVal =
@@ -231,7 +223,7 @@ py::object PyQueryResult::convertValueToPyObject(const Value& value) {
         auto fieldNames = StructType::getFieldNames(dataType);
         py::dict dict;
         for (auto i = 0u; i < NestedVal::getChildrenSize(&value); ++i) {
-            auto key = py::str(fieldNames[i]);
+            auto key = py::str(fieldNames[i].c_str());
             auto val = convertValueToPyObject(*NestedVal::getChildVal(&value, i));
             dict[key] = val;
         }
@@ -251,7 +243,7 @@ py::object PyQueryResult::convertValueToPyObject(const Value& value) {
         dict["_label"] = labelVal ? convertValueToPyObject(*labelVal) : py::none();
         auto numProperties = NodeVal::getNumProperties(&value);
         for (auto i = 0u; i < numProperties; ++i) {
-            auto key = py::str(NodeVal::getPropertyName(&value, i));
+            auto key = py::str(NodeVal::getPropertyName(&value, i).c_str());
             auto val = convertValueToPyObject(*NodeVal::getPropertyVal(&value, i));
             dict[key] = val;
         }
@@ -269,7 +261,7 @@ py::object PyQueryResult::convertValueToPyObject(const Value& value) {
         dict["_id"] = internalIdVal ? convertValueToPyObject(*internalIdVal) : py::none();
         auto numProperties = RelVal::getNumProperties(&value);
         for (auto i = 0u; i < numProperties; ++i) {
-            auto key = py::str(RelVal::getPropertyName(&value, i));
+            auto key = py::str(RelVal::getPropertyName(&value, i).c_str());
             auto val = convertValueToPyObject(*RelVal::getPropertyVal(&value, i));
             dict[key] = val;
         }
@@ -310,32 +302,32 @@ py::object PyQueryResult::getArrowChunks(const std::vector<koredb::common::Logic
     return batches;
 }
 
-koredb::pyarrow::Table PyQueryResult::getAsArrow(std::int64_t chunkSize) {
+py::object PyQueryResult::getAsArrow(std::int64_t chunkSize) {
 
     auto types = queryResult->getColumnDataTypes();
     auto names = queryResult->getColumnNames();
-    py::list batches = getArrowChunks(types, names, chunkSize);
+    py::list batches = py::borrow<py::list>(getArrowChunks(types, names, chunkSize));
     auto schema = ArrowConverter::toArrowSchema(types, names);
     auto fromBatchesFunc = importCache->pyarrow.lib.Table.from_batches();
     auto schemaImportFunc = importCache->pyarrow.lib.Schema._import_from_c();
     auto schemaObj = schemaImportFunc((std::uint64_t)schema.get());
-    return py::cast<koredb::pyarrow::Table>(fromBatchesFunc(batches, schemaObj));
+    return fromBatchesFunc(batches, schemaObj);
 }
 
 py::list PyQueryResult::getColumnDataTypes() {
     auto columnDataTypes = queryResult->getColumnDataTypes();
-    py::tuple result(columnDataTypes.size());
+    py::list result;
     for (auto i = 0u; i < columnDataTypes.size(); ++i) {
-        result[i] = py::cast(columnDataTypes[i].toString());
+        result.append(py::cast(columnDataTypes[i].toString()));
     }
     return result;
 }
 
 py::list PyQueryResult::getColumnNames() {
     auto columnNames = queryResult->getColumnNames();
-    py::tuple result(columnNames.size());
+    py::list result;
     for (auto i = 0u; i < columnNames.size(); ++i) {
-        result[i] = py::cast(columnNames[i]);
+        result.append(py::cast(columnNames[i]));
     }
     return result;
 }

@@ -1,0 +1,29 @@
+name: Test a stable ABI wheel
+description: Install the same wheel on every supported CPython minor version
+inputs:
+  wheel-directory:
+    required: true
+    description: Directory containing the wheel built for this runner
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: '3.12'
+    - shell: bash
+      run: python .github/scripts/test_python_wheel.py "${{ inputs.wheel-directory }}"
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: '3.13'
+    - shell: bash
+      run: python .github/scripts/test_python_wheel.py "${{ inputs.wheel-directory }}"
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: '3.14'
+    - shell: bash
+      run: python .github/scripts/test_python_wheel.py "${{ inputs.wheel-directory }}"
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: '3.15'
+    - shell: bash
+      run: python .github/scripts/test_python_wheel.py "${{ inputs.wheel-directory }}"

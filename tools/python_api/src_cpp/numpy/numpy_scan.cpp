@@ -5,7 +5,6 @@
 #include "common/types/timestamp_t.h"
 #include "pandas/pandas_bind.h"
 #include "py_conversion.h"
-#include "py_str_utils.h"
 #include "utf8proc_wrapper.h"
 
 namespace koredb {
@@ -151,7 +150,6 @@ void NumpyScan::scan(PandasColumnBindData* bindData, uint64_t count, uint64_t of
             scanObjectColumn(sourceData, count, offset, outputVector);
             return;
         }
-        auto dstData = reinterpret_cast<ku_string_t*>(outputVector->getData());
         py::gil_scoped_acquire gil;
         for (auto i = 0u; i < count; i++) {
             auto pos = i + offset;
@@ -160,7 +158,7 @@ void NumpyScan::scan(PandasColumnBindData* bindData, uint64_t count, uint64_t of
                 !py::isinstance<py::str>(val)) {
                 if (val == Py_None ||
                     (py::isinstance<py::float_>(val) && std::isnan(PyFloat_AsDouble(val)))) {
-                    outputVector->setNull(pos, true /* isNull */);
+                    outputVector->setNull(i, true /* isNull */);
                     continue;
                 }
                 if (!py::isinstance<py::str>(val)) {
@@ -175,39 +173,12 @@ void NumpyScan::scan(PandasColumnBindData* bindData, uint64_t count, uint64_t of
                 continue;
             }
             outputVector->setNull(i, false /* isNull */);
-            if (PyStrUtil::isPyUnicodeCompatibleAscii(strHandle)) {
-                dstData[i] = ku_string_t{PyStrUtil::getUnicodeStrData(strHandle),
-                    PyStrUtil::getUnicodeStrLen(strHandle)};
-            } else {
-                auto unicodeObj = reinterpret_cast<PyCompactUnicodeObject*>(val);
-                if (unicodeObj->utf8) {
-                    dstData[i] = ku_string_t(reinterpret_cast<const char*>(unicodeObj->utf8),
-                        unicodeObj->utf8_length);
-                } else if (PyStrUtil::isPyUnicodeCompact(unicodeObj) &&
-                           !PyStrUtil::isPyUnicodeASCII(unicodeObj)) {
-                    auto kind = PyStrUtil::getPyUnicodeKind(strHandle);
-                    switch (kind) {
-                    case PyUnicode_1BYTE_KIND:
-                        appendPythonUnicode<Py_UCS1>(PyStrUtil::PyUnicode1ByteData(strHandle),
-                            PyStrUtil::getUnicodeStrLen(strHandle), outputVector, i);
-                        break;
-                    case PyUnicode_2BYTE_KIND:
-                        appendPythonUnicode<Py_UCS2>(PyStrUtil::PyUnicode2ByteData(strHandle),
-                            PyStrUtil::getUnicodeStrLen(strHandle), outputVector, i);
-                        break;
-                    case PyUnicode_4BYTE_KIND:
-                        appendPythonUnicode<Py_UCS4>(PyStrUtil::PyUnicode4ByteData(strHandle),
-                            PyStrUtil::getUnicodeStrLen(strHandle), outputVector, i);
-                        break;
-                    default:
-                        KU_UNREACHABLE;
-                    }
-                } else {
-                    // LCOV_EXCL_START
-                    throw common::RuntimeException("Unsupported string format.");
-                    // LCOC_EXCL_STOP
-                }
+            Py_ssize_t length = 0;
+            const char* data = PyUnicode_AsUTF8AndSize(strHandle.ptr(), &length);
+            if (!data) {
+                throw py::error_already_set();
             }
+            StringVector::addString(outputVector, i, data, length);
         }
         break;
     }

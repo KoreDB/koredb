@@ -65,15 +65,15 @@ static LogicalType getLogicalTypeNested(const py::handle& ele) {
     auto date_val = importCache->datetime.date()(1, 1, 1);
     auto uuid_val = importCache->uuid.UUID()(py::arg("int") = 0);
     py::object origin = ele.attr("__origin__");
-    if (origin.is(py::type::of(py::list()))) {
-        auto args = ele.attr("__args__");
+    if (origin.is(py::type_of(py::list()))) {
+        py::object args = ele.attr("__args__");
         if (py::len(args) != 1) {
             throw RuntimeException("List annotations must have exactly one type argument");
         }
         auto getitem = args.attr("__getitem__");
         return LogicalType::LIST(getLogicalType(getitem(0)));
-    } else if (origin.is(py::type::of(py::dict()))) {
-        auto args = ele.attr("__args__");
+    } else if (origin.is(py::type_of(py::dict()))) {
+        py::object args = ele.attr("__args__");
         if (py::len(args) != 2) {
             throw RuntimeException("Dict annotations must have exactly two type arguments");
         }
@@ -91,27 +91,27 @@ static LogicalType getLogicalTypeNonNested(const py::handle& ele) {
     auto date_val = importCache->datetime.date()(1, 1, 1);
     auto uuid_val = importCache->uuid.UUID()(py::arg("int") = 0);
     auto inspect_empty = importCache->inspect._empty();
-    if (ele.is(py::type::of(py::none())) || ele.is(inspect_empty)) {
+    if (ele.is(py::type_of(py::none())) || ele.is(inspect_empty)) {
         return LogicalType::ANY();
-    } else if (ele.is(py::type::of(py::bool_()))) {
+    } else if (ele.is(py::type_of(py::bool_(false)))) {
         return LogicalType::BOOL();
-    } else if (ele.is(py::type::of(py::int_()))) {
+    } else if (ele.is(py::type_of(py::int_(0)))) {
         return LogicalType::INT64();
-    } else if (ele.is(py::type::of(py::float_()))) {
+    } else if (ele.is(py::type_of(py::float_(0.0)))) {
         return LogicalType::DOUBLE();
-    } else if (ele.is(py::type::of(py::str()))) {
+    } else if (ele.is(py::type_of(py::str("")))) {
         return LogicalType::STRING();
-    } else if (ele.is(py::type::of(datetime_val))) {
+    } else if (ele.is(py::type_of(datetime_val))) {
         return LogicalType::TIMESTAMP();
-    } else if (ele.is(py::type::of(date_val))) {
+    } else if (ele.is(py::type_of(date_val))) {
         return LogicalType::DATE();
-    } else if (ele.is(py::type::of(timedelta_val))) {
+    } else if (ele.is(py::type_of(timedelta_val))) {
         return LogicalType::INTERVAL();
-    } else if (ele.is(py::type::of(uuid_val))) {
+    } else if (ele.is(py::type_of(uuid_val))) {
         return LogicalType::UUID();
-    } else if (ele.is(py::type::of(py::list()))) {
+    } else if (ele.is(py::type_of(py::list()))) {
         throw RuntimeException("List annotations must specify child type");
-    } else if (ele.is(py::type::of(py::dict()))) {
+    } else if (ele.is(py::type_of(py::dict()))) {
         throw RuntimeException("Map annotations must specify child types");
     } else {
         throw RuntimeException(common::stringFormat("Unsupported annotation of type {}",

@@ -11,7 +11,7 @@
 #include "py_connection.h"
 #include "py_scan_config.h"
 #include "pyarrow/pyarrow_scan.h"
-#include "pybind11/pytypes.h"
+#include "pybind_include.h"
 
 using namespace koredb::function;
 using namespace koredb::common;
@@ -50,9 +50,11 @@ std::unique_ptr<TableFuncLocalState> initLocalState(const TableFuncInitLocalStat
 
 std::unique_ptr<TableFuncSharedState> initSharedState(const TableFuncInitSharedStateInput& input) {
     // LCOV_EXCL_START
+#ifndef Py_LIMITED_API
     if (PyGILState_Check()) {
         throw RuntimeException("PandasScan called but GIL was already held!");
     }
+#endif
     // LCOV_EXCL_STOP
     auto scanBindData = input.bindData->constPtrCast<PandasScanFunctionData>();
     return std::make_unique<SimpleTableFuncSharedState>(scanBindData->numRows,
@@ -127,13 +129,13 @@ TableFunction PandasScanFunction::getFunction() {
 }
 
 static bool isPyArrowBacked(const py::handle& df) {
-    py::list dtypes = df.attr("dtypes");
+    py::list dtypes(py::handle(df.attr("dtypes")));
     if (dtypes.empty()) {
         return false;
     }
 
     auto arrow_dtype = importCache->pandas.ArrowDtype();
-    for (auto& dtype : dtypes) {
+    for (auto dtype : dtypes) {
         if (py::isinstance(dtype, arrow_dtype)) {
             return true;
         }

@@ -9,13 +9,12 @@ env:
 
 jobs:
   build-linux-wheels:
-    name: linux-wheel-${{ matrix.target.arch }}-${{ matrix.python }}
+    name: linux-wheel-${{ matrix.target.arch }}
     runs-on: ${{ matrix.target.runner }}
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        python: ["cp39", "cp310", "cp311", "cp312", "cp313", "cp314", "cp315"]
         target:
           - runner: ubuntu-24.04
             arch: x86_64
@@ -41,7 +40,7 @@ jobs:
       - name: Build wheels
         working-directory: ./scripts/pip-package/
         env:
-          CIBW_BUILD: ${{ matrix.python }}-*
+          CIBW_BUILD: cp312-*
           CIBW_SKIP: "*-musllinux_*"
           CIBW_ARCHS_LINUX: ${{ matrix.target.arch }}
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
@@ -50,9 +49,13 @@ jobs:
           CIBW_TEST_COMMAND: 'python -c "import koredb; db = koredb.Database(); conn = koredb.Connection(db); assert conn.execute(''RETURN 1'').get_next() == [1]"'
         run: pipx run --spec 'cibuildwheel==4.3.5' cibuildwheel --output-dir wheelhouse koredb.tar.gz
 
+      - uses: ./.github/actions/test-python-wheel
+        with:
+          wheel-directory: scripts/pip-package/wheelhouse
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: linux-wheels-${{ matrix.target.arch }}-${{ matrix.python }}
+          name: linux-wheels-${{ matrix.target.arch }}
           path: ./scripts/pip-package/wheelhouse/*.whl
           if-no-files-found: error
           retention-days: 1
