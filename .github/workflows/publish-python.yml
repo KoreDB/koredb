@@ -1,0 +1,106 @@
+name: Publish Python package
+
+on:
+  push:
+    tags:
+      - '**'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Python package index
+        type: choice
+        options:
+          - pypi
+          - testpypi
+        default: pypi
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-version:
+    if: ${{ !github.event.deleted }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag matches package version
+        if: ${{ github.ref_type == 'tag' }}
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import runpy
+
+          version = runpy.run_path('scripts/pip-package/package_tar.py')['_get_koredb_version']()
+          tag = os.environ['RELEASE_TAG']
+          if tag not in (version, f'v{version}'):
+              raise SystemExit(f'Tag {tag!r} does not match package version {version!r}')
+          PY
+
+  build-wheel-mac:
+    needs: validate-version
+    uses: ./.github/workflows/mac-wheel-workflow.yml
+
+  build-wheel-linux:
+    needs: validate-version
+    uses: ./.github/workflows/linux-wheel-workflow.yml
+
+  build-wheel-windows:
+    needs: validate-version
+    uses: ./.github/workflows/windows-wheel-workflow.yml
+
+  package-python-sdist:
+    needs: validate-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install packaging dependencies
+        run: python -m pip install setuptools wheel
+      - name: Package Python sdist
+        run: python package_tar.py
+        working-directory: scripts/pip-package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-sdist
+          path: scripts/pip-package/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [build-wheel-mac, build-wheel-linux, build-wheel-windows, package-python-sdist]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.target == 'testpypi' && 'testpypi' || 'pypi' }}
+      url: ${{ inputs.target == 'testpypi' && 'https://test.pypi.org/p/koredb' || 'https://pypi.org/p/koredb' }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-wheels-*'
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-sdist
+          path: dist
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate distributions
+        run: |
+          python -m pip install twine
+          python -m twine check --strict dist/*
+      - name: Publish to TestPyPI
+        if: ${{ inputs.target == 'testpypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+      - name: Publish to PyPI
+        if: ${{ inputs.target != 'testpypi' }}
+        uses: pypa/gh-action-pypi-publish@release/v1

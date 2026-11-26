@@ -1,4 +1,4 @@
-# Reusable workflow. Called by build-and-deploy.yml to build the macOS Python wheels.
+# Reusable workflow. Called by publish-python.yml to build the macOS Python wheels.
 name: Build macOS Wheels
 
 on:
@@ -15,9 +15,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["cp39", "cp310", "cp311", "cp312", "cp313"]
+        python: ["cp39", "cp310", "cp311", "cp312", "cp313", "cp314", "cp315"]
         target:
-          - runner: macos-14
+          - runner: macos-15
             arch: arm64
           # macos-26-intel is GitHub's replacement for the retired macos-13
           # image and is the last x86_64 macOS runner (available until Aug 2027).
@@ -29,6 +29,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install packaging dependencies
+        run: python -m pip install setuptools wheel
 
       - name: Create source distribution
         working-directory: ./scripts/pip-package/
@@ -43,8 +46,9 @@ jobs:
           CIBW_BUILD: ${{ matrix.python }}-*
           CIBW_ARCHS_MACOS: ${{ matrix.target.arch }}
           CIBW_BUILD_VERBOSITY: 3
+          CIBW_TEST_COMMAND: 'python -c "import koredb; db = koredb.Database(); conn = koredb.Connection(db); assert conn.execute(''RETURN 1'').get_next() == [1]"'
           MACOSX_DEPLOYMENT_TARGET: "11.0"
-        run: pipx run --spec 'cibuildwheel>=3.0' cibuildwheel --output-dir wheelhouse koredb.tar.gz
+        run: pipx run --spec 'cibuildwheel==4.3.5' cibuildwheel --output-dir wheelhouse koredb.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:

@@ -33,11 +33,18 @@ For background on the upstream project, see the [Kuzu Blog](https://kuzudb.githu
 Install the Node.js package with `npm install @koredb/koredb` and import it with
 `require("@koredb/koredb")` or `import { Database, Connection } from "@koredb/koredb"`.
 
-For Python and other interfaces, use the
-[0.11.3 Release](https://github.com/KoreDB/koredb/releases/tag/0.11.3).
-The tag is `0.11.3`, without a `v` prefix. The release currently contains Node.js assets;
-for Python, build the package from that source tag using the
-[Python installation instructions](https://koredb.github.io/docs/installation/#python).
+Install the Python package directly from this GitHub repository:
+
+```bash
+python -m pip install "git+https://github.com/KoreDB/koredb.git"
+```
+
+This compiles the native extension and requires Git, Make, CMake 3.15 or newer,
+Python development headers, and a C++20 compiler. On Windows, use an MSVC
+developer environment with Ninja and GNU Make available. See the
+[Python build instructions](tools/python_api/README.md) for details and examples.
+The GitHub command installs a repository revision containing this packaging support;
+older releases may require their own installation instructions.
 See the [installation guide](https://koredb.github.io/docs/installation/) for all interfaces.
 
 ## Getting Started

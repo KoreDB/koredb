@@ -1,0 +1,12 @@
+include CMakeLists.txt Makefile LICENSE README.md tools/CMakeLists.txt
+recursive-include cmake *
+recursive-include scripts *
+recursive-include src *
+recursive-include third_party *
+recursive-include extension *
+recursive-include test/test_helper *
+recursive-include test/include *
+recursive-include tools/python_api *
+global-exclude __pycache__ *.py[cod]
+prune tools/python_api/build
+prune tools/python_api/test

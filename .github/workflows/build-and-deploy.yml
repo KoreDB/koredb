@@ -1,14 +1,14 @@
 name: Build and Deploy
 
-# By default a plain manual dispatch builds and publishes ONLY the Node.js
-# and Python packages, for Windows / macOS / Linux on both arm64 and amd64.
+# By default a plain manual dispatch builds the Node.js packages for Windows,
+# macOS and Linux. Python releases use publish-python.yml.
 #
 # The remaining deployment targets (WebAssembly, the Rust crate, precompiled
 # shell binaries and extensions) are kept but opted out of by default; tick the
 # matching includeXxx box on a manual dispatch to build them.
 
 on:
-  # Manual only, on purpose: this pipeline publishes to npm and PyPI, and that
+  # Manual only, on purpose: this pipeline publishes to npm, and that
   # is not something to run unattended. Dispatch it by hand and tick isDeploy
   # for the release you want.
   workflow_dispatch:
@@ -20,11 +20,6 @@ on:
         default: false
       skipNodejs:
         description: "Skip building Node.js?"
-        type: boolean
-        required: true
-        default: false
-      skipPython:
-        description: "Skip building Python?"
         type: boolean
         required: true
         default: false
@@ -149,81 +144,6 @@ jobs:
         if: ${{ github.event.inputs.isDeploy == 'true' }}
         run: node publish.js --tag latest
         working-directory: tools/nodejs_api
-
-  # ----------------------------------------------------------------- Python --
-
-  build-wheel-mac:
-    if: ${{ github.event.inputs.skipPython != 'true' }}
-    uses: ./.github/workflows/mac-wheel-workflow.yml
-    secrets: inherit
-
-  build-wheel-linux:
-    if: ${{ github.event.inputs.skipPython != 'true' }}
-    uses: ./.github/workflows/linux-wheel-workflow.yml
-    secrets: inherit
-
-  build-wheel-windows:
-    if: ${{ github.event.inputs.skipPython != 'true' }}
-    uses: ./.github/workflows/windows-wheel-workflow.yml
-    secrets: inherit
-
-  package-python-sdist:
-    if: ${{ github.event.inputs.skipPython != 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Package Python sdist
-        run: python package_tar.py
-        working-directory: scripts/pip-package
-
-      - name: Upload tarball
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-sdist
-          path: scripts/pip-package/*.tar.gz
-          if-no-files-found: error
-          retention-days: 1
-
-  deploy-python:
-    permissions:
-      id-token: write
-    if: ${{ github.event.inputs.skipPython != 'true' }}
-    needs:
-      [
-        build-wheel-mac,
-        build-wheel-linux,
-        build-wheel-windows,
-        package-python-sdist,
-      ]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Collect wheels
-        uses: actions/download-artifact@v4
-        with:
-          pattern: "*-wheels-*"
-          path: dist
-          merge-multiple: true
-
-      - name: Collect sdist
-        uses: actions/download-artifact@v4
-        with:
-          name: python-sdist
-          path: dist
-
-      - name: List wheels
-        run: ls -l
-        working-directory: dist
-
-      - name: Deploy to PyPI test
-        if: ${{ github.event.inputs.isDeploy != 'true' }}
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-
-      - name: Deploy to PyPI
-        if: ${{ github.event.inputs.isDeploy == 'true' }}
-        uses: pypa/gh-action-pypi-publish@release/v1
 
   # ----------------------------------------------- Opt-in deployment targets --
 

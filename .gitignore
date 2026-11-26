@@ -4,6 +4,7 @@
 bazel-*
 .clwb
 .cache
+/.local/
 .ccls-cache
 .bazelrc
 **/test/test_files/test_list
@@ -20,6 +21,7 @@ compile_commands.json
 ### Python
 # Byte-compiled / optimized / DLL files
 __pycache__/
+*.egg-info/
 .venv/
 *.py[cod]
 *$py.class

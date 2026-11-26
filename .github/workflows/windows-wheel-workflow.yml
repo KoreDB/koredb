@@ -1,4 +1,4 @@
-# Reusable workflow. Called by build-and-deploy.yml to build the Windows Python wheels.
+# Reusable workflow. Called by publish-python.yml to build the Windows Python wheels.
 name: Build Windows Wheels
 
 on:
@@ -12,13 +12,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["cp39", "cp310", "cp311", "cp312", "cp313"]
+        python: ["cp39", "cp310", "cp311", "cp312", "cp313", "cp314", "cp315"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install packaging dependencies
+        run: python -m pip install setuptools wheel
 
       - uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -51,7 +54,8 @@ jobs:
           CIBW_BUILD: ${{ matrix.python }}-*
           CIBW_ARCHS_WINDOWS: AMD64
           CIBW_BUILD_VERBOSITY: 3
-        run: pipx run --spec "cibuildwheel>=3.0" cibuildwheel --output-dir wheelhouse koredb.tar.gz
+          CIBW_TEST_COMMAND: 'python -c "import koredb; db = koredb.Database(); conn = koredb.Connection(db); assert conn.execute(''RETURN 1'').get_next() == [1]"'
+        run: pipx run --spec "cibuildwheel==4.3.5" cibuildwheel --output-dir wheelhouse koredb.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:
@@ -68,13 +72,16 @@ jobs:
       fail-fast: false
       # CPython only ships official win_arm64 builds from 3.11 onwards.
       matrix:
-        python: ["cp311", "cp312", "cp313"]
+        python: ["cp311", "cp312", "cp313", "cp314", "cp315"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install packaging dependencies
+        run: python -m pip install setuptools wheel
 
       - uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -107,7 +114,8 @@ jobs:
           CIBW_BUILD: ${{ matrix.python }}-*
           CIBW_ARCHS_WINDOWS: ARM64
           CIBW_BUILD_VERBOSITY: 3
-        run: pipx run --spec "cibuildwheel>=3.0" cibuildwheel --output-dir wheelhouse koredb.tar.gz
+          CIBW_TEST_COMMAND: 'python -c "import koredb; db = koredb.Database(); conn = koredb.Connection(db); assert conn.execute(''RETURN 1'').get_next() == [1]"'
+        run: pipx run --spec "cibuildwheel==4.3.5" cibuildwheel --output-dir wheelhouse koredb.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:

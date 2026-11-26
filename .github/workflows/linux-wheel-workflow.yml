@@ -1,4 +1,4 @@
-# Reusable workflow. Called by build-and-deploy.yml to build the Linux Python wheels.
+# Reusable workflow. Called by publish-python.yml to build the Linux Python wheels.
 name: Build Linux Wheels
 
 on:
@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["cp39", "cp310", "cp311", "cp312", "cp313"]
+        python: ["cp39", "cp310", "cp311", "cp312", "cp313", "cp314", "cp315"]
         target:
           - runner: ubuntu-24.04
             arch: x86_64
@@ -27,6 +27,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install packaging dependencies
+        run: python -m pip install setuptools wheel
 
       - name: Create source distribution
         working-directory: ./scripts/pip-package/
@@ -44,7 +47,8 @@ jobs:
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
           CIBW_BUILD_VERBOSITY: 3
-        run: pipx run --spec 'cibuildwheel>=3.0' cibuildwheel --output-dir wheelhouse koredb.tar.gz
+          CIBW_TEST_COMMAND: 'python -c "import koredb; db = koredb.Database(); conn = koredb.Connection(db); assert conn.execute(''RETURN 1'').get_next() == [1]"'
+        run: pipx run --spec 'cibuildwheel==4.3.5' cibuildwheel --output-dir wheelhouse koredb.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:

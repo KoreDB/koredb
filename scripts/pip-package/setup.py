@@ -81,9 +81,9 @@ class CMakeBuild(build_ext):
         try:
             num_cores = int(os.environ['NUM_THREADS'])
             self.announce("Using %d cores for building the native extension." % num_cores)
-        except:
-            self.announce("NUM_THREADS is not set. Using all available cores.")
-            num_cores = multiprocessing.cpu_count()
+        except (KeyError, ValueError):
+            num_cores = min(4, multiprocessing.cpu_count())
+            self.announce("NUM_THREADS is not set or invalid. Using %d cores." % num_cores)
 
         # Build the native extension.
         full_cmd = ['make', 'python', 'NUM_THREADS=%d' % num_cores]

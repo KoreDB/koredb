@@ -1,25 +1,40 @@
-# Python APIs
+# Python API
 
-## Installation
+## Install from GitHub
 
-Use the [KoreDB 0.11.3 Release](https://github.com/KoreDB/koredb/releases/tag/0.11.3)
-for Python downloads. If a compatible wheel is attached, download it and install the
-local file with `python -m pip install`, using its actual path and filename.
-Choose a wheel matching your Python version, operating system, and architecture.
-
-The release currently has no Python wheels. Build and install from its source tag:
+Install a revision containing the root Python packaging files directly:
 
 ```bash
-git clone --branch 0.11.3 --depth 1 https://github.com/KoreDB/koredb.git
-cd koredb/scripts/pip-package
-python -m pip install setuptools wheel
-python package_tar.py
-python -m pip install ./koredb-0.11.3.tar.gz
+python -m pip install "git+https://github.com/KoreDB/koredb.git"
 ```
 
-This requires Git, Make, CMake 3.15 or later, Python development headers, and a C++20
-compiler. See the [developer guide](https://koredb.github.io/docs/developer-guide/)
-for platform setup, including the compiler environment on Windows.
+To select a branch, tag, or commit, append `@<revision>` to the URL. Existing
+releases such as `0.11.3` predate this packaging support; use the release source
+distribution instructions in [scripts/pip-package](../../scripts/pip-package/README.md)
+for those versions. The GitHub command becomes available once the changes are
+present in the selected revision.
 
-The Python import remains `import koredb`. See the
-[installation guide](https://koredb.github.io/docs/installation/#python) for details.
+The installation builds a native extension. It requires Python 3.9 or newer,
+Git, GNU Make, CMake 3.15 or newer, Python development headers, and a C++20
+compiler. On Windows, run from an MSVC developer environment with Ninja and GNU
+Make on `PATH`. Set `NUM_THREADS` to limit parallel compilation. See the
+[developer guide](https://koredb.github.io/docs/developer-guide/) for platform setup.
+
+Release wheels target CPython 3.9–3.15 on Linux, macOS and Windows, for x86-64
+and ARM64. Windows ARM64 wheels start at Python 3.11. Linux wheels use glibc
+(`manylinux`); other environments may require a source build. Free-threaded
+CPython is not currently included in the wheel matrix.
+
+## Quick start
+
+```python
+import koredb
+
+db = koredb.Database()  # In-memory database
+connection = koredb.Connection(db)
+result = connection.execute("RETURN 1 AS number")
+print(result.get_next())  # [1]
+```
+
+The API also supports persistent databases, parameterized queries, data frames,
+Arrow, and graph integrations. See the [documentation](https://koredb.github.io/docs/).
