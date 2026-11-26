@@ -440,7 +440,7 @@ std::string CompressionMetadata::toString(const PhysicalTypeID physicalType) con
     case CompressionType::ALP: {
         uint8_t bitWidth = TypeUtils::visit(
             physicalType,
-            [&]<std::floating_point T>(T) {
+            [&]<std::floating_point T>(T) -> uint8_t {
                 static constexpr common::idx_t BITPACKING_CHILD_IDX = 0;
                 return IntegerBitpacking<typename FloatCompression<T>::EncodedType>::getPackingInfo(
                     getChild(BITPACKING_CHILD_IDX))
@@ -458,7 +458,7 @@ std::string CompressionMetadata::toString(const PhysicalTypeID physicalType) con
             },
             [](bool) -> uint8_t { KU_UNREACHABLE; },
             [&]<numeric_utils::IsIntegral T>(
-                T) { return IntegerBitpacking<T>::getPackingInfo(*this).bitWidth; },
+                T) -> uint8_t { return IntegerBitpacking<T>::getPackingInfo(*this).bitWidth; },
             [](auto) -> uint8_t { KU_UNREACHABLE; });
         return stringFormat("INTEGER_BITPACKING[{}]", bitWidth);
     }
